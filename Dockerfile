@@ -6,6 +6,8 @@ RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
+# Copy prisma schema BEFORE npm ci — required because postinstall runs `prisma generate`
+COPY prisma ./prisma
 RUN npm ci --prefer-offline
 
 # ─────────────────────────────────────────────
@@ -18,8 +20,9 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client for the target platform
+# Prisma client already generated in deps stage, re-generate for correct platform
 RUN npx prisma generate
+
 
 # Build Next.js (requires a placeholder DATABASE_URL at build time)
 ENV NEXT_TELEMETRY_DISABLED=1
