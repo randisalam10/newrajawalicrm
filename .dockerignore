@@ -1,0 +1,26 @@
+.git
+.gitignore
+.env
+.env.local
+.env.*.local
+.env.production
+
+node_modules
+npm-debug.log*
+
+.next
+out
+dist
+
+# Dev files
+Dockerfile
+.dockerignore
+deploy.sh
+nginx/
+
+# Docs
+README.md
+*.md
+
+# Test/seed data (kecuali seed prod)
+prisma/seed-dummy.ts

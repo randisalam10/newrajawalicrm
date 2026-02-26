@@ -6,16 +6,18 @@ declare module "next-auth" {
         user: {
             id: string
             username: string
-            role: "AdminBP" | "OperatorBP"
+            role: "SuperAdminBP" | "AdminBP" | "OperatorBP"
             employeeId: string
+            locationId: string | null
         }
     }
 
     interface User {
         id: string
         username: string
-        role: "AdminBP" | "OperatorBP"
+        role: "SuperAdminBP" | "AdminBP" | "OperatorBP"
         employeeId: string
+        locationId: string | null
     }
 }
 
@@ -23,7 +25,8 @@ declare module "next-auth/jwt" {
     interface JWT {
         id: string
         username: string
-        role: "AdminBP" | "OperatorBP"
+        role: "SuperAdminBP" | "AdminBP" | "OperatorBP"
         employeeId: string
+        locationId: string | null
     }
 }

@@ -15,7 +15,8 @@ export const authConfig = {
             if (isAuthRoute) {
                 if (isLoggedIn) {
                     // Redirect based on role
-                    const target = auth.user.role === 'AdminBP' ? '/admin' : '/operator'
+                    const userRole = auth.user.role as string
+                    const target = ['AdminBP', 'SuperAdminBP'].includes(userRole) ? '/admin' : '/operator'
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 return true
@@ -34,11 +35,11 @@ export const authConfig = {
 
                 // Root path redirects to appropriate dashboard
                 if (nextUrl.pathname === '/') {
-                    const target = userRole === 'AdminBP' ? '/admin' : '/operator'
+                    const target = ['AdminBP', 'SuperAdminBP'].includes(userRole) ? '/admin' : '/operator'
                     return Response.redirect(new URL(target, nextUrl))
                 }
 
-                if (isAdminRoute && userRole !== 'AdminBP') {
+                if (isAdminRoute && !['AdminBP', 'SuperAdminBP'].includes(userRole as string)) {
                     return Response.redirect(new URL('/operator', nextUrl))
                 }
                 if (isOperatorRoute && userRole !== 'OperatorBP') {
@@ -52,8 +53,9 @@ export const authConfig = {
             if (user) {
                 token.id = user.id
                 token.username = user.username
-                token.role = user.role as "AdminBP" | "OperatorBP"
+                token.role = user.role as "AdminBP" | "OperatorBP" | "SuperAdminBP"
                 token.employeeId = user.employeeId
+                token.locationId = user.locationId
             }
             return token
         },
@@ -61,8 +63,9 @@ export const authConfig = {
             if (session.user && token) {
                 session.user.id = token.id
                 session.user.username = token.username as string
-                session.user.role = token.role as "AdminBP" | "OperatorBP"
+                session.user.role = token.role as "AdminBP" | "OperatorBP" | "SuperAdminBP"
                 session.user.employeeId = token.employeeId as string
+                session.user.locationId = token.locationId as string | null
             }
             return session
         },

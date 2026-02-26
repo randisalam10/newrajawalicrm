@@ -1,8 +1,15 @@
 import { getCustomers } from "./actions"
 import { CustomerClient } from "./customer-client"
+import { getLocations } from "../cabang/actions"
+import { auth } from "@/auth"
 
 export default async function CustomerPage() {
-    const data = await getCustomers()
+    const session = await auth()
+    const [data, locations] = await Promise.all([
+        getCustomers(),
+        getLocations()
+    ])
+    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">
@@ -11,7 +18,7 @@ export default async function CustomerPage() {
                 <p className="text-slate-500">Kelola master data Customer & Proyek Batching Plant.</p>
             </div>
 
-            <CustomerClient initialData={data} />
+            <CustomerClient initialData={data} locations={locations} userRole={userRole} />
         </div>
     )
 }

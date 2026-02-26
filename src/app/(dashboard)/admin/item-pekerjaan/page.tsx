@@ -1,8 +1,15 @@
 import { getWorkItems } from "./actions"
 import { ItemPekerjaanClient } from "./item-pekerjaan-client"
+import { getLocations } from "../cabang/actions"
+import { auth } from "@/auth"
 
 export default async function ItemPekerjaanPage() {
-    const data = await getWorkItems()
+    const session = await auth()
+    const [data, locations] = await Promise.all([
+        getWorkItems(),
+        getLocations()
+    ])
+    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">
@@ -11,7 +18,7 @@ export default async function ItemPekerjaanPage() {
                 <p className="text-slate-500">Kelola master data Item Pekerjaan (Rigid, Kolom, Sloof, dll).</p>
             </div>
 
-            <ItemPekerjaanClient initialData={data} />
+            <ItemPekerjaanClient initialData={data} locations={locations} userRole={userRole} />
         </div>
     )
 }

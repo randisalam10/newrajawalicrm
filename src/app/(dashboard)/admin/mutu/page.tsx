@@ -1,8 +1,15 @@
 import { getMutu } from "./actions"
 import { MutuClient } from "./mutu-client"
+import { getLocations } from "../cabang/actions"
+import { auth } from "@/auth"
 
 export default async function MutuPage() {
-    const data = await getMutu()
+    const session = await auth()
+    const [data, locations] = await Promise.all([
+        getMutu(),
+        getLocations()
+    ])
+    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">
@@ -11,7 +18,7 @@ export default async function MutuPage() {
                 <p className="text-slate-500">Kelola spesifikasi campuran komposisi mutu beton.</p>
             </div>
 
-            <MutuClient initialData={data} />
+            <MutuClient initialData={data} locations={locations} userRole={userRole} />
         </div>
     )
 }

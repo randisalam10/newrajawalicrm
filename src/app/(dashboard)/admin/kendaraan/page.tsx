@@ -1,8 +1,15 @@
 import { getKendaraan } from "./actions"
 import { KendaraanClient } from "./kendaraan-client"
+import { getLocations } from "../cabang/actions"
+import { auth } from "@/auth"
 
 export default async function KendaraanPage() {
-    const data = await getKendaraan()
+    const session = await auth()
+    const [data, locations] = await Promise.all([
+        getKendaraan(),
+        getLocations()
+    ])
+    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">
@@ -11,7 +18,7 @@ export default async function KendaraanPage() {
                 <p className="text-slate-500">Kelola master data armada (Truk Mixer & Loader).</p>
             </div>
 
-            <KendaraanClient initialData={data} />
+            <KendaraanClient initialData={data} locations={locations} userRole={userRole} />
         </div>
     )
 }

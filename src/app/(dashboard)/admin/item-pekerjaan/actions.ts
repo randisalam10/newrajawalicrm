@@ -8,14 +8,19 @@ import { z } from "zod"
 const workItemSchema = z.object({
     id: z.string().optional(),
     name: z.string().min(1, "Nama Item Pekerjaan required"),
+    locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
 export async function getWorkItems() {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+
+    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
 
     return await prisma.workItem.findMany({
-        where: { createdById: session.user.employeeId },
+        where: filter,
+        include: { location: true },
         orderBy: { name: 'asc' }
     })
 }
@@ -32,10 +37,17 @@ export async function createWorkItem(formData: FormData) {
     }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        const { locationId, ...insertData } = parsed.data
+
         await prisma.workItem.create({
             data: {
-                ...parsed.data,
-                createdById: session.user.employeeId
+                ...insertData,
+                locationId: finalLocationId
             }
         })
         revalidatePath("/admin/item-pekerjaan")
@@ -60,12 +72,25 @@ export async function updateWorkItem(id: string, formData: FormData) {
     }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.workItem.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
+
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        const { locationId, ...updateData } = parsed.data
 
         await prisma.workItem.update({
             where: { id },
-            data: parsed.data
+            data: {
+                ...updateData,
+                locationId: finalLocationId
+            }
         })
         revalidatePath("/admin/item-pekerjaan")
         return { success: true }
@@ -79,8 +104,12 @@ export async function deleteWorkItem(id: string) {
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.workItem.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
 
         await prisma.workItem.delete({
             where: { id }

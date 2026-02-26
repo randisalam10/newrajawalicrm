@@ -28,8 +28,9 @@ import {
 } from "@/components/ui/select"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { createKendaraan, updateKendaraan, deleteKendaraan } from "./actions"
+import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
 
-export function KendaraanClient({ initialData }: { initialData: any[] }) {
+export function KendaraanClient({ initialData, locations, userRole }: { initialData: any[], locations: any[], userRole: string }) {
     const [open, setOpen] = useState(false)
     const [editData, setEditData] = useState<any>(null)
 
@@ -105,52 +106,96 @@ export function KendaraanClient({ initialData }: { initialData: any[] }) {
                                 </div>
                             </div>
 
+                            {userRole === "SuperAdminBP" && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
+                                    <Select name="locationId" defaultValue={editData?.locationId || ""}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Pilih Cabang" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc.id} value={loc.id}>
+                                                    {loc.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
                             <Button type="submit" className="w-full mt-4">Simpan</Button>
                         </form>
                     </DialogContent>
                 </Dialog>
             </div>
 
-            <div className="border rounded-md bg-white">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Kode Kendaraan</TableHead>
-                            <TableHead>Plat Nomor</TableHead>
-                            <TableHead>Jenis</TableHead>
-                            <TableHead className="w-[100px]">Aksi</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {initialData.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={4} className="text-center text-muted-foreground h-24">Belum ada data kendaraan.</TableCell>
+            <SimpleDataTable
+                data={initialData}
+                searchKeys={["code", "plate_number", "vehicle_type"]}
+                searchPlaceholder="Cari kode, plat, atau jenis..."
+            >
+                {(items, sortConfig, toggleSort) => (
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-slate-50/50">
+                                {userRole === "SuperAdminBP" && (
+                                    <TableHead>
+                                        <SortableHeader label="Cabang" sortKey="locationId" sortConfig={sortConfig} onSort={toggleSort} />
+                                    </TableHead>
+                                )}
+                                <TableHead>
+                                    <SortableHeader label="Kode" sortKey="code" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>
+                                    <SortableHeader label="Plat Nomor" sortKey="plate_number" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>
+                                    <SortableHeader label="Jenis" sortKey="vehicle_type" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead className="w-[100px]">Aksi</TableHead>
                             </TableRow>
-                        )}
-                        {initialData.map((item) => (
-                            <TableRow key={item.id}>
-                                <TableCell className="font-semibold text-primary">{item.code}</TableCell>
-                                <TableCell className="font-medium text-slate-700">{item.plate_number}</TableCell>
-                                <TableCell>
-                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.vehicle_type === 'Mixer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                        {item.vehicle_type}
-                                    </span>
-                                </TableCell>
-                                <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(item)}>
-                                            <Pencil className="w-4 h-4 text-slate-500" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
-                                            <Trash2 className="w-4 h-4 text-red-500" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+                        </TableHeader>
+                        <TableBody>
+                            {items.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={userRole === "SuperAdminBP" ? 5 : 4} className="text-center text-muted-foreground h-24">
+                                        Data tidak ditemukan.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            {items.map((item) => (
+                                <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                                    {userRole === "SuperAdminBP" && (
+                                        <TableCell>
+                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
+                                                {item.location?.name || "N/A"}
+                                            </span>
+                                        </TableCell>
+                                    )}
+                                    <TableCell className="font-semibold text-sm text-primary">{item.code}</TableCell>
+                                    <TableCell className="font-medium text-sm text-slate-700">{item.plate_number}</TableCell>
+                                    <TableCell>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase ${item.vehicle_type === 'Mixer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                            {item.vehicle_type}
+                                        </span>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEdit(item)}>
+                                                <Pencil className="w-4 h-4 text-slate-500" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(item.id)}>
+                                                <Trash2 className="w-4 h-4 text-red-500" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </SimpleDataTable>
         </div>
     )
 }

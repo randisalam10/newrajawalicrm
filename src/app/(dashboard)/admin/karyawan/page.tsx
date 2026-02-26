@@ -1,8 +1,15 @@
 import { getKaryawans } from "./actions"
 import { KaryawanClient } from "./karyawan-client"
+import { getLocations } from "../cabang/actions"
+import { auth } from "@/auth"
 
 export default async function KaryawanPage() {
-    const data = await getKaryawans()
+    const session = await auth()
+    const [data, locations] = await Promise.all([
+        getKaryawans(),
+        getLocations()
+    ])
+    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">
@@ -11,7 +18,7 @@ export default async function KaryawanPage() {
                 <p className="text-slate-500">Kelola master data Pegawai (Sopir, Operator, Admin).</p>
             </div>
 
-            <KaryawanClient initialData={data} />
+            <KaryawanClient initialData={data} locations={locations} userRole={userRole} />
         </div>
     )
 }

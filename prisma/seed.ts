@@ -3,60 +3,65 @@ import bcrypt from "bcryptjs"
 
 const prisma = new PrismaClient()
 
+/**
+ * Seed produksi: hanya membuat akun SuperAdmin jika belum ada.
+ * Tidak menghapus data yang sudah ada (aman untuk re-run).
+ *
+ * Password bisa di-override via env var SEED_ADMIN_PASSWORD
+ */
 async function main() {
-    const adminPassword = await bcrypt.hash("admin", 10)
-    const operatorPassword = await bcrypt.hash("operator", 10)
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || "Admin@Rajawali2025!"
+    const hashedPassword = await bcrypt.hash(adminPassword, 12)
 
-    // Clean db
-    await prisma.user.deleteMany()
-    await prisma.employee.deleteMany()
+    // Cek apakah superadmin sudah ada
+    const existing = await prisma.user.findFirst({
+        where: { role: "SuperAdminBP" }
+    })
 
-    // Create Admin Employee
+    if (existing) {
+        console.log("✓ SuperAdmin sudah ada, skip seed.")
+        return
+    }
+
+    console.log("Creating SuperAdmin account...")
+
+    // Buat lokasi utama jika belum ada
+    const mainLocation = await prisma.location.upsert({
+        where: { name: "Pusat (HQ)" },
+        update: {},
+        create: { name: "Pusat (HQ)" }
+    })
+
+    // Buat employee superadmin
     const adminEmp = await prisma.employee.create({
         data: {
             name: "Super Admin",
             position: "Admin",
             join_date: new Date(),
-            status: "Active"
+            status: "Active",
+            locationId: mainLocation.id
         }
     })
 
-    // Create AdminBP User
+    // Buat user SuperAdminBP
     await prisma.user.create({
         data: {
             username: "admin",
-            password: adminPassword,
-            role: "AdminBP",
+            password: hashedPassword,
+            role: "SuperAdminBP",
             employeeId: adminEmp.id
         }
     })
 
-    // Create Operator Employee
-    const operatorEmp = await prisma.employee.create({
-        data: {
-            name: "Plant Operator",
-            position: "Operator",
-            join_date: new Date(),
-            status: "Active"
-        }
-    })
-
-    // Create OperatorBP User
-    await prisma.user.create({
-        data: {
-            username: "operator",
-            password: operatorPassword,
-            role: "OperatorBP",
-            employeeId: operatorEmp.id
-        }
-    })
-
-    console.log("Seed data successfully injected!")
+    console.log("✅ SuperAdmin created!")
+    console.log("   Username : admin")
+    console.log(`   Password : ${adminPassword}`)
+    console.log("   ⚠️  Segera ganti password setelah login pertama!")
 }
 
 main()
     .catch((e) => {
-        console.error(e)
+        console.error("❌ Seed error:", e)
         process.exit(1)
     })
     .finally(async () => {

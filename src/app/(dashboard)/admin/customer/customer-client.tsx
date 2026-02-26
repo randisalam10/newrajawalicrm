@@ -19,10 +19,18 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { createCustomer, updateCustomer, deleteCustomer } from "./actions"
+import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
 
-export function CustomerClient({ initialData }: { initialData: any[] }) {
+export function CustomerClient({ initialData, locations, userRole }: { initialData: any[], locations: any[], userRole: string }) {
     const [open, setOpen] = useState(false)
     const [editData, setEditData] = useState<any>(null)
 
@@ -82,8 +90,8 @@ export function CustomerClient({ initialData }: { initialData: any[] }) {
                                 <Input id="project_name" name="project_name" defaultValue={editData?.project_name} required />
                             </div>
                             <div className="space-y-2">
-                                <Label htmlFor="location">Lokasi Proyek *</Label>
-                                <Input id="location" name="location" defaultValue={editData?.location} required />
+                                <Label htmlFor="address">Lokasi Proyek *</Label>
+                                <Input id="address" name="address" defaultValue={editData?.address} required />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
@@ -95,52 +103,97 @@ export function CustomerClient({ initialData }: { initialData: any[] }) {
                                     <Input id="tax_ppn" name="tax_ppn" type="number" step="0.1" defaultValue={editData?.tax_ppn ?? 0} required />
                                 </div>
                             </div>
+                            {userRole === "SuperAdminBP" && (
+                                <div className="space-y-2">
+                                    <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
+                                    <Select name="locationId" defaultValue={editData?.locationId || ""}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Pilih Cabang" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc.id} value={loc.id}>
+                                                    {loc.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
                             <Button type="submit" className="w-full mt-4">Simpan</Button>
                         </form>
                     </DialogContent>
                 </Dialog>
             </div>
 
-            <div className="border rounded-md bg-white">
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Nama Customer</TableHead>
-                            <TableHead>Proyek</TableHead>
-                            <TableHead>Lokasi</TableHead>
-                            <TableHead>Jarak (Km)</TableHead>
-                            <TableHead>PPN (%)</TableHead>
-                            <TableHead className="w-[100px]">Aksi</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {initialData.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground h-24">Belum ada data customer.</TableCell>
+            <SimpleDataTable
+                data={initialData}
+                searchKeys={["customer_name", "project_name", "address"]}
+                searchPlaceholder="Cari customer, proyek, atau alamat..."
+            >
+                {(items, sortConfig, toggleSort) => (
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-slate-50/50">
+                                {userRole === "SuperAdminBP" && (
+                                    <TableHead>
+                                        <SortableHeader label="Cabang" sortKey="locationId" sortConfig={sortConfig} onSort={toggleSort} />
+                                    </TableHead>
+                                )}
+                                <TableHead>
+                                    <SortableHeader label="Nama Customer" sortKey="customer_name" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>
+                                    <SortableHeader label="Proyek" sortKey="project_name" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>
+                                    <SortableHeader label="Lokasi" sortKey="address" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>
+                                    <SortableHeader label="Jarak" sortKey="default_distance" sortConfig={sortConfig} onSort={toggleSort} />
+                                </TableHead>
+                                <TableHead>PPN (%)</TableHead>
+                                <TableHead className="w-[100px]">Aksi</TableHead>
                             </TableRow>
-                        )}
-                        {initialData.map((cust) => (
-                            <TableRow key={cust.id}>
-                                <TableCell className="font-medium">{cust.customer_name}</TableCell>
-                                <TableCell>{cust.project_name}</TableCell>
-                                <TableCell>{cust.location}</TableCell>
-                                <TableCell>{cust.default_distance}</TableCell>
-                                <TableCell>{cust.tax_ppn}</TableCell>
-                                <TableCell>
-                                    <div className="flex items-center gap-2">
-                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(cust)}>
-                                            <Pencil className="w-4 h-4 text-slate-500" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(cust.id)}>
-                                            <Trash2 className="w-4 h-4 text-red-500" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+                        </TableHeader>
+                        <TableBody>
+                            {items.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={userRole === "SuperAdminBP" ? 7 : 6} className="text-center text-muted-foreground h-24">
+                                        Data tidak ditemukan.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            {items.map((cust) => (
+                                <TableRow key={cust.id} className="hover:bg-slate-50/50 transition-colors">
+                                    {userRole === "SuperAdminBP" && (
+                                        <TableCell>
+                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
+                                                {cust.location?.name || "N/A"}
+                                            </span>
+                                        </TableCell>
+                                    )}
+                                    <TableCell className="font-medium text-sm">{cust.customer_name}</TableCell>
+                                    <TableCell className="text-sm">{cust.project_name}</TableCell>
+                                    <TableCell className="text-sm">{cust.address}</TableCell>
+                                    <TableCell className="text-sm">{cust.default_distance} Km</TableCell>
+                                    <TableCell className="text-sm">{cust.tax_ppn}%</TableCell>
+                                    <TableCell>
+                                        <div className="flex items-center gap-1">
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenEdit(cust)}>
+                                                <Pencil className="w-4 h-4 text-slate-500" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(cust.id)}>
+                                                <Trash2 className="w-4 h-4 text-red-500" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                )}
+            </SimpleDataTable>
         </div>
     )
 }

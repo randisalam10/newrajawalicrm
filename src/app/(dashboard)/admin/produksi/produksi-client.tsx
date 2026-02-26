@@ -29,9 +29,20 @@ import {
 
 import { createProduction } from "./actions"
 
-export function ProduksiClient({ masters }: { masters: any }) {
+export function ProduksiClient({ masters, userRole, locations = [] }: { masters: any, userRole?: string, locations?: any[] }) {
     const { customers = [], vehicles = [], drivers = [], qualities = [], workItems = [] } = masters || {}
     const [loading, setLoading] = useState(false)
+
+    // Master Cabang state (for SuperAdmin)
+    const [openLocation, setOpenLocation] = useState(false)
+    const [selectedLocationId, setSelectedLocationId] = useState<string>("")
+
+    // Filter masters
+    const activeCustomers = userRole === 'SuperAdminBP' && selectedLocationId ? customers.filter((c: any) => c.locationId === selectedLocationId) : customers
+    const activeVehicles = userRole === 'SuperAdminBP' && selectedLocationId ? vehicles.filter((v: any) => v.locationId === selectedLocationId) : vehicles
+    const activeDrivers = userRole === 'SuperAdminBP' && selectedLocationId ? drivers.filter((d: any) => d.locationId === selectedLocationId) : drivers
+    const activeQualities = userRole === 'SuperAdminBP' && selectedLocationId ? qualities.filter((q: any) => q.locationId === selectedLocationId) : qualities
+    const activeWorkItems = userRole === 'SuperAdminBP' && selectedLocationId ? workItems.filter((w: any) => w.locationId === selectedLocationId) : workItems
 
     // Combobox states
     const [openCustomer, setOpenCustomer] = useState(false)
@@ -49,12 +60,21 @@ export function ProduksiClient({ masters }: { masters: any }) {
     const [openWorkItem, setOpenWorkItem] = useState(false)
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string>("")
 
-    const selectedCustomer = customers?.find((c: any) => c.id === selectedCustId)
+    const selectedCustomer = activeCustomers?.find((c: any) => c.id === selectedCustId)
 
     async function handleSubmit(formData: FormData) {
+        if (userRole === 'SuperAdminBP' && !selectedLocationId) {
+            alert("Harap pilih Cabang Operasional terlebih dahulu.")
+            return
+        }
         if (!selectedCustId || !selectedVehicleId || !selectedDriverId || !selectedQualityId || !selectedWorkItemId) {
             alert("Harap lengkapi semua pilihan Master Data (Customer, Truk, Sopir, Mutu, dan Item Pekerjaan).")
             return
+        }
+
+        // Add locationId manually to formData if superadmin
+        if (userRole === 'SuperAdminBP' && selectedLocationId) {
+            formData.append("locationId", selectedLocationId)
         }
 
         setLoading(true)
@@ -84,6 +104,67 @@ export function ProduksiClient({ masters }: { masters: any }) {
                     <input type="hidden" name="qualityId" value={selectedQualityId} />
                     <input type="hidden" name="workItemId" value={selectedWorkItemId} />
 
+                    {userRole === 'SuperAdminBP' && (
+                        <div className="space-y-4 border p-4 rounded-lg bg-blue-50/50 border-blue-200">
+                            <h3 className="font-semibold text-sm text-blue-700 uppercase">Pilih Cabang (Khusus SuperAdmin)</h3>
+                            <div className="space-y-2 flex flex-col">
+                                <Label>Cabang Operasional *</Label>
+                                <Popover open={openLocation} onOpenChange={setOpenLocation}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openLocation}
+                                            className="w-full justify-between"
+                                        >
+                                            {selectedLocationId
+                                                ? (() => {
+                                                    const l = locations.find((loc: any) => loc.id === selectedLocationId);
+                                                    return l ? l.name : "-- Pilih Cabang --"
+                                                })()
+                                                : "-- Pilih Cabang --"}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Cari cabang..." />
+                                            <CommandList>
+                                                <CommandEmpty>Cabang tidak ditemukan.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {locations.map((loc: any) => (
+                                                        <CommandItem
+                                                            key={loc.id}
+                                                            value={loc.name}
+                                                            onSelect={() => {
+                                                                setSelectedLocationId(loc.id === selectedLocationId ? "" : loc.id)
+                                                                setOpenLocation(false)
+                                                                // Reset all dependent selections
+                                                                setSelectedCustId("")
+                                                                setSelectedVehicleId("")
+                                                                setSelectedDriverId("")
+                                                                setSelectedQualityId("")
+                                                                setSelectedWorkItemId("")
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    selectedLocationId === loc.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {loc.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">
                         <h3 className="font-semibold text-sm text-slate-500 uppercase">1. Informasi Customer</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -99,7 +180,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                         >
                                             {selectedCustId
                                                 ? (() => {
-                                                    const c = customers.find((c: any) => c.id === selectedCustId);
+                                                    const c = activeCustomers.find((c: any) => c.id === selectedCustId);
                                                     return c ? `${c.customer_name} - ${c.project_name}` : "-- Pilih Customer --"
                                                 })()
                                                 : "-- Pilih Customer --"}
@@ -112,7 +193,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                             <CommandList>
                                                 <CommandEmpty>Customer tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {customers.map((c: any) => (
+                                                    {activeCustomers.map((c: any) => (
                                                         <CommandItem
                                                             key={c.id}
                                                             value={`${c.customer_name} ${c.project_name}`}
@@ -139,7 +220,24 @@ export function ProduksiClient({ masters }: { masters: any }) {
 
                             <div className="space-y-2">
                                 <Label>Lokasi Proyek</Label>
-                                <Input disabled value={selectedCustomer?.location || "-"} className="bg-slate-100" />
+                                <Input disabled value={selectedCustomer?.address || "-"} className="bg-slate-100" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="date">Tanggal & Waktu Produksi *</Label>
+                                <Input
+                                    id="date"
+                                    name="date"
+                                    type="datetime-local"
+                                    defaultValue={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                                    required
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Jarak Pengiriman (KM)</Label>
+                                <Input disabled value={selectedCustomer?.default_distance ? `${selectedCustomer.default_distance} KM` : "-"} className="bg-slate-100" />
+                                <span className="text-xs text-slate-400">Jarak default master customer. Bisa diubah saat Konfirmasi.</span>
                             </div>
                         </div>
                     </div>
@@ -160,7 +258,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                         >
                                             {selectedVehicleId
                                                 ? (() => {
-                                                    const v = vehicles.find((v: any) => v.id === selectedVehicleId);
+                                                    const v = activeVehicles.find((v: any) => v.id === selectedVehicleId);
                                                     return v ? `${v.code} (${v.plate_number})` : "-- Pilih Armada --"
                                                 })()
                                                 : "-- Pilih Armada --"}
@@ -173,7 +271,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                             <CommandList>
                                                 <CommandEmpty>Armada tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {vehicles.map((v: any) => (
+                                                    {activeVehicles.map((v: any) => (
                                                         <CommandItem
                                                             key={v.id}
                                                             value={`${v.code} ${v.plate_number}`}
@@ -210,7 +308,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                         >
                                             {selectedDriverId
                                                 ? (() => {
-                                                    const d = drivers.find((d: any) => d.id === selectedDriverId);
+                                                    const d = activeDrivers.find((d: any) => d.id === selectedDriverId);
                                                     return d ? d.name : "-- Pilih Sopir --"
                                                 })()
                                                 : "-- Pilih Sopir --"}
@@ -223,7 +321,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                             <CommandList>
                                                 <CommandEmpty>Sopir tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {drivers.map((d: any) => (
+                                                    {activeDrivers.map((d: any) => (
                                                         <CommandItem
                                                             key={d.id}
                                                             value={d.name}
@@ -267,7 +365,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                         >
                                             {selectedQualityId
                                                 ? (() => {
-                                                    const q = qualities.find((q: any) => q.id === selectedQualityId);
+                                                    const q = activeQualities.find((q: any) => q.id === selectedQualityId);
                                                     return q ? q.name : "-- Pilih Mutu --"
                                                 })()
                                                 : "-- Pilih Mutu --"}
@@ -280,7 +378,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                             <CommandList>
                                                 <CommandEmpty>Mutu tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {qualities.map((q: any) => (
+                                                    {activeQualities.map((q: any) => (
                                                         <CommandItem
                                                             key={q.id}
                                                             value={q.name}
@@ -317,7 +415,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                         >
                                             {selectedWorkItemId
                                                 ? (() => {
-                                                    const w = workItems.find((w: any) => w.id === selectedWorkItemId);
+                                                    const w = activeWorkItems.find((w: any) => w.id === selectedWorkItemId);
                                                     return w ? w.name : "-- Pilih Pekerjaan --"
                                                 })()
                                                 : "-- Pilih Pekerjaan --"}
@@ -330,7 +428,7 @@ export function ProduksiClient({ masters }: { masters: any }) {
                                             <CommandList>
                                                 <CommandEmpty>Pekerjaan tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {workItems.map((w: any) => (
+                                                    {activeWorkItems.map((w: any) => (
                                                         <CommandItem
                                                             key={w.id}
                                                             value={w.name}

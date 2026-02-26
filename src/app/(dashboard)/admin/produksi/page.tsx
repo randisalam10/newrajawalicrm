@@ -1,14 +1,20 @@
 import { getProductionMasters, getRecentProductions } from "./actions"
+import { getLocations } from "../cabang/actions"
 import { ProduksiClient } from "./produksi-client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { auth } from "@/auth"
 
 export const dynamic = 'force-dynamic'
 
 export default async function ProduksiPage() {
-    const [masters, recent] = await Promise.all([
+    const session = await auth()
+    const userRole = session?.user?.role || "OperatorBP"
+
+    const [masters, recent, locations] = await Promise.all([
         getProductionMasters(),
-        getRecentProductions()
+        getRecentProductions(),
+        userRole === "SuperAdminBP" ? getLocations() : Promise.resolve([])
     ])
 
     return (
@@ -20,7 +26,7 @@ export default async function ProduksiPage() {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                    <ProduksiClient masters={masters} />
+                    <ProduksiClient masters={masters} userRole={userRole} locations={locations} />
                 </div>
 
                 <div className="lg:col-span-1">
@@ -41,8 +47,11 @@ export default async function ProduksiPage() {
                                             {tx.status}
                                         </Badge>
                                     </div>
-                                    <div className="text-xs text-slate-500 flex justify-between">
-                                        <span>{tx.concreteQuality.name} | {tx.volume_cubic} m³</span>
+                                    <div className="text-xs text-slate-500 flex justify-between items-center mt-1">
+                                        <div className="space-x-2">
+                                            <Badge variant="outline" className="text-[10px] bg-slate-50">TM-{tx.trip_sequence}</Badge>
+                                            <span>{tx.concreteQuality.name} | {tx.volume_cubic} m³</span>
+                                        </div>
                                         <span>{new Date(tx.date).toLocaleDateString()}</span>
                                     </div>
                                     <div className="text-xs text-slate-400">

@@ -1,10 +1,28 @@
-export default function MaterialInPage() {
+import { auth } from "@/auth"
+import { redirect } from "next/navigation"
+import { getIncomingMaterials, getStockLedger } from "./actions"
+import { MaterialInClient } from "./material-in-client"
+import { getLocations } from "../cabang/actions"
+
+export default async function MaterialInPage() {
+    const session = await auth()
+
+    if (!session?.user) {
+        redirect("/login")
+    }
+
+    const [materials, ledger, locations] = await Promise.all([
+        getIncomingMaterials(),
+        getStockLedger("all"),
+        getLocations(),
+    ])
+
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight">Semen Masuk</h1>
-                <p className="text-slate-500">Catat Material Semen Masuk (Placeholder).</p>
-            </div>
-        </div>
+        <MaterialInClient
+            initialData={materials}
+            initialLedger={ledger}
+            locations={locations}
+            userRole={session.user.role as string}
+        />
     )
 }

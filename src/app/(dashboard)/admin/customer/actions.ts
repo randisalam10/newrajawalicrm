@@ -11,16 +11,21 @@ const customerSchema = z.object({
     project_name: z.string().min(1, "Nama Proyek required"),
     default_distance: z.coerce.number().min(0),
     tax_ppn: z.coerce.number().min(0).max(100),
-    location: z.string().min(1, "Lokasi required"),
+    address: z.string().min(1, "Lokasi required"),
     status: z.enum(["Active", "Inactive"]).default("Active"),
+    locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
 export async function getCustomers() {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+
+    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
 
     return await prisma.customer.findMany({
-        where: { createdById: session.user.employeeId },
+        where: filter,
+        include: { location: true },
         orderBy: { customer_name: 'asc' }
     })
 }
@@ -37,10 +42,18 @@ export async function createCustomer(formData: FormData) {
     }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        // Exclude locationId from the actual insert data
+        const { locationId, ...insertData } = parsed.data
+
         await prisma.customer.create({
             data: {
-                ...parsed.data,
-                createdById: session.user.employeeId
+                ...insertData,
+                locationId: finalLocationId
             }
         })
         revalidatePath("/admin/customer")
@@ -62,13 +75,26 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     try {
-        // Verify ownership
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.customer.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        // Verify ownership if not SuperAdmin
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
+
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        const { locationId, ...updateData } = parsed.data
 
         await prisma.customer.update({
             where: { id },
-            data: parsed.data
+            data: {
+                ...updateData,
+                locationId: finalLocationId
+            }
         })
         revalidatePath("/admin/customer")
         return { success: true }
@@ -82,9 +108,13 @@ export async function deleteCustomer(id: string) {
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
     try {
-        // Verify ownership
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.customer.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        // Verify ownership if not SuperAdmin
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
 
         await prisma.customer.delete({
             where: { id }

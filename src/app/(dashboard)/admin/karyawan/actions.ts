@@ -11,14 +11,19 @@ const karyawanSchema = z.object({
     position: z.enum(["Sopir", "Operator", "Admin"]),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     join_date: z.string().min(1, "Tanggal Bergabung required"),
+    locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
 export async function getKaryawans() {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+
+    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
 
     return await prisma.employee.findMany({
-        where: { createdById: session.user.employeeId },
+        where: filter,
+        include: { location: true },
         orderBy: { name: 'asc' }
     })
 }
@@ -35,13 +40,20 @@ export async function createKaryawan(formData: FormData) {
     }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        const { locationId, ...insertData } = parsed.data
+
         await prisma.employee.create({
             data: {
-                name: parsed.data.name,
-                position: parsed.data.position,
-                status: parsed.data.status,
-                join_date: new Date(parsed.data.join_date),
-                createdById: session.user.employeeId
+                name: insertData.name,
+                position: insertData.position,
+                status: insertData.status,
+                join_date: new Date(insertData.join_date),
+                locationId: finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")
@@ -66,16 +78,27 @@ export async function updateKaryawan(id: string, formData: FormData) {
     }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.employee.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
+
+        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+
+        if (!finalLocationId) return { success: false, error: "Location is required" }
+
+        const { locationId, ...updateData } = parsed.data
 
         await prisma.employee.update({
             where: { id },
             data: {
-                name: parsed.data.name,
-                position: parsed.data.position,
-                status: parsed.data.status,
-                join_date: new Date(parsed.data.join_date)
+                name: updateData.name,
+                position: updateData.position,
+                status: updateData.status,
+                join_date: new Date(updateData.join_date),
+                locationId: finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")
@@ -90,8 +113,12 @@ export async function deleteKaryawan(id: string) {
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
     try {
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const existing = await prisma.employee.findUnique({ where: { id } })
-        if (existing?.createdById !== session.user.employeeId) return { success: false, error: "Unauthorized" }
+
+        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized" }
+        }
 
         await prisma.employee.delete({
             where: { id }
