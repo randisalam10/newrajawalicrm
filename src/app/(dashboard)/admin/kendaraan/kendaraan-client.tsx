@@ -1,0 +1,156 @@
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table"
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import { Plus, Pencil, Trash2 } from "lucide-react"
+import { createKendaraan, updateKendaraan, deleteKendaraan } from "./actions"
+
+export function KendaraanClient({ initialData }: { initialData: any[] }) {
+    const [open, setOpen] = useState(false)
+    const [editData, setEditData] = useState<any>(null)
+
+    async function handleSubmit(formData: FormData) {
+        let result;
+        if (editData) {
+            result = await updateKendaraan(editData.id, formData)
+        } else {
+            result = await createKendaraan(formData)
+        }
+
+        if (result.success) {
+            setOpen(false)
+            setEditData(null)
+        } else {
+            alert("Error: " + JSON.stringify(result.error))
+        }
+    }
+
+    async function handleDelete(id: string) {
+        if (confirm("Are you sure you want to delete this Kendaraan?")) {
+            const result = await deleteKendaraan(id)
+            if (!result.success) alert(result.error)
+        }
+    }
+
+    const handleOpenEdit = (data: any) => {
+        setEditData(data)
+        setOpen(true)
+    }
+
+    const handleOpenNew = () => {
+        setEditData(null)
+        setOpen(true)
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex justify-between items-center">
+                <h2 className="text-xl font-bold tracking-tight">Daftar Kendaraan</h2>
+                <Dialog open={open} onOpenChange={setOpen}>
+                    <DialogTrigger asChild>
+                        <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Kendaraan</Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                            <DialogTitle>{editData ? 'Edit Kendaraan' : 'Tambah Kendaraan Baru'}</DialogTitle>
+                        </DialogHeader>
+                        <form key={editData?.id || 'new'} action={handleSubmit} className="space-y-4 mt-4">
+                            {editData && <input type="hidden" name="id" value={editData.id} />}
+
+                            <div className="space-y-2">
+                                <Label htmlFor="plate_number">Plat Nomor *</Label>
+                                <Input id="plate_number" name="plate_number" placeholder="Contoh: B 1234 CD" defaultValue={editData?.plate_number} required />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="vehicle_type">Jenis Kendaraan *</Label>
+                                    <Select name="vehicle_type" defaultValue={editData?.vehicle_type || "Mixer"}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Pilih Jenis" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Mixer">Mixer</SelectItem>
+                                            <SelectItem value="Loader">Loader</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="code">Kode Kendaraan *</Label>
+                                    <Input id="code" name="code" placeholder="Misal: MX-01" defaultValue={editData?.code} required />
+                                </div>
+                            </div>
+
+                            <Button type="submit" className="w-full mt-4">Simpan</Button>
+                        </form>
+                    </DialogContent>
+                </Dialog>
+            </div>
+
+            <div className="border rounded-md bg-white">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead>Kode Kendaraan</TableHead>
+                            <TableHead>Plat Nomor</TableHead>
+                            <TableHead>Jenis</TableHead>
+                            <TableHead className="w-[100px]">Aksi</TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {initialData.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center text-muted-foreground h-24">Belum ada data kendaraan.</TableCell>
+                            </TableRow>
+                        )}
+                        {initialData.map((item) => (
+                            <TableRow key={item.id}>
+                                <TableCell className="font-semibold text-primary">{item.code}</TableCell>
+                                <TableCell className="font-medium text-slate-700">{item.plate_number}</TableCell>
+                                <TableCell>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${item.vehicle_type === 'Mixer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
+                                        {item.vehicle_type}
+                                    </span>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(item)}>
+                                            <Pencil className="w-4 h-4 text-slate-500" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" onClick={() => handleDelete(item.id)}>
+                                            <Trash2 className="w-4 h-4 text-red-500" />
+                                        </Button>
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            </div>
+        </div>
+    )
+}

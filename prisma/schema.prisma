@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  AdminBP
+  OperatorBP
+}
+
+enum Position {
+  Sopir
+  Operator
+  Admin
+}
+
+enum EmployeeStatus {
+  Active
+  Inactive
+}
+
+enum VehicleType {
+  Mixer
+  Loader
+}
+
+enum CustomerStatus {
+  Active
+  Inactive
+}
+
+enum TransactionStatus {
+  Pending
+  Confirmed
+}
+
+enum MaterialType {
+  Semen
+  Pasir
+}
+
+model User {
+  id         String   @id @default(uuid())
+  username   String   @unique
+  password   String   
+  role       Role
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  employeeId String   @unique
+}
+
+model Employee {
+  id                    String                  @id @default(uuid())
+  name                  String
+  position              Position
+  status                EmployeeStatus          @default(Active)
+  join_date             DateTime
+  user                  User?
+  driver_transactions   ProductionTransaction[] @relation("SopirRelation")
+  operator_transactions ProductionTransaction[] @relation("OperatorRelation")
+  retase_commissions    Retase[]                @relation("DriverRetase")
+  
+  // Multi-Tenant Isolation Relations
+  created_vehicles      Vehicle[]
+  created_customers     Customer[]
+  created_work_items    WorkItem[]
+  created_qualities     ConcreteQuality[]
+  created_employees     Employee[]              @relation("EmployeeCreator")
+  creator               Employee?               @relation("EmployeeCreator", fields: [createdById], references: [id])
+  createdById           String?
+  created_materials     MaterialIncoming[]
+}
+
+model Vehicle {
+  id            String                  @id @default(uuid())
+  plate_number  String                  @unique
+  vehicle_type  VehicleType
+  code          String
+  transactions  ProductionTransaction[]
+  createdBy     Employee                @relation(fields: [createdById], references: [id])
+  createdById   String
+}
+
+model Customer {
+  id               String                  @id @default(uuid())
+  customer_name    String
+  project_name     String
+  default_distance Float
+  tax_ppn          Float
+  location         String
+  status           CustomerStatus          @default(Active)
+  transactions     ProductionTransaction[]
+  createdBy        Employee                @relation(fields: [createdById], references: [id])
+  createdById      String
+}
+
+model WorkItem {
+  id           String                  @id @default(uuid())
+  name         String                  @unique // e.g., Rigid, Kolom, Sloof
+  transactions ProductionTransaction[]
+  createdBy    Employee                @relation(fields: [createdById], references: [id])
+  createdById  String
+}
+
+model ConcreteQuality {
+  id                   String                  @id @default(uuid())
+  name                 String                  // e.g., K-225
+  composition_sand     Float
+  composition_stone_05 Float
+  composition_stone_12 Float
+  composition_stone_23 Float
+  composition_cement   Float
+  transactions         ProductionTransaction[]
+  createdBy            Employee                @relation(fields: [createdById], references: [id])
+  createdById          String
+}
+
+
+model ProductionTransaction {
+  id                String            @id @default(uuid())
+  date              DateTime
+  vehicle           Vehicle           @relation(fields: [vehicleId], references: [id])
+  vehicleId         String
+  driver            Employee          @relation("SopirRelation", fields: [driverId], references: [id])
+  driverId          String
+  concreteQuality   ConcreteQuality   @relation(fields: [qualityId], references: [id])
+  qualityId         String
+  workItem          WorkItem          @relation(fields: [workItemId], references: [id])
+  workItemId        String
+  volume_cubic      Float
+  slump             String
+  customer          Customer          @relation(fields: [customerId], references: [id])
+  customerId        String
+  cumulative_volume Float
+  status            TransactionStatus @default(Pending)
+  createdBy         Employee          @relation("OperatorRelation", fields: [createdById], references: [id])
+  createdById       String
+  retase            Retase?
+}
+
+model MaterialIncoming {
+  id            String       @id @default(uuid())
+  date          DateTime
+  material_type MaterialType
+  supplier      String
+  tonnage       Float
+  delivery_note String
+  createdBy     Employee     @relation(fields: [createdById], references: [id])
+  createdById   String
+}
+
+model Retase {
+  id                  String                @id @default(uuid())
+  transaction         ProductionTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  transactionId       String                @unique
+  driver              Employee              @relation("DriverRetase", fields: [driverId], references: [id])
+  driverId            String
+  calculated_distance Float
+  income_amount       Float
+}
