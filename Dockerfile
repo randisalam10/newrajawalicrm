@@ -51,12 +51,17 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Copy Prisma schema + generated client for migrations at runtime
+# Copy Prisma schema + generated client + CLI for migrations at runtime
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# Copy Prisma CLI (pinned to project version, avoids npx downloading Prisma 7.x)
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
+RUN mkdir -p node_modules/.bin && \
+    ln -sf /app/node_modules/prisma/build/index.js node_modules/.bin/prisma && \
+    chmod +x node_modules/.bin/prisma
 
-# Copy seed script
+# Copy seed dependencies
 COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/node_modules/tsx ./node_modules/tsx

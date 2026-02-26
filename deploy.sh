@@ -44,14 +44,14 @@ echo "[3/6] Building Docker image..."
 docker build -t $IMAGE_NAME:latest --no-cache .
 echo "   ✓ Image built: $IMAGE_NAME:latest"
 
-# ── 4. Run DB migrations ──
+# ── 4. Run DB migrations (use local Prisma 5.x, not npx which fetches latest) ──
 echo ""
 echo "[4/6] Running database migrations..."
 docker run --rm \
     --env-file $ENV_FILE \
     $ADD_HOST_ARGS \
     $IMAGE_NAME:latest \
-    npx prisma migrate deploy
+    sh -c "node /app/node_modules/prisma/build/index.js migrate deploy"
 echo "   ✓ Migrations applied"
 
 # ── 5. Seed superadmin (idempotent — aman di-re-run) ──
@@ -61,7 +61,7 @@ docker run --rm \
     --env-file $ENV_FILE \
     $ADD_HOST_ARGS \
     $IMAGE_NAME:latest \
-    sh -c "cd /app && npx tsx prisma/seed.ts" \
+    sh -c "node /app/node_modules/tsx/dist/cli.mjs /app/prisma/seed.ts" \
     || echo "   ⚠ Seed skipped (SuperAdmin mungkin sudah ada)"
 echo "   ✓ Superadmin checked"
 
