@@ -8,7 +8,7 @@ set -e
 
 APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="v1.0.1"
+IMAGE_TAG="v1.0.2"
 ENV_FILE=".env.production"
 PORT=3000
 
