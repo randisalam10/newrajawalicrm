@@ -3,11 +3,10 @@
 -- ============================================================
 
 -- Enable extensions for UUID generation (supports PostgreSQL 9.6+)
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Removed because it requires SUPERUSER privileges which we don't have.
+-- We will use a pure SQL pseudo-uuid generator instead.
 
 -- ── 1. New Enums ──────────────────────────────────────────────────────────────
-
 CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'ISSUED', 'PARTIAL', 'PAID', 'CANCELLED');
 CREATE TYPE "PaymentMethod" AS ENUM ('TRANSFER', 'CASH', 'GIRO', 'DEPOSIT');
 CREATE TYPE "BillingAction" AS ENUM ('INVOICE_CREATED', 'INVOICE_ISSUED', 'INVOICE_CANCELLED', 'PAYMENT_RECORDED', 'DEPOSIT_ADDED', 'DEPOSIT_USED');
@@ -63,13 +62,22 @@ ALTER TABLE "ProjectPrice" ADD CONSTRAINT "ProjectPrice_qualityId_fkey"
 
 INSERT INTO "Project" ("id", "name", "address", "default_distance", "tax_ppn", "customerId")
 SELECT
-    gen_random_uuid()::TEXT,
+    (
+        substring(h, 1, 8) || '-' ||
+        substring(h, 9, 4) || '-4' ||
+        substring(h, 13, 3) || '-8' ||
+        substring(h, 16, 3) || '-' ||
+        substring(h, 19, 12)
+    ),
     'Default Project',
     "address",
     0,
     0,
     "id"
-FROM "Customer";
+FROM (
+    SELECT "id", "address", md5(random()::text || clock_timestamp()::text) as h
+    FROM "Customer"
+) sub;
 
 -- ── 6. Add projectId to ProductionTransaction ──────────────────────────────────
 
