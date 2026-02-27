@@ -8,7 +8,7 @@ set -e
 
 APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="v1.0.4"
+IMAGE_TAG="v1.0.5"
 ENV_FILE=".env.production"
 PORT=3000
 
@@ -39,9 +39,17 @@ echo "[3/6] Pulling Docker image from registry..."
 docker pull $IMAGE_NAME:$IMAGE_TAG
 echo "   ✓ Image pulled: $IMAGE_NAME:$IMAGE_TAG"
 
-# ── 4. Run DB migrations (use local Prisma 5.x, not npx which fetches latest) ──
+# ── 4. Run DB migrations ──────────────────────────────────────────────────────
 echo ""
 echo "[4/6] Running database migrations..."
+
+# Auto-resolve any previously failed migration (safe to run even if none failed)
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    $IMAGE_NAME:$IMAGE_TAG \
+    sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
+
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
