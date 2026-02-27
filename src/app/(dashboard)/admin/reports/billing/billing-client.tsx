@@ -61,7 +61,7 @@ export function BillingReportClient({ locations, customers, userRole, userLocati
 
         let totalVol = 0
         const cMap = new Map<string, {
-            name: string,
+            customerName: string,
             projectName: string,
             volume: number,
             txCount: number,
@@ -71,21 +71,21 @@ export function BillingReportClient({ locations, customers, userRole, userLocati
         transactions.forEach(tx => {
             totalVol += tx.volume_cubic
 
-            const cId = tx.customerId
-            if (!cMap.has(cId)) {
-                cMap.set(cId, {
-                    name: tx.customer?.customer_name || "Unknown",
-                    projectName: tx.customer?.project_name || "-",
+            // Group by projectId so each project is listed separately
+            const key = tx.projectId
+            if (!cMap.has(key)) {
+                cMap.set(key, {
+                    customerName: tx.project?.customer?.customer_name || "Unknown",
+                    projectName: tx.project?.name || "-",
                     volume: 0,
                     txCount: 0,
                     records: []
                 })
             }
 
-            const cData = cMap.get(cId)!
+            const cData = cMap.get(key)!
             cData.volume += tx.volume_cubic
             cData.txCount += 1
-            // Pre-format some fields for easier searching
             cData.records.push({
                 ...tx,
                 sj_number: `SJ/${tx.id.split('-')[0].toUpperCase()}`
@@ -132,7 +132,7 @@ export function BillingReportClient({ locations, customers, userRole, userLocati
                                     <SelectItem value="all">Semua Customer</SelectItem>
                                     {customers.map((cust: any) => (
                                         <SelectItem key={cust.id} value={cust.id}>
-                                            {cust.customer_name} - {cust.project_name}
+                                            {cust.customer_name}
                                         </SelectItem>
                                     ))}
                                 </SelectContent>
@@ -201,7 +201,7 @@ export function BillingReportClient({ locations, customers, userRole, userLocati
                         <CardHeader className="bg-slate-50 border-b pb-4">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <CardTitle className="text-lg text-primary">{cData.name}</CardTitle>
+                                    <CardTitle className="text-lg text-primary">{cData.customerName}</CardTitle>
                                     <CardDescription className="text-sm font-medium mt-1">Proyek: {cData.projectName}</CardDescription>
                                 </div>
                                 <div className="text-right">

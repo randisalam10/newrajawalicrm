@@ -25,7 +25,8 @@ export async function getBillingReport(filterOptions: BillingFilter) {
     }
 
     if (filterOptions.customerId) {
-        filter.customerId = filterOptions.customerId
+        // Filter by project belonging to this customer
+        filter.project = { customerId: filterOptions.customerId }
     }
 
     if (filterOptions.startDate && filterOptions.endDate) {
@@ -43,10 +44,11 @@ export async function getBillingReport(filterOptions: BillingFilter) {
     const transactions = await (prisma as any).productionTransaction.findMany({
         where: filter,
         include: {
-            customer: true,
+            project: { include: { customer: true } },
             concreteQuality: true,
             location: true,
-            vehicle: true, // Optional, depending if we need plate number on invoice
+            vehicle: true,
+            driver: true,
         },
         orderBy: { date: 'asc' }
     })

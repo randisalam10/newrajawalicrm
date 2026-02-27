@@ -15,11 +15,10 @@ DB_NAME="rajawali_prod"
 DB_USER="rajawali_user"
 DB_PASS="RajawaliBP@2025!"   # ← GANTI dengan password kuat
 APP_DIR="/opt/rajawali"
-GIT_REPO="https://github.com/NAMA_USER/NAMA_REPO.git"  # ← GANTI
+GIT_REPO="https://github.com/randisalam10/newrajawalicrm.git"  # ← GANTI
 
 echo ""
 echo "[1/8] Update system packages..."
-apt-get update -y
 apt-get upgrade -y
 apt-get install -y curl wget git unzip ufw software-properties-common
 

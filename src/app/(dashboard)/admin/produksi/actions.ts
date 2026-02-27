@@ -6,7 +6,7 @@ import { auth } from "@/auth"
 import { z } from "zod"
 
 const productionSchema = z.object({
-    customerId: z.string().min(1, "Customer required"),
+    projectId: z.string().min(1, "Project required"),
     vehicleId: z.string().min(1, "Mixer required"),
     driverId: z.string().min(1, "Driver required"),
     qualityId: z.string().min(1, "Mutu required"),
@@ -19,20 +19,29 @@ const productionSchema = z.object({
 
 export async function getProductionMasters() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return { customers: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
 
     const isSuperAdmin = session.user.role === 'SuperAdminBP'
     const filter: any = isSuperAdmin ? {} : { locationId: session.user.locationId! }
 
-    const [customers, vehicles, drivers, qualities, workItems] = await Promise.all([
-        prisma.customer.findMany({ where: { status: "Active", ...filter }, orderBy: { customer_name: 'asc' } }),
+    const [projects, vehicles, drivers, qualities, workItems] = await Promise.all([
+        prisma.project.findMany({
+            where: {
+                customer: {
+                    status: "Active",
+                    ...(isSuperAdmin ? {} : { locationId: session.user.locationId! })
+                }
+            },
+            include: { customer: true },
+            orderBy: { name: 'asc' }
+        }),
         prisma.vehicle.findMany({ where: { vehicle_type: "Mixer", ...filter }, orderBy: { code: 'asc' } }),
         prisma.employee.findMany({ where: { position: "Sopir", status: "Active", ...filter }, orderBy: { name: 'asc' } }),
         prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } }),
         prisma.workItem.findMany({ where: filter, orderBy: { name: 'asc' } })
     ])
 
-    return { customers, vehicles, drivers, qualities, workItems }
+    return { projects, vehicles, drivers, qualities, workItems }
 }
 
 export async function getRecentProductions() {
@@ -47,7 +56,7 @@ export async function getRecentProductions() {
         take: 10,
         orderBy: { date: 'desc' },
         include: {
-            customer: true,
+            project: { include: { customer: true } },
             vehicle: true,
             driver: true,
             concreteQuality: true,
@@ -72,7 +81,7 @@ export async function createProduction(formData: FormData) {
     }
 
     try {
-        const { customerId, vehicleId, driverId, qualityId, workItemId, volume_cubic, slump, date } = parsed.data
+        const { projectId, vehicleId, driverId, qualityId, workItemId, volume_cubic, slump, date } = parsed.data
 
         // Parse date correctly:
         // If date string is "YYYY-MM-DD", treat it as WIB local date (UTC+7)
@@ -102,10 +111,10 @@ export async function createProduction(formData: FormData) {
         const dayStartUTC = new Date(localMidnightMs - WIB_OFFSET_MS) // UTC equivalent of WIB 00:00
         const dayEndUTC = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000 - 1) // WIB 23:59:59.999
 
-        // Query transaksi yang sudah ada di hari + customer + mutu + lokasi yang sama
+        // Query transaksi yang sudah ada di hari + project + mutu + lokasi yang sama
         const existingTransactions = await prisma.productionTransaction.findMany({
             where: {
-                customerId,
+                projectId,
                 qualityId,
                 locationId,                                   // scope per cabang
                 date: { gte: dayStartUTC, lte: dayEndUTC }   // scope per hari WIB
@@ -119,7 +128,7 @@ export async function createProduction(formData: FormData) {
         const transaction = await prisma.productionTransaction.create({
             data: {
                 date: transactionDate,
-                customerId,
+                projectId,
                 vehicleId,
                 driverId,
                 qualityId,
@@ -135,7 +144,7 @@ export async function createProduction(formData: FormData) {
                 status: "Pending" // Will be confirmed in Phase 4
             },
             include: {
-                customer: true,
+                project: { include: { customer: true } },
                 concreteQuality: true,
                 workItem: true,
                 driver: true,
@@ -166,8 +175,9 @@ async function sendTelegramNotification(tx: any) {
 🔔 *PRODUKSI BARU* 🔔
 
 📋 *No Transaksi:* \`${tx.id.substring(0, 8).toUpperCase()}\`
-🏢 *Customer:* ${tx.customer.customer_name}
-📍 *Lokasi:* ${tx.customer.address}
+🏢 *Customer:* ${tx.project.customer.customer_name}
+🏷️ *Proyek:* ${tx.project.name}
+📍 *Lokasi:* ${tx.project.address}
 🏗 *Mutu:* ${tx.concreteQuality.name}
 ⚒️ *Item Pekerjaan:* ${tx.workItem.name}
 📏 *Slump:* ${tx.slump}

@@ -335,8 +335,8 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                                                     <div className="text-slate-400">{format(new Date(tx.date), "HH:mm")}</div>
                                                 </TableCell>
                                                 <TableCell className="py-2">
-                                                    <div className="font-medium text-slate-800">{tx.customer?.customer_name}</div>
-                                                    <div className="text-slate-400 text-[10px]">{tx.customer?.project_name}</div>
+                                                    <div className="font-medium text-slate-800">{tx.project?.customer?.customer_name ?? '-'}</div>
+                                                    <div className="text-slate-400 text-[10px]">{tx.project?.name ?? '-'}</div>
                                                 </TableCell>
                                                 <TableCell className="py-2">
                                                     <Badge variant="secondary" className="text-[10px] font-bold">{tx.concreteQuality?.name || "-"}</Badge>
@@ -377,8 +377,8 @@ function buildPrintContent(driver: DriverSummary, year: number, month: number): 
         <tr>
             <td>${i + 1}</td>
             <td>${new Date(tx.date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</td>
-            <td>${tx.customer?.customer_name || '-'}</td>
-            <td>${tx.customer?.project_name || '-'}</td>
+            <td>${tx.project?.customer?.customer_name || '-'}</td>
+            <td>${tx.project?.name || '-'}</td>
             <td>${tx.concreteQuality?.name || '-'}</td>
             <td style="text-align:right">${tx.volume_cubic}</td>
             <td style="text-align:right">${tx.retase?.calculated_distance || 0}</td>

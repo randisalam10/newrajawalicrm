@@ -5,13 +5,18 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
+const projectSchema = z.object({
+    customerId: z.string().min(1, "Customer required"),
+    name: z.string().min(1, "Nama Proyek required"),
+    address: z.string().min(1, "Lokasi Proyek required"),
+    default_distance: z.coerce.number().min(0, "Jarak minimal 0"),
+    tax_ppn: z.coerce.number().min(0).max(100, "PPN max 100%"),
+})
+
 const customerSchema = z.object({
     id: z.string().optional(),
     customer_name: z.string().min(1, "Nama Customer required"),
-    project_name: z.string().min(1, "Nama Proyek required"),
-    default_distance: z.coerce.number().min(0),
-    tax_ppn: z.coerce.number().min(0).max(100),
-    address: z.string().min(1, "Lokasi required"),
+    address: z.string().min(1, "Alamat Tagih required"),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
@@ -123,5 +128,78 @@ export async function deleteCustomer(id: string) {
         return { success: true }
     } catch (e: any) {
         return { success: false, error: "Failed to delete customer" }
+    }
+}
+
+export async function getCustomersWithProjects() {
+    const session = await auth()
+    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+
+    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+
+    return await prisma.customer.findMany({
+        where: filter,
+        include: {
+            location: true,
+            projects: {
+                include: { prices: { include: { concreteQuality: true } } },
+                orderBy: { name: 'asc' }
+            }
+        },
+        orderBy: { customer_name: 'asc' }
+    })
+}
+
+export async function createProject(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+
+    const data = Object.fromEntries(formData.entries())
+    const parsed = projectSchema.safeParse(data)
+
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.format() }
+    }
+
+    try {
+        await prisma.project.create({ data: parsed.data })
+        revalidatePath("/admin/customer")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function updateProject(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+
+    const data = Object.fromEntries(formData.entries())
+    const parsed = projectSchema.safeParse(data)
+
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.format() }
+    }
+
+    try {
+        await prisma.project.update({ where: { id }, data: parsed.data })
+        revalidatePath("/admin/customer")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function deleteProject(id: string) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+
+    try {
+        await prisma.project.delete({ where: { id } })
+        revalidatePath("/admin/customer")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: "Gagal menghapus proyek. Pastikan tidak ada transaksi aktif." }
     }
 }

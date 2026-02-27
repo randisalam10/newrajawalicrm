@@ -8,7 +8,7 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
     const transaction = await prisma.productionTransaction.findUnique({
         where: { id },
         include: {
-            customer: true,
+            project: { include: { customer: true } },
             vehicle: true,
             driver: true,
             concreteQuality: true,
@@ -36,7 +36,7 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
             <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-8">
                 <div>
                     <h1 className="text-2xl font-black uppercase tracking-wider">PT. RAJAWALI MIX</h1>
-                    <p className="text-sm font-medium mt-1">Cabang: {transaction.location.name}</p>
+                    <p className="text-sm font-medium mt-1">Cabang: {transaction.location?.name || '-'}</p>
                     <p className="text-xs text-slate-600">Batching Plant & Beton Cor Readymix</p>
                 </div>
                 <div className="text-right">
@@ -55,15 +55,15 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
                         <tbody>
                             <tr>
                                 <td className="py-1 text-slate-600 w-24">Customer</td>
-                                <td className="py-1 font-semibold">: {transaction.customer.customer_name}</td>
+                                <td className="py-1 font-semibold">: {transaction.project?.customer?.customer_name ?? '-'}</td>
                             </tr>
                             <tr>
                                 <td className="py-1 text-slate-600">Proyek</td>
-                                <td className="py-1 font-semibold">: {transaction.customer.project_name}</td>
+                                <td className="py-1 font-semibold">: {transaction.project?.name ?? '-'}</td>
                             </tr>
                             <tr>
                                 <td className="py-1 text-slate-600 align-top">Alamat</td>
-                                <td className="py-1 font-semibold">: {transaction.customer.address || "-"}</td>
+                                <td className="py-1 font-semibold">: {transaction.project?.address ?? "-"}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -76,11 +76,11 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
                         <tbody>
                             <tr>
                                 <td className="py-1 text-slate-600 w-24">Kendaraan</td>
-                                <td className="py-1 font-semibold">: {transaction.vehicle.plate_number} ({transaction.vehicle.code})</td>
+                                <td className="py-1 font-semibold">: {transaction.vehicle?.plate_number || '-'} ({transaction.vehicle?.code || '-'})</td>
                             </tr>
                             <tr>
                                 <td className="py-1 text-slate-600">Nama Sopir</td>
-                                <td className="py-1 font-semibold">: {transaction.driver.name}</td>
+                                <td className="py-1 font-semibold">: {transaction.driver?.name || '-'}</td>
                             </tr>
                             <tr>
                                 <td className="py-1 text-slate-600">Ritase (TM) Ke</td>
@@ -109,8 +109,8 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
                 </thead>
                 <tbody>
                     <tr>
-                        <td className="border border-slate-800 p-3 text-sm font-semibold">{transaction.concreteQuality.name}</td>
-                        <td className="border border-slate-800 p-3 text-sm">{transaction.workItem.name}</td>
+                        <td className="border border-slate-800 p-3 text-sm font-semibold">{transaction.concreteQuality?.name || '-'}</td>
+                        <td className="border border-slate-800 p-3 text-sm">{transaction.workItem?.name || '-'}</td>
                         <td className="border border-slate-800 p-3 text-sm text-center">{transaction.slump}</td>
                         <td className="border border-slate-800 p-3 text-sm font-bold text-right text-lg">{transaction.volume_cubic}</td>
                         {/* @ts-ignore */}
@@ -134,12 +134,12 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
                 <div>
                     <p className="mb-20 font-medium">Sopir Mixer,</p>
                     <div className="border-b border-slate-800 w-3/4 mx-auto"></div>
-                    <p className="mt-1 font-semibold uppercase text-xs">{transaction.driver.name}</p>
+                    <p className="mt-1 font-semibold uppercase text-xs">{transaction.driver?.name || '-'}</p>
                 </div>
                 <div>
                     <p className="mb-20 font-medium">Admin / Operator,</p>
                     <div className="border-b border-slate-800 w-3/4 mx-auto"></div>
-                    <p className="mt-1 font-semibold uppercase text-xs">{transaction.createdBy.name}</p>
+                    <p className="mt-1 font-semibold uppercase text-xs">{transaction.createdBy?.name || '-'}</p>
                 </div>
             </div>
 

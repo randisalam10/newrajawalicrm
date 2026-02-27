@@ -28,7 +28,7 @@ export async function getDashboardData() {
             ...locationFilter,
             date: { gte: todayStart, lte: todayEnd }
         },
-        include: { concreteQuality: true, customer: true, vehicle: true, driver: true, location: true }
+        include: { concreteQuality: true, project: { include: { customer: true } }, vehicle: true, driver: true, location: true }
     })
 
     const todayVolumeTotal = todayTransactions.reduce((s, t) => s + t.volume_cubic, 0)
@@ -44,7 +44,7 @@ export async function getDashboardData() {
             ...locationFilter,
             date: { gte: monthStart, lte: monthEnd }
         },
-        include: { concreteQuality: true, customer: true, location: true }
+        include: { concreteQuality: true, project: { include: { customer: true } }, location: true }
     })
 
     const monthVolumeTotal = monthTransactions.reduce((s, t) => s + t.volume_cubic, 0)
@@ -120,9 +120,10 @@ export async function getDashboardData() {
     // ============================================
     const customerMap: Record<string, { name: string, project: string, volume: number, trips: number }> = {}
     monthTransactions.forEach(t => {
-        const id = t.customerId
+        if (!t.project || !t.project.customer) return; // Skip if no project/customer
+        const id = t.project.customerId
         if (!customerMap[id]) {
-            customerMap[id] = { name: t.customer.customer_name, project: t.customer.project_name, volume: 0, trips: 0 }
+            customerMap[id] = { name: t.project.customer.customer_name, project: t.project.name, volume: 0, trips: 0 }
         }
         customerMap[id].volume += t.volume_cubic
         customerMap[id].trips++
@@ -134,7 +135,7 @@ export async function getDashboardData() {
     // ============================================
     const recentActivity = await prisma.productionTransaction.findMany({
         where: { ...locationFilter },
-        include: { customer: true, concreteQuality: true, driver: true, vehicle: true, location: true },
+        include: { project: { include: { customer: true } }, concreteQuality: true, driver: true, vehicle: true, location: true },
         orderBy: { date: 'desc' },
         take: 10
     })

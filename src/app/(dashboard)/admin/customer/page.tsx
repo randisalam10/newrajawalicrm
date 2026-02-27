@@ -1,4 +1,4 @@
-import { getCustomers } from "./actions"
+import { getCustomersWithProjects } from "./actions"
 import { CustomerClient } from "./customer-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
@@ -6,7 +6,7 @@ import { auth } from "@/auth"
 export default async function CustomerPage() {
     const session = await auth()
     const [data, locations] = await Promise.all([
-        getCustomers(),
+        getCustomersWithProjects(),
         getLocations()
     ])
     const userRole = session?.user?.role || "OperatorBP"
@@ -14,7 +14,7 @@ export default async function CustomerPage() {
     return (
         <div className="space-y-6">
             <div className="flex flex-col space-y-1">
-                <h1 className="text-3xl font-bold tracking-tight">Data Customer</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Data Customer & Proyek</h1>
                 <p className="text-slate-500">Kelola master data Customer & Proyek Batching Plant.</p>
             </div>
 

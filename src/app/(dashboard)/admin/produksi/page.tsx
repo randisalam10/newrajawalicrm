@@ -42,7 +42,10 @@ export default async function ProduksiPage() {
                             {recent.map((tx: any) => (
                                 <div key={tx.id} className="border-b last:border-0 pb-4 last:pb-0 space-y-1">
                                     <div className="flex justify-between items-start">
-                                        <span className="font-semibold text-sm">{tx.customer.customer_name}</span>
+                                        <div>
+                                            <span className="font-semibold text-sm">{tx.project?.customer?.customer_name ?? '-'}</span>
+                                            <p className="text-xs text-slate-400">{tx.project?.name ?? '-'}</p>
+                                        </div>
                                         <Badge variant={tx.status === 'Pending' ? 'secondary' : 'default'} className="text-[10px]">
                                             {tx.status}
                                         </Badge>
@@ -50,12 +53,12 @@ export default async function ProduksiPage() {
                                     <div className="text-xs text-slate-500 flex justify-between items-center mt-1">
                                         <div className="space-x-2">
                                             <Badge variant="outline" className="text-[10px] bg-slate-50">TM-{tx.trip_sequence}</Badge>
-                                            <span>{tx.concreteQuality.name} | {tx.volume_cubic} m³</span>
+                                            <span>{tx.concreteQuality?.name} | {tx.volume_cubic} m³</span>
                                         </div>
                                         <span>{new Date(tx.date).toLocaleDateString()}</span>
                                     </div>
                                     <div className="text-xs text-slate-400">
-                                        Sopir: {tx.driver.name} ({tx.vehicle.plate_number})
+                                        Sopir: {tx.driver?.name} ({tx.vehicle?.plate_number})
                                     </div>
                                 </div>
                             ))}

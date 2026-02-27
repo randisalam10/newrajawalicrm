@@ -43,7 +43,7 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
             driver: true,
             location: true,
             retase: true,
-            customer: true,
+            project: { include: { customer: true } },
             vehicle: true,
             concreteQuality: true,
         },

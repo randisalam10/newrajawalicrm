@@ -22,7 +22,7 @@ export async function getMaterialUsageData() {
         include: {
             concreteQuality: true,
             vehicle: true,
-            customer: true,
+            project: { include: { customer: true } },
             location: true,
             driver: true,
             workItem: true

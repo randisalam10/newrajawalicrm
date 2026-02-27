@@ -30,15 +30,16 @@ import {
 import { createProduction } from "./actions"
 
 export function ProduksiClient({ masters, userRole, locations = [] }: { masters: any, userRole?: string, locations?: any[] }) {
-    const { customers = [], vehicles = [], drivers = [], qualities = [], workItems = [] } = masters || {}
+    const { projects = [], vehicles = [], drivers = [], qualities = [], workItems = [] } = masters || {}
     const [loading, setLoading] = useState(false)
 
     // Master Cabang state (for SuperAdmin)
     const [openLocation, setOpenLocation] = useState(false)
     const [selectedLocationId, setSelectedLocationId] = useState<string>("")
 
-    // Filter masters
-    const activeCustomers = userRole === 'SuperAdminBP' && selectedLocationId ? customers.filter((c: any) => c.locationId === selectedLocationId) : customers
+    // Filter masters (guard against projects with missing customer relation)
+    const validProjects = projects.filter((p: any) => p.customer != null)
+    const activeProjects = userRole === 'SuperAdminBP' && selectedLocationId ? validProjects.filter((p: any) => p.customer?.locationId === selectedLocationId) : validProjects
     const activeVehicles = userRole === 'SuperAdminBP' && selectedLocationId ? vehicles.filter((v: any) => v.locationId === selectedLocationId) : vehicles
     const activeDrivers = userRole === 'SuperAdminBP' && selectedLocationId ? drivers.filter((d: any) => d.locationId === selectedLocationId) : drivers
     const activeQualities = userRole === 'SuperAdminBP' && selectedLocationId ? qualities.filter((q: any) => q.locationId === selectedLocationId) : qualities
@@ -46,7 +47,10 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
 
     // Combobox states
     const [openCustomer, setOpenCustomer] = useState(false)
-    const [selectedCustId, setSelectedCustId] = useState<string>("")
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string>("")
+
+    const [openProject, setOpenProject] = useState(false)
+    const [selectedProjectId, setSelectedProjectId] = useState<string>("")
 
     const [openVehicle, setOpenVehicle] = useState(false)
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>("")
@@ -60,15 +64,45 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
     const [openWorkItem, setOpenWorkItem] = useState(false)
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string>("")
 
-    const selectedCustomer = activeCustomers?.find((c: any) => c.id === selectedCustId)
+    // Derive unique customers from active projects
+    const uniqueCustomers: any[] = []
+    const seenIds = new Set<string>()
+    for (const p of activeProjects) {
+        if (!seenIds.has(p.customer.id)) {
+            seenIds.add(p.customer.id)
+            uniqueCustomers.push(p.customer)
+        }
+    }
+    uniqueCustomers.sort((a, b) => a.customer_name.localeCompare(b.customer_name))
+
+    // Projects filtered by selected customer
+    const customerProjects = selectedCustomerId
+        ? activeProjects.filter((p: any) => p.customer.id === selectedCustomerId)
+        : []
+
+    const selectedProject = customerProjects.find((p: any) => p.id === selectedProjectId)
+
+    function handleSelectCustomer(custId: string) {
+        const newId = custId === selectedCustomerId ? "" : custId
+        setSelectedCustomerId(newId)
+        setSelectedProjectId("") // reset project
+        setOpenCustomer(false)
+        if (newId) {
+            const projs = activeProjects.filter((p: any) => p.customer.id === newId)
+            if (projs.length === 1) {
+                // Auto-select if only 1 project
+                setSelectedProjectId(projs[0].id)
+            }
+        }
+    }
 
     async function handleSubmit(formData: FormData) {
         if (userRole === 'SuperAdminBP' && !selectedLocationId) {
             alert("Harap pilih Cabang Operasional terlebih dahulu.")
             return
         }
-        if (!selectedCustId || !selectedVehicleId || !selectedDriverId || !selectedQualityId || !selectedWorkItemId) {
-            alert("Harap lengkapi semua pilihan Master Data (Customer, Truk, Sopir, Mutu, dan Item Pekerjaan).")
+        if (!selectedProjectId || !selectedVehicleId || !selectedDriverId || !selectedQualityId || !selectedWorkItemId) {
+            alert("Harap lengkapi semua pilihan Master Data (Proyek, Truk, Sopir, Mutu, dan Item Pekerjaan).")
             return
         }
 
@@ -98,7 +132,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
             <CardContent>
                 <form action={handleSubmit} className="space-y-6">
                     {/* Native hidden inputs for standard FormData submission */}
-                    <input type="hidden" name="customerId" value={selectedCustId} />
+                    <input type="hidden" name="projectId" value={selectedProjectId} />
                     <input type="hidden" name="vehicleId" value={selectedVehicleId} />
                     <input type="hidden" name="driverId" value={selectedDriverId} />
                     <input type="hidden" name="qualityId" value={selectedQualityId} />
@@ -140,7 +174,8 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                                                 setSelectedLocationId(loc.id === selectedLocationId ? "" : loc.id)
                                                                 setOpenLocation(false)
                                                                 // Reset all dependent selections
-                                                                setSelectedCustId("")
+                                                                setSelectedCustomerId("")
+                                                                setSelectedProjectId("")
                                                                 setSelectedVehicleId("")
                                                                 setSelectedDriverId("")
                                                                 setSelectedQualityId("")
@@ -166,8 +201,10 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                     )}
 
                     <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">
-                        <h3 className="font-semibold text-sm text-slate-500 uppercase">1. Informasi Customer</h3>
+                        <h3 className="font-semibold text-sm text-slate-500 uppercase">1. Informasi Proyek / Customer</h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                            {/* Step 1 — Pilih Customer */}
                             <div className="space-y-2 flex flex-col">
                                 <Label>Pilih Customer *</Label>
                                 <Popover open={openCustomer} onOpenChange={setOpenCustomer}>
@@ -178,37 +215,26 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             aria-expanded={openCustomer}
                                             className="w-full justify-between"
                                         >
-                                            {selectedCustId
-                                                ? (() => {
-                                                    const c = activeCustomers.find((c: any) => c.id === selectedCustId);
-                                                    return c ? `${c.customer_name} - ${c.project_name}` : "-- Pilih Customer --"
-                                                })()
+                                            {selectedCustomerId
+                                                ? (uniqueCustomers.find(c => c.id === selectedCustomerId)?.customer_name ?? "-- Pilih Customer --")
                                                 : "-- Pilih Customer --"}
                                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                         </Button>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-[400px] p-0">
                                         <Command>
-                                            <CommandInput placeholder="Cari nama atau proyek customer..." />
+                                            <CommandInput placeholder="Cari nama customer..." />
                                             <CommandList>
                                                 <CommandEmpty>Customer tidak ditemukan.</CommandEmpty>
                                                 <CommandGroup>
-                                                    {activeCustomers.map((c: any) => (
+                                                    {uniqueCustomers.map((c: any) => (
                                                         <CommandItem
                                                             key={c.id}
-                                                            value={`${c.customer_name} ${c.project_name}`}
-                                                            onSelect={() => {
-                                                                setSelectedCustId(c.id === selectedCustId ? "" : c.id)
-                                                                setOpenCustomer(false)
-                                                            }}
+                                                            value={c.customer_name}
+                                                            onSelect={() => handleSelectCustomer(c.id)}
                                                         >
-                                                            <Check
-                                                                className={cn(
-                                                                    "mr-2 h-4 w-4",
-                                                                    selectedCustId === c.id ? "opacity-100" : "opacity-0"
-                                                                )}
-                                                            />
-                                                            {c.customer_name} - {c.project_name}
+                                                            <Check className={cn("mr-2 h-4 w-4", selectedCustomerId === c.id ? "opacity-100" : "opacity-0")} />
+                                                            {c.customer_name}
                                                         </CommandItem>
                                                     ))}
                                                 </CommandGroup>
@@ -218,9 +244,56 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                 </Popover>
                             </div>
 
+                            {/* Step 2 — Pilih Proyek (filtered by customer) */}
+                            <div className="space-y-2 flex flex-col">
+                                <Label>Pilih Proyek *</Label>
+                                <Popover open={openProject} onOpenChange={setOpenProject}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openProject}
+                                            className="w-full justify-between"
+                                            disabled={!selectedCustomerId}
+                                        >
+                                            {selectedProjectId
+                                                ? (customerProjects.find((p: any) => p.id === selectedProjectId)?.name ?? "-- Pilih Proyek --")
+                                                : (selectedCustomerId ? (customerProjects.length === 1 ? customerProjects[0].name : "-- Pilih Proyek --") : "Pilih customer dulu")}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[400px] p-0">
+                                        <Command>
+                                            <CommandInput placeholder="Cari nama proyek..." />
+                                            <CommandList>
+                                                <CommandEmpty>Proyek tidak ditemukan.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {customerProjects.map((p: any) => (
+                                                        <CommandItem
+                                                            key={p.id}
+                                                            value={p.name}
+                                                            onSelect={() => {
+                                                                setSelectedProjectId(p.id === selectedProjectId ? "" : p.id)
+                                                                setOpenProject(false)
+                                                            }}
+                                                        >
+                                                            <Check className={cn("mr-2 h-4 w-4", selectedProjectId === p.id ? "opacity-100" : "opacity-0")} />
+                                                            {p.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                {selectedCustomerId && customerProjects.length === 1 && (
+                                    <p className="text-xs text-green-600">✓ Proyek otomatis dipilih (hanya 1 proyek)</p>
+                                )}
+                            </div>
+
                             <div className="space-y-2">
                                 <Label>Lokasi Proyek</Label>
-                                <Input disabled value={selectedCustomer?.address || "-"} className="bg-slate-100" />
+                                <Input disabled value={selectedProject?.address || "-"} className="bg-slate-100" />
                             </div>
 
                             <div className="space-y-2">
@@ -236,8 +309,8 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
 
                             <div className="space-y-2">
                                 <Label>Jarak Pengiriman (KM)</Label>
-                                <Input disabled value={selectedCustomer?.default_distance ? `${selectedCustomer.default_distance} KM` : "-"} className="bg-slate-100" />
-                                <span className="text-xs text-slate-400">Jarak default master customer. Bisa diubah saat Konfirmasi.</span>
+                                <Input disabled value={selectedProject?.default_distance ? `${selectedProject.default_distance} KM` : "-"} className="bg-slate-100" />
+                                <span className="text-xs text-slate-400">Jarak default master proyek. Bisa diubah saat Konfirmasi.</span>
                             </div>
                         </div>
                     </div>

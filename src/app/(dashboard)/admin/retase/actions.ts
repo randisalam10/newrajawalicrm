@@ -71,7 +71,7 @@ export async function getTransactions(status: "Pending" | "Confirmed") {
     return await (prisma as any).productionTransaction.findMany({
         where: filter,
         include: {
-            customer: true,
+            project: { include: { customer: true } },
             vehicle: true,
             driver: true,
             concreteQuality: true,

@@ -6,12 +6,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts"
 import {
     Factory, TrendingUp, AlertCircle, Package,
-    Users, Truck, CheckCircle2, Clock, Building2,
-    ArrowRight, BarChart3
+    Truck, CheckCircle2, Clock, Building2,
+    ArrowRight, BarChart3, Users, Layers, Zap
 } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
@@ -40,285 +40,335 @@ type DashboardData = {
     totalRetaseBulanIni: number
 }
 
+// Mini sparkline for KPI cards using recharts
+function MiniSparkline({ data, color }: { data: number[]; color: string }) {
+    const d = data.map((v, i) => ({ v }))
+    return (
+        <ResponsiveContainer width="100%" height={36}>
+            <AreaChart data={d} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                    <linearGradient id={`sg-${color}`} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={color} stopOpacity={0.3} />
+                        <stop offset="95%" stopColor={color} stopOpacity={0} />
+                    </linearGradient>
+                </defs>
+                <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.5} fill={`url(#sg-${color})`} dot={false} />
+            </AreaChart>
+        </ResponsiveContainer>
+    )
+}
+
 export function DashboardClient({ data }: { data: DashboardData }) {
     const now = new Date()
     const monthName = format(now, "MMMM yyyy", { locale: idLocale })
 
+    // Sparkline from 7-day trend
+    const volumeSparkline = data.trendData.map(d => d.volume)
+    const confirmedSparkline = data.trendData.map(d => d.confirmed)
+
+    const mutuTotal = data.mutuDistribution.reduce((s, m) => s + m.volume, 0)
+
+    // Confirmation rate today
+    const confirmRate = data.todayTrips > 0
+        ? Math.round((data.todayConfirmed / data.todayTrips) * 100)
+        : 0
+
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-start justify-between">
+        <div className="space-y-4">
+            {/* ── HEADER ── */}
+            <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-                    <p className="text-slate-500 mt-1">
-                        {data.isSuperAdmin
-                            ? "Tampilan 360° — Semua Cabang Batching Plant"
-                            : `Performa Operasional — ${monthName}`
-                        }
+                    <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+                    <p className="text-slate-500 text-sm mt-0.5">
+                        {data.isSuperAdmin ? "Ringkasan 360° — Semua Cabang Batching Plant" : `Performa Operasional — ${monthName}`}
                     </p>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 border rounded-lg px-3 py-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                    Live · {format(now, "dd MMM yyyy, HH:mm")}
+                <div className="flex items-center gap-2.5">
+                    {data.pendingCount > 0 && (
+                        <Link href="/admin/retase">
+                            <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700 gap-1.5 animate-pulse cursor-pointer px-3 py-1">
+                                <AlertCircle className="w-3 h-3" />
+                                {data.pendingCount} Pending Konfirmasi
+                            </Badge>
+                        </Link>
+                    )}
+                    <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-slate-50 border rounded-lg px-3 py-1.5">
+                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        Live · {format(now, "HH:mm")}
+                    </div>
                 </div>
             </div>
 
-            {/* ── KPI SUMMARY CARDS ── */}
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-                {/* Card 1: Produksi Hari Ini */}
-                <Card className="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-700 border-none text-white shadow-lg">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                        <CardTitle className="text-sm font-medium text-blue-100">Produksi Hari Ini</CardTitle>
-                        <Factory className="h-5 w-5 text-blue-200" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{data.todayVolumeTotal.toFixed(1)} <span className="text-lg font-normal text-blue-200">m³</span></div>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-blue-200">
-                            <span className="flex items-center gap-1"><Truck className="w-3 h-3" /> {data.todayTrips} trip</span>
-                            <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3" /> {data.todayConfirmed} konfirm</span>
+            {/* ── ROW 1: COMPACT KPI CARDS ── */}
+            <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+                {/* Produksi Hari Ini */}
+                <Card className="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-700 border-none text-white shadow-md">
+                    <div className="absolute inset-0 opacity-10">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-white rounded-full -translate-y-10 translate-x-10" />
+                    </div>
+                    <CardContent className="p-4 pb-2">
+                        <div className="flex items-start justify-between mb-1">
+                            <p className="text-[11px] font-medium text-blue-100 uppercase tracking-wider">Hari Ini</p>
+                            <Factory className="h-4 w-4 text-blue-200" />
+                        </div>
+                        <div className="text-2xl font-bold leading-tight">
+                            {data.todayVolumeTotal.toFixed(1)}
+                            <span className="text-sm font-normal text-blue-200 ml-1">m³</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-blue-200">
+                            <span className="flex items-center gap-0.5"><Truck className="w-2.5 h-2.5" />{data.todayTrips} trip</span>
+                            <span className="flex items-center gap-0.5"><CheckCircle2 className="w-2.5 h-2.5" />{data.todayConfirmed} ok</span>
                             {data.todayPending > 0 && (
-                                <span className="flex items-center gap-1 bg-yellow-400/20 rounded px-1 text-yellow-200">
-                                    <Clock className="w-3 h-3" /> {data.todayPending} pending
-                                </span>
+                                <span className="flex items-center gap-0.5 text-yellow-200"><Clock className="w-2.5 h-2.5" />{data.todayPending}</span>
                             )}
                         </div>
                     </CardContent>
+                    <div className="px-4 pb-1">
+                        <MiniSparkline data={volumeSparkline} color="#93C5FD" />
+                    </div>
                 </Card>
 
-                {/* Card 2: Produksi Bulan Ini */}
-                <Card className="relative overflow-hidden bg-gradient-to-br from-violet-600 to-violet-700 border-none text-white shadow-lg">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                        <CardTitle className="text-sm font-medium text-violet-100">Bulan {format(now, "MMMM")}</CardTitle>
-                        <TrendingUp className="h-5 w-5 text-violet-200" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{data.monthVolumeTotal.toFixed(1)} <span className="text-lg font-normal text-violet-200">m³</span></div>
-                        <p className="text-xs text-violet-200 mt-2">{data.monthTrips} total pengiriman</p>
-                    </CardContent>
-                </Card>
-
-                {/* Card 3: Pending Konfirmasi */}
-                <Card className={`relative overflow-hidden border-none text-white shadow-lg ${data.pendingCount > 0 ? 'bg-gradient-to-br from-amber-500 to-orange-500' : 'bg-gradient-to-br from-slate-500 to-slate-600'}`}>
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                        <CardTitle className="text-sm font-medium text-orange-100">Perlu Konfirmasi</CardTitle>
-                        <AlertCircle className={`h-5 w-5 ${data.pendingCount > 0 ? 'text-yellow-200 animate-pulse' : 'text-slate-300'}`} />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">{data.pendingCount}</div>
-                        <div className="mt-2">
-                            <Link href="/admin/retase">
-                                <Button variant="ghost" size="sm" className="p-0 h-auto text-xs text-orange-100 hover:text-white hover:bg-transparent gap-1">
-                                    Konfirmasi Retase <ArrowRight className="w-3 h-3" />
-                                </Button>
-                            </Link>
+                {/* Bulan Ini */}
+                <Card className="relative overflow-hidden bg-gradient-to-br from-violet-600 to-violet-700 border-none text-white shadow-md">
+                    <div className="absolute inset-0 opacity-10">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-white rounded-full -translate-y-10 translate-x-10" />
+                    </div>
+                    <CardContent className="p-4 pb-2">
+                        <div className="flex items-start justify-between mb-1">
+                            <p className="text-[11px] font-medium text-violet-100 uppercase tracking-wider">{format(now, "MMMM")}</p>
+                            <TrendingUp className="h-4 w-4 text-violet-200" />
+                        </div>
+                        <div className="text-2xl font-bold leading-tight">
+                            {data.monthVolumeTotal.toFixed(1)}
+                            <span className="text-sm font-normal text-violet-200 ml-1">m³</span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-violet-200">
+                            <span>{data.monthTrips} pengiriman total</span>
                         </div>
                     </CardContent>
+                    <div className="px-4 pb-1">
+                        <MiniSparkline data={confirmedSparkline} color="#C4B5FD" />
+                    </div>
                 </Card>
 
-                {/* Card 4: Estimasi Stok Semen */}
-                <Card className="relative overflow-hidden bg-gradient-to-br from-emerald-600 to-teal-700 border-none text-white shadow-lg">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -translate-y-8 translate-x-8" />
-                    <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                        <CardTitle className="text-sm font-medium text-emerald-100">Est. Stok Semen</CardTitle>
-                        <Package className="h-5 w-5 text-emerald-200" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold">
-                            {data.estimasiStokSemen > 0
-                                ? `${(data.estimasiStokSemen / 1000).toFixed(1)}`
-                                : "0"}
-                            <span className="text-lg font-normal text-emerald-200"> ton</span>
+                {/* Konfirmasi Rate */}
+                <Card className="relative overflow-hidden bg-gradient-to-br from-emerald-600 to-teal-700 border-none text-white shadow-md">
+                    <div className="absolute inset-0 opacity-10">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-white rounded-full -translate-y-10 translate-x-10" />
+                    </div>
+                    <CardContent className="p-4 pb-2">
+                        <div className="flex items-start justify-between mb-1">
+                            <p className="text-[11px] font-medium text-emerald-100 uppercase tracking-wider">Rate Konfirmasi</p>
+                            <Zap className="h-4 w-4 text-emerald-200" />
                         </div>
-                        <p className="text-xs text-emerald-200 mt-2">
-                            ~{data.estimasiStokSemen > 0 ? Math.round(data.estimasiStokSemen / 50) : 0} sak (masuk − pakai)
+                        <div className="text-2xl font-bold leading-tight">
+                            {confirmRate}
+                            <span className="text-sm font-normal text-emerald-200 ml-0.5">%</span>
+                        </div>
+                        <div className="mt-2 h-1.5 bg-emerald-800/40 rounded-full overflow-hidden">
+                            <div className="h-full bg-emerald-300 rounded-full transition-all" style={{ width: `${confirmRate}%` }} />
+                        </div>
+                        <p className="text-[10px] text-emerald-200 mt-1">{data.todayConfirmed} dari {data.todayTrips} trip hari ini</p>
+                    </CardContent>
+                    <div className="pb-2" />
+                </Card>
+
+                {/* Stok Semen */}
+                <Card className="relative overflow-hidden bg-gradient-to-br from-slate-700 to-slate-800 border-none text-white shadow-md">
+                    <div className="absolute inset-0 opacity-10">
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-white rounded-full -translate-y-10 translate-x-10" />
+                    </div>
+                    <CardContent className="p-4 pb-2">
+                        <div className="flex items-start justify-between mb-1">
+                            <p className="text-[11px] font-medium text-slate-300 uppercase tracking-wider">Est. Stok Semen</p>
+                            <Package className="h-4 w-4 text-slate-400" />
+                        </div>
+                        <div className="text-2xl font-bold leading-tight">
+                            {data.estimasiStokSemen > 0 ? (data.estimasiStokSemen / 1000).toFixed(1) : "0"}
+                            <span className="text-sm font-normal text-slate-300 ml-1">ton</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            ≈ {data.estimasiStokSemen > 0 ? Math.round(data.estimasiStokSemen / 50) : 0} sak · masuk minus pakai
                         </p>
                     </CardContent>
+                    <div className="pb-2" />
                 </Card>
             </div>
 
-            {/* SuperAdmin Extra Cards */}
+            {/* SuperAdmin: Compact Extra Cards */}
             {data.isSuperAdmin && (
-                <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
-                    <Card className="border-l-4 border-l-blue-500 shadow-sm bg-white">
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                            <CardTitle className="text-sm font-medium text-slate-600">Total Cabang Aktif</CardTitle>
-                            <Building2 className="h-4 w-4 text-blue-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-slate-800">{data.branchBreakdown.length}</div>
-                            <p className="text-xs text-slate-500 mt-1">Batching Plant beroperasi</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-l-violet-500 shadow-sm bg-white">
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                            <CardTitle className="text-sm font-medium text-slate-600">Total Retase Bulan Ini</CardTitle>
-                            <BarChart3 className="h-4 w-4 text-violet-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-slate-800">
-                                Rp {data.totalRetaseBulanIni.toLocaleString('id-ID', { maximumFractionDigits: 0 })}
+                <div className="grid gap-3 grid-cols-3">
+                    <div className="border rounded-lg bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
+                        <div className="p-2 rounded-lg bg-blue-50"><Building2 className="w-4 h-4 text-blue-600" /></div>
+                        <div>
+                            <div className="text-lg font-bold text-slate-800">{data.branchBreakdown.length}</div>
+                            <div className="text-[11px] text-slate-500">Cabang Aktif</div>
+                        </div>
+                    </div>
+                    <div className="border rounded-lg bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
+                        <div className="p-2 rounded-lg bg-violet-50"><BarChart3 className="w-4 h-4 text-violet-600" /></div>
+                        <div>
+                            <div className="text-lg font-bold text-slate-800">
+                                Rp {(data.totalRetaseBulanIni / 1000000).toFixed(1)}jt
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">Komisi sopir semua cabang</p>
-                        </CardContent>
-                    </Card>
-                    <Card className="border-l-4 border-l-amber-500 shadow-sm bg-white">
-                        <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
-                            <CardTitle className="text-sm font-medium text-slate-600">Pending Semua Cabang</CardTitle>
-                            <AlertCircle className="h-4 w-4 text-amber-500" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold text-slate-800">
+                            <div className="text-[11px] text-slate-500">Retase Bulan Ini</div>
+                        </div>
+                    </div>
+                    <div className="border rounded-lg bg-white px-4 py-3 flex items-center gap-3 shadow-sm">
+                        <div className="p-2 rounded-lg bg-amber-50"><AlertCircle className="w-4 h-4 text-amber-600" /></div>
+                        <div>
+                            <div className="text-lg font-bold text-slate-800">
                                 {data.branchBreakdown.reduce((s, b) => s + b.pending, 0)}
                             </div>
-                            <p className="text-xs text-slate-500 mt-1">Transaksi belum dikonfirmasi</p>
-                        </CardContent>
-                    </Card>
+                            <div className="text-[11px] text-slate-500">Pending Semua Cabang</div>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* ── CHARTS ROW ── */}
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
-                {/* Trend Chart (2/3 width) */}
-                <Card className="lg:col-span-2 border-none shadow-md bg-white overflow-hidden">
-                    <CardHeader className="border-b pb-4">
-                        <CardTitle className="text-base">Trend Produksi 7 Hari Terakhir</CardTitle>
-                        <CardDescription>Volume beton terkirim (m³) per hari</CardDescription>
+            {/* ── ROW 2: CHARTS + MUTU ── */}
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+                {/* Trend Chart (2/3) */}
+                <Card className="lg:col-span-2 border shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="pb-2 px-5 pt-4 flex flex-row items-center justify-between space-y-0">
+                        <div>
+                            <CardTitle className="text-sm font-semibold">Trend Produksi 7 Hari</CardTitle>
+                            <CardDescription className="text-[11px]">Volume total vs confirmed (m³)</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500 inline-block rounded" />Total</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" />Confirmed</span>
+                        </div>
                     </CardHeader>
-                    <CardContent className="p-6">
-                        <div className="h-[250px]">
+                    <CardContent className="px-2 pb-3">
+                        <div className="h-[200px]">
                             <ResponsiveContainer width="100%" height="100%">
                                 <AreaChart data={data.trendData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                                     <defs>
-                                        <linearGradient id="volumeGrad" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.15} />
+                                        <linearGradient id="volGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.12} />
                                             <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
                                         </linearGradient>
-                                        <linearGradient id="confirmedGrad" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.15} />
+                                        <linearGradient id="cfmGrad" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#10B981" stopOpacity={0.12} />
                                             <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                                    <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
-                                    <YAxis tick={{ fontSize: 12, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}m³`} />
+                                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} />
+                                    <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}`} width={30} />
                                     <Tooltip
-                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', fontSize: '12px' }}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.08)', fontSize: '11px', padding: '8px 12px' }}
                                         formatter={(val: any, name: any) => [`${(Number(val) || 0).toFixed(1)} m³`, name === 'volume' ? 'Total' : 'Confirmed']}
                                     />
-                                    <Area type="monotone" dataKey="volume" name="Total" stroke="#3B82F6" strokeWidth={2} fill="url(#volumeGrad)" />
-                                    <Area type="monotone" dataKey="confirmed" name="Confirmed" stroke="#10B981" strokeWidth={2} fill="url(#confirmedGrad)" />
+                                    <Area type="monotone" dataKey="volume" name="volume" stroke="#3B82F6" strokeWidth={2} fill="url(#volGrad)" dot={false} activeDot={{ r: 4 }} />
+                                    <Area type="monotone" dataKey="confirmed" name="confirmed" stroke="#10B981" strokeWidth={2} fill="url(#cfmGrad)" dot={false} activeDot={{ r: 4 }} />
                                 </AreaChart>
                             </ResponsiveContainer>
                         </div>
                     </CardContent>
                 </Card>
 
-                {/* Mutu Pie Chart (1/3 width) */}
-                <Card className="border-none shadow-md bg-white overflow-hidden">
-                    <CardHeader className="border-b pb-4">
-                        <CardTitle className="text-base">Distribusi Mutu Beton</CardTitle>
-                        <CardDescription>Komposisi order bulan ini</CardDescription>
-                    </CardHeader>
-                    <CardContent className="p-6">
-                        {data.mutuDistribution.length > 0 ? (
-                            <div>
-                                <div className="h-[160px]">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <PieChart>
-                                            <Pie
-                                                data={data.mutuDistribution}
-                                                cx="50%"
-                                                cy="50%"
-                                                innerRadius={45}
-                                                outerRadius={75}
-                                                paddingAngle={3}
-                                                dataKey="volume"
-                                            >
-                                                {data.mutuDistribution.map((_, i) => (
-                                                    <Cell key={i} fill={MUTU_COLORS[i % MUTU_COLORS.length]} />
-                                                ))}
-                                            </Pie>
-                                            <Tooltip
-                                                contentStyle={{ borderRadius: '8px', border: 'none', fontSize: '11px' }}
-                                                formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(1)} m³`]}
-                                            />
-                                        </PieChart>
-                                    </ResponsiveContainer>
-                                </div>
-                                <div className="space-y-1.5 mt-2">
-                                    {data.mutuDistribution.slice(0, 5).map((m, i) => {
-                                        const total = data.mutuDistribution.reduce((s, x) => s + x.volume, 0)
-                                        const pct = total > 0 ? ((m.volume / total) * 100).toFixed(0) : '0'
-                                        return (
-                                            <div key={m.name} className="flex items-center justify-between text-xs">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: MUTU_COLORS[i % MUTU_COLORS.length] }} />
-                                                    <span className="text-slate-600 font-medium">{m.name}</span>
+                {/* Mutu + Top Customer side panel (1/3) */}
+                <div className="space-y-4">
+                    {/* Mutu Donut */}
+                    <Card className="border shadow-sm bg-white overflow-hidden">
+                        <CardHeader className="pb-2 px-4 pt-4">
+                            <CardTitle className="text-sm font-semibold">Distribusi Mutu</CardTitle>
+                            <CardDescription className="text-[11px]">Bulan {format(now, "MMMM")}</CardDescription>
+                        </CardHeader>
+                        <CardContent className="px-4 pb-3">
+                            {data.mutuDistribution.length > 0 ? (
+                                <div className="flex items-center gap-3">
+                                    <div className="w-[90px] h-[90px] flex-shrink-0">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={data.mutuDistribution} cx="50%" cy="50%" innerRadius={28} outerRadius={44} paddingAngle={2} dataKey="volume" startAngle={90} endAngle={-270}>
+                                                    {data.mutuDistribution.map((_, i) => (
+                                                        <Cell key={i} fill={MUTU_COLORS[i % MUTU_COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip contentStyle={{ fontSize: '10px', padding: '4px 8px', borderRadius: '6px', border: 'none' }} formatter={(v: any) => [`${Number(v).toFixed(1)} m³`]} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <div className="flex-1 space-y-1 min-w-0">
+                                        {data.mutuDistribution.slice(0, 5).map((m, i) => (
+                                            <div key={m.name} className="flex items-center justify-between text-[10px]">
+                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: MUTU_COLORS[i % MUTU_COLORS.length] }} />
+                                                    <span className="text-slate-600 truncate">{m.name}</span>
                                                 </div>
-                                                <span className="text-slate-500">{pct}%</span>
+                                                <span className="text-slate-400 ml-1 flex-shrink-0">
+                                                    {mutuTotal > 0 ? Math.round((m.volume / mutuTotal) * 100) : 0}%
+                                                </span>
                                             </div>
-                                        )
-                                    })}
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="h-[160px] flex items-center justify-center text-slate-400 text-sm">
-                                Belum ada data bulan ini
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
+                            ) : (
+                                <div className="h-16 flex items-center justify-center text-slate-400 text-xs">Belum ada data</div>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Quick links */}
+                    <div className="grid grid-cols-2 gap-2">
+                        {[
+                            { label: "Input Produksi", href: "/admin/produksi", icon: <Factory className="w-3.5 h-3.5" />, color: "bg-blue-50 text-blue-700 border-blue-100" },
+                            { label: "Konfirmasi", href: "/admin/retase", icon: <CheckCircle2 className="w-3.5 h-3.5" />, color: "bg-emerald-50 text-emerald-700 border-emerald-100" },
+                            { label: "Surat Jalan", href: "/admin/retase", icon: <Truck className="w-3.5 h-3.5" />, color: "bg-slate-50 text-slate-700 border-slate-100" },
+                            { label: "Laporan", href: "/admin/reports/billing", icon: <BarChart3 className="w-3.5 h-3.5" />, color: "bg-violet-50 text-violet-700 border-violet-100" },
+                        ].map(l => (
+                            <Link key={l.href + l.label} href={l.href}>
+                                <div className={`flex items-center gap-1.5 border rounded-lg p-2.5 text-[11px] font-medium cursor-pointer hover:opacity-80 transition-opacity ${l.color}`}>
+                                    {l.icon}{l.label}
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
             </div>
 
-            {/* ── SUPERADMIN: Branch Comparison ── */}
+            {/* ── ROW 3: SuperAdmin Branch Comparison ── */}
             {data.isSuperAdmin && data.branchBreakdown.length > 0 && (
-                <Card className="border-none shadow-md bg-white overflow-hidden">
-                    <CardHeader className="border-b pb-4">
-                        <CardTitle className="text-base">Perbandingan Kinerja Cabang — {monthName}</CardTitle>
-                        <CardDescription>Volume produksi dan jumlah trip per Batching Plant</CardDescription>
+                <Card className="border shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="pb-2 px-5 pt-4 flex flex-row items-center justify-between space-y-0">
+                        <div>
+                            <CardTitle className="text-sm font-semibold">Perbandingan Cabang — {monthName}</CardTitle>
+                            <CardDescription className="text-[11px]">Volume, trip, dan status per Batching Plant</CardDescription>
+                        </div>
                     </CardHeader>
-                    <CardContent className="p-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {/* Bar Chart */}
-                            <div className="h-[220px]">
+                    <CardContent className="px-2 pb-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div className="h-[160px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        data={data.branchBreakdown}
-                                        layout="vertical"
-                                        margin={{ left: 10, right: 30 }}
-                                    >
+                                    <BarChart data={data.branchBreakdown} layout="vertical" margin={{ left: 0, right: 24 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                                        <XAxis type="number" tick={{ fontSize: 11, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}m³`} />
-                                        <YAxis dataKey="locationName" type="category" tick={{ fontSize: 12, fill: '#475569' }} tickLine={false} axisLine={false} width={80} />
-                                        <Tooltip
-                                            contentStyle={{ borderRadius: '8px', border: 'none', fontSize: '12px' }}
-                                            formatter={(val: number | undefined) => [`${(val ?? 0).toFixed(1)} m³`]}
-                                        />
-                                        <Bar dataKey="volume" name="Volume" fill="#3B82F6" radius={[0, 4, 4, 0]} maxBarSize={28} />
-                                        <Bar dataKey="confirmed" name="Confirmed" fill="#10B981" radius={[0, 4, 4, 0]} maxBarSize={28} />
+                                        <XAxis type="number" tick={{ fontSize: 10, fill: '#94A3B8' }} tickLine={false} axisLine={false} tickFormatter={v => `${v}m³`} />
+                                        <YAxis dataKey="locationName" type="category" tick={{ fontSize: 11, fill: '#475569' }} tickLine={false} axisLine={false} width={70} />
+                                        <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', fontSize: '11px' }} formatter={(v: any) => [`${Number(v).toFixed(1)} m³`]} />
+                                        <Bar dataKey="volume" name="Volume" fill="#3B82F6" radius={[0, 3, 3, 0]} maxBarSize={18} />
+                                        <Bar dataKey="confirmed" name="Confirmed" fill="#10B981" radius={[0, 3, 3, 0]} maxBarSize={18} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
-                            {/* Branch Cards */}
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                                 {data.branchBreakdown.map((branch, i) => (
-                                    <div key={branch.locationId} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${i === 0 ? 'bg-blue-500' : i === 1 ? 'bg-violet-500' : 'bg-slate-400'}`}>
+                                    <div key={branch.locationId} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50/80 hover:bg-slate-100/80 transition-colors">
+                                        <div className="flex items-center gap-2">
+                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0 ${i === 0 ? 'bg-blue-500' : i === 1 ? 'bg-violet-500' : 'bg-slate-400'}`}>
                                                 {i + 1}
                                             </div>
                                             <div>
-                                                <div className="font-semibold text-sm text-slate-800">{branch.locationName}</div>
-                                                <div className="text-xs text-slate-500">{branch.trips} trip · {branch.confirmed} confirmed</div>
+                                                <div className="font-semibold text-xs text-slate-800">{branch.locationName}</div>
+                                                <div className="text-[10px] text-slate-400">{branch.trips} trip · {branch.confirmed} konfirm</div>
                                             </div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="font-bold text-slate-800 text-sm">{branch.volume.toFixed(1)} m³</div>
+                                            <div className="font-bold text-xs text-blue-600">{branch.volume.toFixed(1)} m³</div>
                                             {branch.pending > 0 && (
-                                                <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-200 bg-amber-50">
+                                                <Badge variant="outline" className="text-[9px] h-4 px-1.5 text-amber-600 border-amber-200 bg-amber-50">
                                                     {branch.pending} pending
                                                 </Badge>
                                             )}
@@ -331,82 +381,94 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 </Card>
             )}
 
-            {/* ── BOTTOM TABLES ROW ── */}
-            <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
-                {/* Top 5 Customers */}
-                <Card className="border-none shadow-md bg-white overflow-hidden">
-                    <CardHeader className="border-b pb-4 flex flex-row items-center justify-between">
+            {/* ── ROW 4: TOP CUSTOMERS + RECENT ACTIVITY ── */}
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-5">
+                {/* Top Customers (2/5) */}
+                <Card className="lg:col-span-2 border shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="pb-2 px-5 pt-4 flex flex-row items-center justify-between space-y-0">
                         <div>
-                            <CardTitle className="text-base">Top Customer Bulan Ini</CardTitle>
-                            <CardDescription>Berdasarkan total kubikasi terkirim</CardDescription>
+                            <CardTitle className="text-sm font-semibold">Top Customer</CardTitle>
+                            <CardDescription className="text-[11px]">Volume m³ bulan ini</CardDescription>
                         </div>
-                        <Users className="h-4 w-4 text-slate-400" />
+                        <Users className="h-4 w-4 text-slate-300" />
                     </CardHeader>
                     <CardContent className="p-0">
                         {data.topCustomers.length === 0 ? (
-                            <div className="flex items-center justify-center h-24 text-slate-400 text-sm">Belum ada data</div>
+                            <div className="flex items-center justify-center h-20 text-slate-400 text-xs">Belum ada data</div>
                         ) : (
                             <div className="divide-y divide-slate-50">
-                                {data.topCustomers.map((c, i) => (
-                                    <div key={i} className="flex items-center justify-between px-6 py-3 hover:bg-slate-50/50 transition-colors">
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-slate-400' : i === 2 ? 'bg-amber-700' : 'bg-slate-300'}`}>
+                                {data.topCustomers.map((c, i) => {
+                                    const maxVol = data.topCustomers[0]?.volume || 1
+                                    const pct = Math.round((c.volume / maxVol) * 100)
+                                    return (
+                                        <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] font-bold flex-shrink-0
+                                                ${i === 0 ? 'bg-yellow-500' : i === 1 ? 'bg-slate-400' : i === 2 ? 'bg-amber-700' : 'bg-slate-200 text-slate-500'}`}>
                                                 {i + 1}
                                             </div>
-                                            <div className="min-w-0">
-                                                <div className="font-semibold text-sm text-slate-800 truncate">{c.name}</div>
-                                                <div className="text-[10px] text-slate-400 uppercase truncate">{c.project}</div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="font-semibold text-xs text-slate-800 truncate">{c.name}</p>
+                                                    <span className="text-xs font-bold text-blue-600 ml-2 flex-shrink-0">{c.volume.toFixed(1)}<span className="text-[10px] text-slate-400 font-normal">m³</span></span>
+                                                </div>
+                                                <div className="mt-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-blue-400 rounded-full" style={{ width: `${pct}%` }} />
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 mt-0.5 truncate">{c.project} · {c.trips} trip</p>
                                             </div>
                                         </div>
-                                        <div className="text-right flex-shrink-0 ml-4">
-                                            <div className="font-bold text-sm text-blue-600">{c.volume.toFixed(1)} m³</div>
-                                            <div className="text-[10px] text-slate-400">{c.trips} trip</div>
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         )}
                     </CardContent>
                 </Card>
 
-                {/* Recent Activity */}
-                <Card className="border-none shadow-md bg-white overflow-hidden">
-                    <CardHeader className="border-b pb-4 flex flex-row items-center justify-between">
+                {/* Recent Activity (3/5) */}
+                <Card className="lg:col-span-3 border shadow-sm bg-white overflow-hidden">
+                    <CardHeader className="pb-2 px-5 pt-4 flex flex-row items-center justify-between space-y-0">
                         <div>
-                            <CardTitle className="text-base">Aktivitas Terbaru</CardTitle>
-                            <CardDescription>10 transaksi produksi terakhir</CardDescription>
+                            <CardTitle className="text-sm font-semibold">Aktivitas Terbaru</CardTitle>
+                            <CardDescription className="text-[11px]">10 transaksi produksi terakhir</CardDescription>
                         </div>
                         <Link href="/admin/retase">
-                            <Button variant="ghost" size="sm" className="text-xs text-slate-500 gap-1 h-7">
+                            <Button variant="ghost" size="sm" className="text-[11px] text-slate-400 gap-1 h-6 px-2">
                                 Lihat Semua <ArrowRight className="w-3 h-3" />
                             </Button>
                         </Link>
                     </CardHeader>
                     <CardContent className="p-0">
                         {data.recentActivity.length === 0 ? (
-                            <div className="flex items-center justify-center h-24 text-slate-400 text-sm">Belum ada aktivitas</div>
+                            <div className="flex items-center justify-center h-20 text-slate-400 text-xs">Belum ada aktivitas</div>
                         ) : (
-                            <div className="divide-y divide-slate-50 max-h-[360px] overflow-y-auto">
+                            <div className="divide-y divide-slate-50 max-h-[340px] overflow-y-auto">
                                 {data.recentActivity.map((t: any) => (
-                                    <div key={t.id} className="flex items-center gap-3 px-6 py-3 hover:bg-slate-50/50 transition-colors">
-                                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${t.status === 'Confirmed' ? 'bg-green-500' : 'bg-amber-400'}`} />
+                                    <div key={t.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50/60 transition-colors">
+                                        {/* Status dot */}
+                                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-0.5 ${t.status === 'Confirmed' ? 'bg-green-500' : 'bg-amber-400'}`} />
+                                        {/* Info */}
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center justify-between gap-2">
-                                                <span className="font-semibold text-xs text-slate-800 truncate">{t.customer.customer_name}</span>
-                                                <Badge variant={t.status === 'Confirmed' ? 'default' : 'secondary'} className="text-[10px] h-4 flex-shrink-0">
-                                                    {t.status === 'Confirmed' ? 'Confirmed' : 'Pending'}
-                                                </Badge>
+                                                <span className="font-semibold text-xs text-slate-800 truncate">
+                                                    {t.project?.customer?.customer_name ?? '-'}
+                                                </span>
+                                                <span className={`text-[10px] font-medium flex-shrink-0 ${t.status === 'Confirmed' ? 'text-green-600' : 'text-amber-500'}`}>
+                                                    {t.status === 'Confirmed' ? '✓' : '⏳'}
+                                                </span>
                                             </div>
-                                            <div className="text-[10px] text-slate-500 mt-0.5">
-                                                <span className="font-medium text-slate-600">TM-{t.trip_sequence}</span>
-                                                {' · '}{t.concreteQuality.name}
+                                            <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                                                <span className="text-slate-500 font-medium">{t.project?.name ?? '-'}</span>
+                                                {' · TM-'}{t.trip_sequence}
+                                                {' · '}{t.concreteQuality?.name}
                                                 {' · '}{t.volume_cubic} m³
-                                                {' · '}{t.driver.name}
-                                                {data.isSuperAdmin && <span className="ml-1 text-slate-400">({t.location.name})</span>}
+                                                {' · '}{t.driver?.name}
+                                                {data.isSuperAdmin && t.location && <span className="text-slate-300"> ({t.location.name})</span>}
                                             </div>
                                         </div>
+                                        {/* Time */}
                                         <div className="text-[10px] text-slate-400 flex-shrink-0 text-right">
-                                            {format(new Date(t.date), "dd MMM\nHH:mm")}
+                                            <div>{format(new Date(t.date), "dd/MM")}</div>
+                                            <div>{format(new Date(t.date), "HH:mm")}</div>
                                         </div>
                                     </div>
                                 ))}

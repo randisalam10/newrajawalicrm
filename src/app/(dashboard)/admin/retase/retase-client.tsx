@@ -56,7 +56,10 @@ export function RetaseClient({
     // Unique customer list derived from confirmedTransactions
     const uniqueCustomers = useMemo(() => {
         const map = new Map<string, string>()
-        confirmedTransactions.forEach(t => map.set(t.customerId, t.customer?.customer_name || t.customerId))
+        confirmedTransactions.forEach(t => map.set(
+            t.project?.customerId || t.projectId,
+            t.project?.customer?.customer_name || t.projectId
+        ))
         return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
     }, [confirmedTransactions])
 
@@ -64,7 +67,7 @@ export function RetaseClient({
     const filteredConfirmed = useMemo(() => {
         return confirmedTransactions.filter(t => {
             if (filterCabang !== "all" && t.locationId !== filterCabang) return false
-            if (filterCustomer !== "all" && t.customerId !== filterCustomer) return false
+            if (filterCustomer !== "all" && t.project?.customerId !== filterCustomer) return false
             return true
         })
     }, [confirmedTransactions, filterCabang, filterCustomer])
@@ -92,7 +95,7 @@ export function RetaseClient({
 
     const handleOpenConfirm = (t: any) => {
         setIsConfirming(t.id)
-        setDistanceInput(t.customer?.default_distance?.toString() || "")
+        setDistanceInput(t.project?.default_distance?.toString() || "")
     }
 
     const handleSaveSetting = async (e: React.FormEvent) => {
@@ -203,8 +206,8 @@ export function RetaseClient({
                                                 <TableRow key={t.id}>
                                                     <TableCell className="text-xs">{format(new Date(t.date), "dd MMM yyyy HH:mm", { locale: id })}</TableCell>
                                                     <TableCell>
-                                                        <div className="font-medium text-xs uppercase">{t.customer.customer_name}</div>
-                                                        <div className="text-[10px] text-slate-500 uppercase">{t.customer.project_name}</div>
+                                                        <div className="font-medium text-xs uppercase">{t.project?.customer?.customer_name ?? '-'}</div>
+                                                        <div className="text-[10px] text-slate-500 uppercase">{t.project?.name ?? '-'}</div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className="font-bold bg-slate-50">TM-{t.trip_sequence}</Badge>
@@ -369,8 +372,8 @@ export function RetaseClient({
                                                     </TableCell>
                                                     <TableCell className="text-xs">{format(new Date(t.date), "dd MMM HH:mm", { locale: id })}</TableCell>
                                                     <TableCell>
-                                                        <div className="font-medium text-xs uppercase">{t.customer.customer_name}</div>
-                                                        <div className="text-[10px] text-slate-400 font-medium uppercase">{t.customer.project_name}</div>
+                                                        <div className="font-medium text-xs uppercase">{t.project?.customer?.customer_name ?? '-'}</div>
+                                                        <div className="text-[10px] text-slate-400 font-medium uppercase">{t.project?.name ?? '-'}</div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <Badge variant="outline" className="font-bold bg-slate-50">TM-{t.trip_sequence}</Badge>
@@ -497,19 +500,19 @@ export function RetaseClient({
                             <div className="bg-blue-50/50 p-4 rounded-lg my-2 text-sm space-y-2 border border-blue-100">
                                 <div className="grid grid-cols-3 gap-1">
                                     <span className="text-slate-500">Customer</span>
-                                    <span className="col-span-2 font-medium">{t.customer.customer_name}</span>
+                                    <span className="col-span-2 font-medium">{t.project?.customer?.customer_name ?? '-'}</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-1">
                                     <span className="text-slate-500">Proyek</span>
-                                    <span className="col-span-2">{t.customer.project_name}</span>
+                                    <span className="col-span-2">{t.project?.name ?? '-'}</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-1">
-                                    <span className="text-slate-500">Lokasi/Alamat</span>
-                                    <span className="col-span-2">{t.customer.address}</span>
+                                    <span className="text-slate-500">Lokasi Cor</span>
+                                    <span className="col-span-2">{t.project?.address ?? '-'}</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-1">
-                                    <span className="text-slate-500">Rute Master</span>
-                                    <span className="col-span-2">{t.customer.default_distance} KM</span>
+                                    <span className="text-slate-500">Jarak Rute</span>
+                                    <span className="col-span-2">{t.project?.default_distance ?? '-'} KM</span>
                                 </div>
                                 <div className="grid grid-cols-3 gap-1 mt-2 pt-2 border-t">
                                     <span className="text-slate-500">Supir / Truk</span>

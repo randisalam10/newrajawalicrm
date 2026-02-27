@@ -139,7 +139,7 @@ export async function getStockLedger(locationId?: string) {
         include: {
             concreteQuality: true,
             location: true,
-            customer: true
+            project: { include: { customer: true } }
         }
     })
 
@@ -169,7 +169,7 @@ export async function getStockLedger(locationId?: string) {
                 dateObj: prod.date,
                 type: "OUT",
                 description: `Produksi Mutu ${prod.concreteQuality.name} (${prod.volume_cubic} m³)`,
-                reference: `Proyek: ${prod.customer.project_name}`,
+                reference: `Proyek: ${prod.project?.name || ''} - ${prod.project?.customer?.customer_name || ''}`,
                 qty_in: 0,
                 qty_out: outKg,
                 locationName: prod.location.name
