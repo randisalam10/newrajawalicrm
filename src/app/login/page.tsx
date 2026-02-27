@@ -12,14 +12,25 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Factory } from "lucide-react"
-import { useActionState } from "react"
+import { useActionState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { authenticate } from "./actions"
 
 export default function LoginPage() {
+    const router = useRouter()
     const [errorMessage, formAction, isPending] = useActionState(
         authenticate,
         undefined,
     )
+
+    useEffect(() => {
+        if (errorMessage === "success") {
+            router.push("/")
+            router.refresh()
+        }
+    }, [errorMessage, router])
+
+    const showError = errorMessage && errorMessage !== "success"
 
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-slate-50">
@@ -54,7 +65,7 @@ export default function LoginPage() {
                                 required
                             />
                         </div>
-                        {errorMessage && (
+                        {showError && (
                             <p className="text-sm font-medium text-destructive">
                                 {errorMessage}
                             </p>
