@@ -65,6 +65,7 @@ RUN mkdir -p node_modules/.bin && \
 COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
+COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
 
 USER nextjs
 
