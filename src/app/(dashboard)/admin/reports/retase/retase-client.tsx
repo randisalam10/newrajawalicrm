@@ -416,7 +416,7 @@ function buildPrintContent(driver: DriverSummary, year: number, month: number): 
     <body>
         <div class="header">
             <div>
-                <h1>PT. New Rajawali</h1>
+                <h1>PT. Rajawali Mix</h1>
                 <h2>Rekap Gaji Retase Supir — ${monthName} ${year}</h2>
             </div>
             <div style="text-align:right">

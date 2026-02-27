@@ -35,7 +35,7 @@ export default async function PrintSuratJalanPage({ params }: { params: Promise<
             {/* Header Surat Jalan */}
             <div className="flex justify-between items-start border-b-2 border-slate-800 pb-4 mb-8">
                 <div>
-                    <h1 className="text-2xl font-black uppercase tracking-wider">PT. NEW RAJAWALI</h1>
+                    <h1 className="text-2xl font-black uppercase tracking-wider">PT. RAJAWALI MIX</h1>
                     <p className="text-sm font-medium mt-1">Cabang: {transaction.location.name}</p>
                     <p className="text-xs text-slate-600">Batching Plant & Beton Cor Readymix</p>
                 </div>
