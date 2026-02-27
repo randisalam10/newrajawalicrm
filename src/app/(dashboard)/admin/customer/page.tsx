@@ -1,13 +1,14 @@
-import { getCustomersWithProjects } from "./actions"
+import { getCustomersWithProjects, getConcreteQualitiesForLocation } from "./actions"
 import { CustomerClient } from "./customer-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
 
 export default async function CustomerPage() {
     const session = await auth()
-    const [data, locations] = await Promise.all([
+    const [data, locations, qualities] = await Promise.all([
         getCustomersWithProjects(),
-        getLocations()
+        getLocations(),
+        getConcreteQualitiesForLocation(),
     ])
     const userRole = session?.user?.role || "OperatorBP"
 
@@ -18,7 +19,7 @@ export default async function CustomerPage() {
                 <p className="text-slate-500">Kelola master data Customer & Proyek Batching Plant.</p>
             </div>
 
-            <CustomerClient initialData={data} locations={locations} userRole={userRole} />
+            <CustomerClient initialData={data} locations={locations} userRole={userRole} qualities={qualities} />
         </div>
     )
 }

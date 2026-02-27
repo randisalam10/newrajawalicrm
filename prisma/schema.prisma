@@ -44,6 +44,30 @@ enum MaterialType {
   Pasir
 }
 
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIAL
+  PAID
+  CANCELLED
+}
+
+enum PaymentMethod {
+  TRANSFER
+  CASH
+  GIRO
+  DEPOSIT
+}
+
+enum BillingAction {
+  INVOICE_CREATED
+  INVOICE_ISSUED
+  INVOICE_CANCELLED
+  PAYMENT_RECORDED
+  DEPOSIT_ADDED
+  DEPOSIT_USED
+}
+
 model User {
   id         String     @id @default(uuid())
   username   String     @unique
@@ -79,6 +103,7 @@ model Location {
   transactions      ProductionTransaction[]
   materialIncomings MaterialIncoming[]
   retaseSetting     RetaseSetting?
+  invoices          Invoice[]
 }
 
 model Vehicle {
@@ -115,6 +140,8 @@ model Project {
 
   prices       ProjectPrice[] // Daftar harga per mutu untuk proyek ini
   transactions ProductionTransaction[] // Transaksi sekarang mengarah ke Proyek
+  invoices     Invoice[]
+  deposits     Deposit[]
 }
 
 model ProjectPrice {
@@ -173,6 +200,7 @@ model ProductionTransaction {
   location          Location          @relation(fields: [locationId], references: [id])
   locationId        String
   retase            Retase?
+  invoiceItem       InvoiceItem?
 }
 
 model MaterialIncoming {
@@ -217,4 +245,80 @@ model AuditLog {
   user       User     @relation(fields: [userId], references: [id])
   userId     String
   timestamp  DateTime @default(now())
+}
+
+// ─── INVOICE SYSTEM ────────────────────────────────────────────────────────
+
+model Invoice {
+  id             String        @id @default(uuid())
+  invoice_number String        @unique
+  project        Project       @relation(fields: [projectId], references: [id])
+  projectId      String
+  issue_date     DateTime      @default(now())
+  due_date       DateTime?
+  period_start   DateTime?
+  period_end     DateTime?
+  status         InvoiceStatus @default(DRAFT)
+  include_ppn    Boolean       @default(true)
+  subtotal       Float
+  tax_amount     Float         @default(0)
+  total_amount   Float
+  paid_amount    Float         @default(0)
+  notes          String?
+  items          InvoiceItem[]
+  payments       Payment[]
+  billingLogs    BillingLog[]
+  location       Location      @relation(fields: [locationId], references: [id])
+  locationId     String
+  createdAt      DateTime      @default(now())
+}
+
+model InvoiceItem {
+  id            String                @id @default(uuid())
+  invoice       Invoice               @relation(fields: [invoiceId], references: [id])
+  invoiceId     String
+  transaction   ProductionTransaction @relation(fields: [transactionId], references: [id])
+  transactionId String                @unique
+  quantity      Float
+  unit_price    Float
+  subtotal      Float
+}
+
+model Payment {
+  id           String        @id @default(uuid())
+  invoice      Invoice       @relation(fields: [invoiceId], references: [id])
+  invoiceId    String
+  payment_date DateTime
+  amount       Float
+  method       PaymentMethod
+  reference_no String?
+  proof_url    String?
+  notes        String?
+  billingLogs  BillingLog[]
+  createdAt    DateTime      @default(now())
+}
+
+model Deposit {
+  id          String   @id @default(uuid())
+  project     Project  @relation(fields: [projectId], references: [id])
+  projectId   String
+  date        DateTime @default(now())
+  amount      Float
+  description String
+  reference   String?
+  createdAt   DateTime @default(now())
+}
+
+// Immutable billing audit trail — never deleted
+model BillingLog {
+  id          String        @id @default(uuid())
+  action      BillingAction
+  invoice     Invoice?      @relation(fields: [invoiceId], references: [id])
+  invoiceId   String?
+  payment     Payment?      @relation(fields: [paymentId], references: [id])
+  paymentId   String?
+  actorId     String
+  description String
+  metadata    String?
+  createdAt   DateTime      @default(now())
 }

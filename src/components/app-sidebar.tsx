@@ -48,8 +48,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
         {
             title: "Laporan & Tagihan",
             items: [
-                { title: "Rekap Tagihan (Invoice)", url: "/admin/reports/billing", icon: Receipt },
+                { title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt },
                 { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
+
             ]
         },
         {

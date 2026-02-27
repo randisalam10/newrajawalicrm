@@ -32,18 +32,24 @@ import {
 } from "lucide-react"
 import {
     createCustomer, updateCustomer, deleteCustomer,
-    createProject, updateProject, deleteProject
+    createProject, updateProject, deleteProject,
+    upsertProjectPrice, deleteProjectPrice
 } from "./actions"
+import { DollarSign, Tag } from "lucide-react"
 
 type DialogMode = "customerNew" | "customerEdit" | "projectNew" | "projectEdit" | null
 type SortKey = "customer_name" | "address" | "location"
 type SortDir = "asc" | "desc"
 
-export function CustomerClient({ initialData, locations, userRole }: { initialData: any[], locations: any[], userRole: string }) {
+export function CustomerClient({ initialData, locations, userRole, qualities = [] }: { initialData: any[], locations: any[], userRole: string, qualities?: any[] }) {
     const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
+    const [expandedProject, setExpandedProject] = useState<string | null>(null)
     const [dialogMode, setDialogMode] = useState<DialogMode>(null)
     const [editData, setEditData] = useState<any>(null)
     const [parentCustomer, setParentCustomer] = useState<any>(null)
+    // Price form state
+    const [priceForm, setPriceForm] = useState<{ qualityId: string; price: string }>({ qualityId: "", price: "" })
+    const [priceLoading, setPriceLoading] = useState(false)
 
     // Search / sort / pagination
     const [searchQuery, setSearchQuery] = useState("")
@@ -287,32 +293,124 @@ export function CustomerClient({ initialData, locations, userRole }: { initialDa
                                                         </thead>
                                                         <tbody>
                                                             {cust.projects.map((proj: any) => (
-                                                                <tr key={proj.id} className="border-b border-slate-100 last:border-0 hover:bg-blue-50/50 transition-colors">
-                                                                    <td className="py-2 pr-4 font-medium">{proj.name}</td>
-                                                                    <td className="py-2 pr-4 text-slate-500">{proj.address}</td>
-                                                                    <td className="py-2 pr-4">{proj.default_distance} km</td>
-                                                                    <td className="py-2">{proj.tax_ppn}%</td>
-                                                                    <td className="py-2">
-                                                                        <div className="flex gap-1">
-                                                                            <Button
-                                                                                variant="ghost" size="icon" className="h-7 w-7"
-                                                                                onClick={() => {
-                                                                                    setParentCustomer(cust)
-                                                                                    setEditData(proj)
-                                                                                    setDialogMode("projectEdit")
-                                                                                }}
+                                                                <React.Fragment key={proj.id}>
+                                                                    <tr className="border-b border-slate-100 last:border-0 hover:bg-blue-50/50 transition-colors">
+                                                                        <td className="py-2 pr-4">
+                                                                            <button
+                                                                                className="flex items-center gap-1 font-medium text-slate-800 hover:text-blue-600 text-left"
+                                                                                onClick={() => setExpandedProject(expandedProject === proj.id ? null : proj.id)}
                                                                             >
-                                                                                <Pencil className="w-3 h-3 text-slate-500" />
-                                                                            </Button>
-                                                                            <Button
-                                                                                variant="ghost" size="icon" className="h-7 w-7"
-                                                                                onClick={() => handleProjectDelete(proj.id)}
-                                                                            >
-                                                                                <Trash2 className="w-3 h-3 text-red-500" />
-                                                                            </Button>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
+                                                                                {expandedProject === proj.id
+                                                                                    ? <ChevronDown className="w-3 h-3 flex-shrink-0" />
+                                                                                    : <ChevronRight className="w-3 h-3 flex-shrink-0" />}
+                                                                                {proj.name}
+                                                                                {(!proj.prices || proj.prices.length === 0) && (
+                                                                                    <span className="ml-1 text-[10px] bg-amber-100 text-amber-700 rounded px-1 py-0.5 flex items-center gap-0.5">
+                                                                                        <Tag className="w-2.5 h-2.5" /> Belum ada harga
+                                                                                    </span>
+                                                                                )}
+                                                                            </button>
+                                                                        </td>
+                                                                        <td className="py-2 pr-4 text-slate-500 text-xs">{proj.address}</td>
+                                                                        <td className="py-2 pr-4 text-xs">{proj.default_distance} km</td>
+                                                                        <td className="py-2 text-xs">{proj.tax_ppn}%</td>
+                                                                        <td className="py-2">
+                                                                            <div className="flex gap-1">
+                                                                                <Button
+                                                                                    variant="ghost" size="icon" className="h-7 w-7"
+                                                                                    onClick={() => {
+                                                                                        setParentCustomer(cust)
+                                                                                        setEditData(proj)
+                                                                                        setDialogMode("projectEdit")
+                                                                                    }}
+                                                                                >
+                                                                                    <Pencil className="w-3 h-3 text-slate-500" />
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="ghost" size="icon" className="h-7 w-7"
+                                                                                    onClick={() => handleProjectDelete(proj.id)}
+                                                                                >
+                                                                                    <Trash2 className="w-3 h-3 text-red-500" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                    {/* ── Pricing Sub-row ── */}
+                                                                    {expandedProject === proj.id && (
+                                                                        <tr>
+                                                                            <td colSpan={5} className="pb-3 pt-0">
+                                                                                <div className="ml-4 rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                                                                                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 mb-1">
+                                                                                        <DollarSign className="w-3.5 h-3.5 text-green-600" />
+                                                                                        Harga per Mutu
+                                                                                    </div>
+                                                                                    {/* Existing prices */}
+                                                                                    {proj.prices && proj.prices.length > 0 ? (
+                                                                                        <div className="flex flex-wrap gap-2">
+                                                                                            {proj.prices.map((p: any) => (
+                                                                                                <div key={p.qualityId} className="flex items-center gap-1.5 bg-slate-50 border rounded-md px-2.5 py-1.5 text-xs">
+                                                                                                    <span className="font-semibold text-slate-700">{p.concreteQuality?.name}</span>
+                                                                                                    <span className="text-slate-500">Rp {Number(p.price).toLocaleString('id-ID')}</span>
+                                                                                                    <button
+                                                                                                        className="text-red-400 hover:text-red-600 ml-1"
+                                                                                                        onClick={async () => {
+                                                                                                            await deleteProjectPrice(proj.id, p.qualityId)
+                                                                                                        }}
+                                                                                                        title="Hapus harga ini"
+                                                                                                    >
+                                                                                                        ×
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            ))}
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <p className="text-xs text-slate-400 italic">Belum ada harga. Tambahkan di bawah.</p>
+                                                                                    )}
+                                                                                    {/* Add price form */}
+                                                                                    {qualities.length > 0 && (() => {
+                                                                                        const existingQualityIds = (proj.prices || []).map((p: any) => p.qualityId)
+                                                                                        const availableQualities = qualities.filter((q: any) => !existingQualityIds.includes(q.id))
+                                                                                        if (availableQualities.length === 0) return null
+                                                                                        return (
+                                                                                            <div className="flex items-center gap-2 pt-1 border-t border-slate-100 mt-1">
+                                                                                                <select
+                                                                                                    className="flex-1 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                                                    value={priceForm.qualityId}
+                                                                                                    onChange={e => setPriceForm(f => ({ ...f, qualityId: e.target.value }))}
+                                                                                                >
+                                                                                                    <option value="">Pilih Mutu...</option>
+                                                                                                    {availableQualities.map((q: any) => (
+                                                                                                        <option key={q.id} value={q.id}>{q.name}</option>
+                                                                                                    ))}
+                                                                                                </select>
+                                                                                                <input
+                                                                                                    type="number"
+                                                                                                    placeholder="Harga/m³"
+                                                                                                    className="w-28 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                                                    value={priceForm.price}
+                                                                                                    onChange={e => setPriceForm(f => ({ ...f, price: e.target.value }))}
+                                                                                                />
+                                                                                                <Button
+                                                                                                    size="sm" className="h-8 text-xs"
+                                                                                                    disabled={priceLoading || !priceForm.qualityId || !priceForm.price}
+                                                                                                    onClick={async () => {
+                                                                                                        if (!priceForm.qualityId || !priceForm.price) return
+                                                                                                        setPriceLoading(true)
+                                                                                                        await upsertProjectPrice(proj.id, priceForm.qualityId, Number(priceForm.price))
+                                                                                                        setPriceForm({ qualityId: "", price: "" })
+                                                                                                        setPriceLoading(false)
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {priceLoading ? "..." : "Simpan"}
+                                                                                                </Button>
+                                                                                            </div>
+                                                                                        )
+                                                                                    })()}
+                                                                                </div>
+                                                                            </td>
+                                                                        </tr>
+                                                                    )}
+                                                                </React.Fragment>
                                                             ))}
                                                         </tbody>
                                                     </table>

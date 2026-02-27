@@ -203,3 +203,41 @@ export async function deleteProject(id: string) {
         return { success: false, error: "Gagal menghapus proyek. Pastikan tidak ada transaksi aktif." }
     }
 }
+
+export async function upsertProjectPrice(projectId: string, qualityId: string, price: number) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    try {
+        await prisma.projectPrice.upsert({
+            where: { projectId_qualityId: { projectId, qualityId } },
+            create: { projectId, qualityId, price },
+            update: { price },
+        })
+        revalidatePath("/admin/customer")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function deleteProjectPrice(projectId: string, qualityId: string) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    try {
+        await prisma.projectPrice.delete({
+            where: { projectId_qualityId: { projectId, qualityId } },
+        })
+        revalidatePath("/admin/customer")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function getConcreteQualitiesForLocation() {
+    const session = await auth()
+    if (!session?.user?.employeeId) return []
+    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    return prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } })
+}
