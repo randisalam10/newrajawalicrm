@@ -56,7 +56,7 @@ docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_NAME:$IMAGE_TAG \
-    sh -c "node /app/node_modules/tsx/dist/cli.mjs /app/prisma/seed.ts" \
+    sh -c "node /app/prisma/seed.js" \
     || echo "   ⚠ Seed skipped (SuperAdmin mungkin sudah ada)"
 echo "   ✓ Superadmin checked"
 

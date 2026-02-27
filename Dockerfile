@@ -32,6 +32,14 @@ ENV NEXTAUTH_URL="http://localhost:3000"
 
 RUN npm run build
 
+# Compile seed.ts → seed.js (so runner doesn't need tsx or esbuild)
+RUN node node_modules/.bin/esbuild prisma/seed.ts \
+    --bundle \
+    --platform=node \
+    --outfile=prisma/seed.js \
+    --external:@prisma/client \
+    --external:bcryptjs
+
 # ─────────────────────────────────────────────
 # Stage 3: Production runner (minimal image)
 # ─────────────────────────────────────────────
@@ -61,11 +69,9 @@ RUN mkdir -p node_modules/.bin && \
     ln -sf /app/node_modules/prisma/build/index.js node_modules/.bin/prisma && \
     chmod +x node_modules/.bin/prisma
 
-# Copy seed dependencies
-COPY --from=builder /app/prisma/seed.ts ./prisma/seed.ts
+# Copy compiled seed + bcryptjs runtime dependency
+COPY --from=builder /app/prisma/seed.js ./prisma/seed.js
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
 
 USER nextjs
 
