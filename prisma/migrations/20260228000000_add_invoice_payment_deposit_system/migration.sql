@@ -1,13 +1,10 @@
 -- ============================================================
 -- Migration: Full schema update from init
--- Covers:
---   1. Alter Customer table (drop project_name, default_distance, tax_ppn)
---   2. Create Project + ProjectPrice tables
---   3. Migrate existing Customer data → Project (auto-create 1 project per customer)
---   4. Add projectId to ProductionTransaction, migrate from customerId
---   5. Drop old customerId FK from ProductionTransaction
---   6. Add Invoice system (Invoice, InvoiceItem, Payment, Deposit, BillingLog)
 -- ============================================================
+
+-- Enable extensions for UUID generation (supports PostgreSQL 9.6+)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ── 1. New Enums ──────────────────────────────────────────────────────────────
 
