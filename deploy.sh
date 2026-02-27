@@ -7,7 +7,8 @@
 set -e
 
 APP_NAME="rajawali-app"
-IMAGE_NAME="rajawali-bp-erp"
+IMAGE_NAME="randisalam1007/rajawali-bp-erp"
+IMAGE_TAG="v1.0.0"
 ENV_FILE=".env.production"
 PORT=3000
 
@@ -38,11 +39,11 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 echo "   ✓ $ENV_FILE found"
 
-# ── 3. Build Docker image ──
+# ── 3. Pull Docker image from registry ──
 echo ""
-echo "[3/6] Building Docker image..."
-docker build -t $IMAGE_NAME:latest --no-cache .
-echo "   ✓ Image built: $IMAGE_NAME:latest"
+echo "[3/6] Pulling Docker image from registry..."
+docker pull $IMAGE_NAME:$IMAGE_TAG
+echo "   ✓ Image pulled: $IMAGE_NAME:$IMAGE_TAG"
 
 # ── 4. Run DB migrations (use local Prisma 5.x, not npx which fetches latest) ──
 echo ""
@@ -50,7 +51,7 @@ echo "[4/6] Running database migrations..."
 docker run --rm \
     --env-file $ENV_FILE \
     $ADD_HOST_ARGS \
-    $IMAGE_NAME:latest \
+    $IMAGE_NAME:$IMAGE_TAG \
     sh -c "node /app/node_modules/prisma/build/index.js migrate deploy"
 echo "   ✓ Migrations applied"
 
@@ -60,7 +61,7 @@ echo "[5/6] Ensuring superadmin account exists..."
 docker run --rm \
     --env-file $ENV_FILE \
     $ADD_HOST_ARGS \
-    $IMAGE_NAME:latest \
+    $IMAGE_NAME:$IMAGE_TAG \
     sh -c "node /app/node_modules/tsx/dist/cli.mjs /app/prisma/seed.ts" \
     || echo "   ⚠ Seed skipped (SuperAdmin mungkin sudah ada)"
 echo "   ✓ Superadmin checked"
@@ -78,7 +79,7 @@ docker run -d \
     $ADD_HOST_ARGS \
     --memory="512m" \
     --cpus="1.0" \
-    $IMAGE_NAME:latest
+    $IMAGE_NAME:$IMAGE_TAG
 
 # Hapus dangling images lama
 docker image prune -f > /dev/null 2>&1 || true
