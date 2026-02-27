@@ -33,7 +33,7 @@ ENV NEXTAUTH_URL="http://localhost:3000"
 RUN npm run build
 
 # Compile seed.ts → seed.js (so runner doesn't need tsx or esbuild)
-RUN node node_modules/.bin/esbuild prisma/seed.ts \
+RUN ./node_modules/.bin/esbuild prisma/seed.ts \
     --bundle \
     --platform=node \
     --outfile=prisma/seed.js \
