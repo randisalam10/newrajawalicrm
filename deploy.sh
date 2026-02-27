@@ -8,7 +8,7 @@ set -e
 
 APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="v1.0.3"
+IMAGE_TAG="v1.0.4"
 ENV_FILE=".env.production"
 PORT=3000
 
@@ -72,6 +72,7 @@ docker run -d \
     --env-file $ENV_FILE \
     --memory="512m" \
     --cpus="1.0" \
+    -v /var/data/rajawali/uploads:/app/public/uploads \
     $IMAGE_NAME:$IMAGE_TAG
 
 # Hapus dangling images lama
