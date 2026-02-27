@@ -12,16 +12,10 @@ IMAGE_TAG="v1.0.0"
 ENV_FILE=".env.production"
 PORT=3000
 
-# ── Deteksi IP host Docker (Linux tidak punya host.docker.internal otomatis) ──
-# Docker bridge gateway biasanya 172.17.0.1
-DOCKER_BRIDGE_IP=$(docker network inspect bridge \
-    --format='{{range .IPAM.Config}}{{.Gateway}}{{end}}' 2>/dev/null || echo "172.17.0.1")
-ADD_HOST_ARGS="--add-host=host.docker.internal:${DOCKER_BRIDGE_IP}"
-
 echo "================================================"
 echo " 🚀 Deploying Rajawali BP ERP"
-echo "   Docker host IP: $DOCKER_BRIDGE_IP"
 echo "================================================"
+
 
 # ── 1. Pull latest code ──
 echo ""
@@ -49,18 +43,18 @@ echo "   ✓ Image pulled: $IMAGE_NAME:$IMAGE_TAG"
 echo ""
 echo "[4/6] Running database migrations..."
 docker run --rm \
+    --network host \
     --env-file $ENV_FILE \
-    $ADD_HOST_ARGS \
     $IMAGE_NAME:$IMAGE_TAG \
-    sh -c "node /app/node_modules/prisma/build/index.js migrate deploy"
+    npx prisma migrate deploy
 echo "   ✓ Migrations applied"
 
 # ── 5. Seed superadmin (idempotent — aman di-re-run) ──
 echo ""
 echo "[5/6] Ensuring superadmin account exists..."
 docker run --rm \
+    --network host \
     --env-file $ENV_FILE \
-    $ADD_HOST_ARGS \
     $IMAGE_NAME:$IMAGE_TAG \
     sh -c "node /app/node_modules/tsx/dist/cli.mjs /app/prisma/seed.ts" \
     || echo "   ⚠ Seed skipped (SuperAdmin mungkin sudah ada)"
@@ -72,11 +66,10 @@ echo "[6/6] Restarting application container..."
 docker stop $APP_NAME 2>/dev/null && docker rm $APP_NAME 2>/dev/null || true
 
 docker run -d \
+    --network host \
     --name $APP_NAME \
     --restart unless-stopped \
-    -p 127.0.0.1:$PORT:3000 \
     --env-file $ENV_FILE \
-    $ADD_HOST_ARGS \
     --memory="512m" \
     --cpus="1.0" \
     $IMAGE_NAME:$IMAGE_TAG
