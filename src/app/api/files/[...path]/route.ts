@@ -17,7 +17,7 @@ const ALLOWED_EXTENSIONS = Object.keys(MIME_TYPES)
 
 export async function GET(
     req: NextRequest,
-    { params }: { params: { path: string[] } }
+    { params }: { params: Promise<{ path: string[] }> }
 ) {
     // ── 1. Auth check — must be logged in ──
     const session = await auth()
@@ -27,7 +27,8 @@ export async function GET(
 
     // ── 2. Build safe file path ──
     // params.path is e.g. ["payments", "pay_1234_abc.jpg"]
-    const relPath = params.path.join("/")
+    const { path } = await params
+    const relPath = path.join("/")
 
     // Security: prevent path traversal attacks
     if (relPath.includes("..") || relPath.includes("~")) {
@@ -59,7 +60,7 @@ export async function GET(
                 "Cache-Control": "private, no-store",
                 // For PDFs: inline display; for images: inline
                 "Content-Disposition": ext === "pdf"
-                    ? `inline; filename="${params.path.at(-1)}"`
+                    ? `inline; filename="${path.at(-1)}"`
                     : "inline",
             },
         })
