@@ -8,7 +8,7 @@ set -e
 
 APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="v1.0.8"
+IMAGE_TAG="v1.0.9"
 ENV_FILE=".env.production"
 PORT=3000
 
@@ -78,7 +78,7 @@ docker run -d \
     --name $APP_NAME \
     --restart unless-stopped \
     --env-file $ENV_FILE \
-    --memory="512m" \
+    --memory="768m" \
     --cpus="1.0" \
     -v /var/data/rajawali/uploads:/app/public/uploads \
     $IMAGE_NAME:$IMAGE_TAG
