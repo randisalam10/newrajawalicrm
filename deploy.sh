@@ -43,19 +43,12 @@ echo "   ✓ Image pulled: $IMAGE_NAME:$IMAGE_TAG"
 echo ""
 echo "[4/6] Running database migrations..."
 
-# Auto-resolve any previously failed migration (safe to run even if none failed)
+# Resolve previously failed invoice migration (safe to run even if none failed)
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_NAME:$IMAGE_TAG \
     sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
-
-# Resolve the new aggregate incoming migration if database already has table (safe fallback)
-docker run --rm \
-    --network host \
-    --env-file $ENV_FILE \
-    $IMAGE_NAME:$IMAGE_TAG \
-    sh -c "npx prisma migrate resolve --applied 20260228170000_add_aggregate_incoming 2>/dev/null || true"
 
 docker run --rm \
     --network host \
