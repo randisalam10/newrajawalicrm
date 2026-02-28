@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     // Generate unique filename
     const ext = file.name.split(".").pop() ?? "jpg"
     const filename = `pay_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-    const uploadDir = join(process.cwd(), "public", "uploads", "payments")
+    // Store OUTSIDE of public/ so Next.js does NOT serve it statically
+    // Files are only accessible via the authenticated /api/files/ route
+    const uploadDir = join(process.cwd(), "uploads", "payments")
 
     await mkdir(uploadDir, { recursive: true })
     await writeFile(join(uploadDir, filename), buffer)

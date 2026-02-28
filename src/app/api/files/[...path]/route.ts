@@ -40,7 +40,8 @@ export async function GET(
         return new NextResponse("File type not allowed", { status: 403 })
     }
 
-    const filePath = join(process.cwd(), "public", "uploads", relPath)
+    // Files are stored OUTSIDE of public/ to prevent static serving by Next.js
+    const filePath = join(process.cwd(), "uploads", relPath)
 
     // ── 3. Check file exists ──
     if (!existsSync(filePath)) {

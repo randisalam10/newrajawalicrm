@@ -80,7 +80,7 @@ docker run -d \
     --env-file $ENV_FILE \
     --memory="768m" \
     --cpus="1.0" \
-    -v /var/data/rajawali/uploads:/app/public/uploads \
+    -v /var/data/rajawali/uploads:/app/uploads \
     $IMAGE_NAME:$IMAGE_TAG
 
 # Hapus dangling images lama
