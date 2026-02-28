@@ -1,101 +1,103 @@
 #!/bin/bash
 # ============================================================
-# reset-transactions.sh
-# Hapus SEMUA DATA TRANSAKSI dari database production.
-#
-# Yang DIHAPUS (transaksi):
-#   - BillingLog, Payment, InvoiceItem, Invoice
-#   - Deposit, Retase, ProductionTransaction
-#   - AuditLog, ConcretePlan
-#   - MaterialIncoming, AggregateIncoming
-#
-# Yang DIPERTAHANKAN (master data):
-#   - User, Employee, Location
-#   - Vehicle, Customer, Project, ProjectPrice
-#   - ConcreteQuality, WorkItem, RetaseSetting
-#
-# JALANKAN DI SERVER: bash reset-transactions.sh
+# reset-transactions.sh — Hapus semua data transaksi production
+# Jalankan di server: bash scripts/reset-transactions.sh
 # ============================================================
 
 set -e
 
-ENV_FILE=".env.production"
+ENV_FILE="${1:-.env.production}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║   ⚠️  RESET DATA TRANSAKSI PRODUCTION DATABASE ⚠️    ║"
 echo "╠══════════════════════════════════════════════════════╣"
 echo "║  Aksi ini TIDAK BISA DIBATALKAN!                     ║"
-echo "║  Semua data transaksi akan dihapus permanen.         ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
 
 # ── Check env file ──
 if [ ! -f "$ENV_FILE" ]; then
     echo "❌ ERROR: $ENV_FILE tidak ditemukan!"
+    echo "   Usage: bash scripts/reset-transactions.sh [path-ke-env]"
     exit 1
 fi
 
 # ── Extract DATABASE_URL ──
-DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '"')
+DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
 if [ -z "$DATABASE_URL" ]; then
     echo "❌ ERROR: DATABASE_URL tidak ditemukan di $ENV_FILE"
     exit 1
 fi
 
-echo "💾 STEP 1: Backup database terlebih dahulu (SANGAT DIANJURKAN)"
-echo "   Jalankan ini jika belum backup:"
-echo ""
-echo "   pg_dump \"$DATABASE_URL\" > backup_before_reset_$(date +%Y%m%d_%H%M%S).sql"
-echo ""
-read -p "   Sudah backup? Lanjutkan? (ketik 'ya' untuk lanjut): " CONFIRM_BACKUP
-if [ "$CONFIRM_BACKUP" != "ya" ]; then
-    echo "❌ Dibatalkan. Silakan backup dulu."
+# ── Check psql tersedia ──
+if ! command -v psql &> /dev/null; then
+    echo "❌ ERROR: psql tidak terinstall."
+    echo "   Install dengan: sudo apt-get install -y postgresql-client"
     exit 1
 fi
 
+# ── Test koneksi DB ──
+echo "🔌 Mengecek koneksi database..."
+if ! psql "$DATABASE_URL" -c "SELECT 1;" > /dev/null 2>&1; then
+    echo "❌ ERROR: Gagal koneksi ke database. Cek DATABASE_URL di $ENV_FILE"
+    exit 1
+fi
+echo "   ✓ Koneksi berhasil"
 echo ""
-echo "🔐 STEP 2: Konfirmasi penghapusan data"
-echo "   Ketik persis  RESET TRANSAKSI  untuk melanjutkan:"
+
+# ── Tampilkan jumlah data SEBELUM ──
+echo "📊 Jumlah data SEBELUM reset:"
+psql "$DATABASE_URL" --no-psqlrc -t -A -F '|' << 'EOF'
+SELECT 'ProductionTransaction' AS tabel, COUNT(*) AS jumlah FROM "ProductionTransaction"
+UNION ALL SELECT 'Invoice',          COUNT(*) FROM "Invoice"
+UNION ALL SELECT 'Payment',          COUNT(*) FROM "Payment"
+UNION ALL SELECT 'BillingLog',       COUNT(*) FROM "BillingLog"
+UNION ALL SELECT 'Deposit',          COUNT(*) FROM "Deposit"
+UNION ALL SELECT 'Retase',           COUNT(*) FROM "Retase"
+UNION ALL SELECT 'AuditLog',         COUNT(*) FROM "AuditLog"
+UNION ALL SELECT 'ConcretePlan',     COUNT(*) FROM "ConcretePlan"
+UNION ALL SELECT 'MaterialIncoming', COUNT(*) FROM "MaterialIncoming"
+UNION ALL SELECT 'AggregateIncoming',COUNT(*) FROM "AggregateIncoming";
+EOF
+
 echo ""
-read -p "   > " CONFIRM_RESET
+
+# ── Konfirmasi backup ──
+read -p "💾 Sudah backup database? (ketik 'ya' untuk lanjut): " CONFIRM_BACKUP
+if [ "$CONFIRM_BACKUP" != "ya" ]; then
+    echo ""
+    echo "Backup dulu dengan:"
+    echo "  pg_dump \"$DATABASE_URL\" > backup_$(date +%Y%m%d_%H%M%S).sql"
+    echo "Dibatalkan."
+    exit 1
+fi
+
+# ── Konfirmasi typed phrase ──
+echo ""
+read -p "🔐 Ketik  RESET TRANSAKSI  untuk melanjutkan: " CONFIRM_RESET
 if [ "$CONFIRM_RESET" != "RESET TRANSAKSI" ]; then
     echo "❌ Konfirmasi salah. Dibatalkan."
     exit 1
 fi
 
 echo ""
-echo "📋 Data yang akan DIHAPUS:"
-echo "   ✗ BillingLog    ✗ Payment         ✗ InvoiceItem"
-echo "   ✗ Invoice       ✗ Deposit         ✗ Retase"
-echo "   ✗ ProductionTransaction           ✗ AuditLog"
-echo "   ✗ ConcretePlan  ✗ MaterialIncoming ✗ AggregateIncoming"
-echo ""
-echo "📋 Data yang DIPERTAHANKAN:"
-echo "   ✓ User          ✓ Employee        ✓ Location"
-echo "   ✓ Vehicle       ✓ Customer        ✓ Project"
-echo "   ✓ ProjectPrice  ✓ ConcreteQuality ✓ WorkItem"
-echo "   ✓ RetaseSetting"
-echo ""
-read -p "Lanjutkan penghapusan? (ketik 'HAPUS' untuk eksekusi): " CONFIRM_FINAL
+read -p "⚠️  Terakhir — ketik  HAPUS  untuk eksekusi: " CONFIRM_FINAL
 if [ "$CONFIRM_FINAL" != "HAPUS" ]; then
     echo "❌ Dibatalkan."
     exit 1
 fi
 
 echo ""
-echo "[1/2] Menjalankan DELETE SQL..."
+echo "🗑️  Menghapus data transaksi..."
 
-# Gunakan docker container app untuk menjalankan psql via DATABASE_URL
-docker run --rm \
-    --network host \
-    --env-file "$ENV_FILE" \
-    --entrypoint sh \
-    randisalam1007/rajawali-bp-erp:v1.0.9 \
-    -c "npx prisma db execute --stdin --schema /app/prisma/schema.prisma" << 'ENDSQL'
--- ============================================================
--- Reset semua data transaksi (urutan sesuai Foreign Key)
--- ============================================================
+# ── Tulis SQL ke file temp ──
+SQL_FILE=$(mktemp /tmp/reset_transactions_XXXXXX.sql)
+
+cat > "$SQL_FILE" << 'ENDSQL'
+BEGIN;
+
+-- Urutan sesuai foreign key constraint
 
 -- 1. BillingLog (FK ke Invoice dan Payment)
 DELETE FROM "BillingLog";
@@ -130,42 +132,34 @@ DELETE FROM "MaterialIncoming";
 -- 11. AggregateIncoming (FK ke Location)
 DELETE FROM "AggregateIncoming";
 
+COMMIT;
 ENDSQL
 
-echo "   ✓ Semua data transaksi berhasil dihapus"
+# ── Eksekusi SQL ──
+psql "$DATABASE_URL" -f "$SQL_FILE"
+
+# ── Hapus temp file ──
+rm -f "$SQL_FILE"
 
 echo ""
-echo "[2/2] Verifikasi sisa data..."
-
-docker run --rm \
-    --network host \
-    --env-file "$ENV_FILE" \
-    --entrypoint sh \
-    randisalam1007/rajawali-bp-erp:v1.0.9 \
-    -c "npx prisma db execute --stdin --schema /app/prisma/schema.prisma" << 'ENDSQL2'
-SELECT
-    'User'                  AS tabel, COUNT(*) AS jumlah FROM "User"        UNION ALL
-SELECT 'Employee',                              COUNT(*) FROM "Employee"     UNION ALL
-SELECT 'Location',                              COUNT(*) FROM "Location"     UNION ALL
-SELECT 'Customer',                              COUNT(*) FROM "Customer"     UNION ALL
-SELECT 'Project',                               COUNT(*) FROM "Project"      UNION ALL
-SELECT 'Vehicle',                               COUNT(*) FROM "Vehicle"      UNION ALL
-SELECT 'ConcreteQuality',                       COUNT(*) FROM "ConcreteQuality" UNION ALL
-SELECT 'WorkItem',                              COUNT(*) FROM "WorkItem"     UNION ALL
-SELECT '--- TRANSAKSI ---',                     0                            UNION ALL
-SELECT 'ProductionTransaction',                 COUNT(*) FROM "ProductionTransaction" UNION ALL
-SELECT 'Invoice',                               COUNT(*) FROM "Invoice"      UNION ALL
-SELECT 'Payment',                               COUNT(*) FROM "Payment"      UNION ALL
-SELECT 'MaterialIncoming',                      COUNT(*) FROM "MaterialIncoming" UNION ALL
-SELECT 'AggregateIncoming',                     COUNT(*) FROM "AggregateIncoming" UNION ALL
-SELECT 'ConcretePlan',                          COUNT(*) FROM "ConcretePlan"
-ORDER BY tabel;
-ENDSQL2
+echo "📊 Verifikasi jumlah data SETELAH reset:"
+psql "$DATABASE_URL" --no-psqlrc -t -A -F '|' << 'EOF'
+SELECT 'ProductionTransaction' AS tabel, COUNT(*) AS jumlah FROM "ProductionTransaction"
+UNION ALL SELECT 'Invoice',          COUNT(*) FROM "Invoice"
+UNION ALL SELECT 'Payment',          COUNT(*) FROM "Payment"
+UNION ALL SELECT 'BillingLog',       COUNT(*) FROM "BillingLog"
+UNION ALL SELECT 'Deposit',          COUNT(*) FROM "Deposit"
+UNION ALL SELECT 'Retase',           COUNT(*) FROM "Retase"
+UNION ALL SELECT 'AuditLog',         COUNT(*) FROM "AuditLog"
+UNION ALL SELECT 'ConcretePlan',     COUNT(*) FROM "ConcretePlan"
+UNION ALL SELECT 'MaterialIncoming', COUNT(*) FROM "MaterialIncoming"
+UNION ALL SELECT 'AggregateIncoming',COUNT(*) FROM "AggregateIncoming";
+EOF
 
 echo ""
 echo "╔══════════════════════════════════════════════════════╗"
 echo "║   ✅ Reset selesai!                                  ║"
-echo "║   Data transaksi telah dihapus.                      ║"
+echo "║   Semua angka di atas harus 0.                       ║"
 echo "║   Master data (karyawan, user, dll) tetap ada.       ║"
 echo "╚══════════════════════════════════════════════════════╝"
 echo ""
