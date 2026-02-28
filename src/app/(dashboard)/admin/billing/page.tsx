@@ -7,7 +7,7 @@ import { redirect } from "next/navigation"
 export default async function BillingPage() {
     const session = await auth()
     if (!session?.user) redirect("/login")
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role))
+    if (session.user.role !== "SuperAdminBP")
         redirect("/admin")
 
     const [data, locations] = await Promise.all([

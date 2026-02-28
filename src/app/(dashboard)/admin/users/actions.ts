@@ -9,7 +9,7 @@ import { z } from "zod"
 const userCreateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter"),
-    role: z.enum(["AdminBP", "OperatorBP"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP"]),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
@@ -17,15 +17,16 @@ const userUpdateSchema = z.object({
     id: z.string(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter").optional().or(z.literal("")),
-    role: z.enum(["AdminBP", "OperatorBP"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP"]),
 })
 
 export async function getEligibleEmployees() {
     const session = await auth()
     if (session?.user?.role !== "SuperAdminBP") return []
 
+    // For SuperAdminBP role, allow all positions; for others only Admin/Operator
     return await prisma.employee.findMany({
-        where: { user: null, position: { in: ["Admin", "Operator"] } },
+        where: { user: null },
         include: { location: true },
         orderBy: { name: 'asc' }
     })
@@ -36,13 +37,13 @@ export async function getUsers() {
     if (session?.user?.role !== "SuperAdminBP") return []
 
     return await prisma.user.findMany({
-        where: {
-            role: { not: "SuperAdminBP" } // Don't list SuperAdmins
-        },
         include: {
             employee: { include: { location: true } }
         },
-        orderBy: { username: 'asc' }
+        orderBy: [
+            { role: 'asc' },
+            { username: 'asc' }
+        ]
     })
 }
 

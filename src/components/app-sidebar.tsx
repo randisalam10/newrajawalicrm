@@ -51,9 +51,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         {
             title: "Laporan & Tagihan",
             items: [
-                { title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt },
                 { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
-
             ]
         },
         {
@@ -70,6 +68,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             {
                 title: "Administrator & Akses",
                 items: [
+                    { title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt },
                     { title: "Manajemen User", url: "/admin/users", icon: ShieldCheck },
                 ]
             }
