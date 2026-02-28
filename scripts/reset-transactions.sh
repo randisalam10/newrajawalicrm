@@ -23,10 +23,10 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-# ── Load env vars dari file (handles special chars dengan benar) ──
+# ── Load env vars — strip \r (CRLF dari Windows) sebelum source ──
 set -a
 # shellcheck disable=SC1090
-source "$ENV_FILE"
+source <(sed 's/\r//' "$ENV_FILE")
 set +a
 
 if [ -z "$DATABASE_URL" ]; then
