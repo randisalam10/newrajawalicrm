@@ -23,12 +23,20 @@ if [ ! -f "$ENV_FILE" ]; then
     exit 1
 fi
 
-# ── Extract DATABASE_URL ──
-DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '"' | tr -d "'")
+# ── Load env vars dari file (handles special chars dengan benar) ──
+set -a
+# shellcheck disable=SC1090
+source "$ENV_FILE"
+set +a
+
 if [ -z "$DATABASE_URL" ]; then
     echo "❌ ERROR: DATABASE_URL tidak ditemukan di $ENV_FILE"
     exit 1
 fi
+
+# Strip Prisma-specific query params yang tidak dimengerti psql
+# Contoh: ?schema=public&connection_limit=5 → dihapus
+PSQL_URL=$(echo "$DATABASE_URL" | sed 's/?.*//')
 
 # ── Check psql tersedia ──
 if ! command -v psql &> /dev/null; then
@@ -39,7 +47,7 @@ fi
 
 # ── Test koneksi DB ──
 echo "🔌 Mengecek koneksi database..."
-if ! psql "$DATABASE_URL" -c "SELECT 1;" > /dev/null 2>&1; then
+if ! psql "$PSQL_URL" -c "SELECT 1;" > /dev/null 2>&1; then
     echo "❌ ERROR: Gagal koneksi ke database. Cek DATABASE_URL di $ENV_FILE"
     exit 1
 fi
@@ -48,7 +56,7 @@ echo ""
 
 # ── Tampilkan jumlah data SEBELUM ──
 echo "📊 Jumlah data SEBELUM reset:"
-psql "$DATABASE_URL" --no-psqlrc -t -A -F '|' << 'EOF'
+psql "$PSQL_URL" --no-psqlrc -t -A -F '|' << 'EOF'
 SELECT 'ProductionTransaction' AS tabel, COUNT(*) AS jumlah FROM "ProductionTransaction"
 UNION ALL SELECT 'Invoice',          COUNT(*) FROM "Invoice"
 UNION ALL SELECT 'Payment',          COUNT(*) FROM "Payment"
@@ -68,7 +76,7 @@ read -p "💾 Sudah backup database? (ketik 'ya' untuk lanjut): " CONFIRM_BACKUP
 if [ "$CONFIRM_BACKUP" != "ya" ]; then
     echo ""
     echo "Backup dulu dengan:"
-    echo "  pg_dump \"$DATABASE_URL\" > backup_$(date +%Y%m%d_%H%M%S).sql"
+    echo "  pg_dump \"$PSQL_URL\" > backup_$(date +%Y%m%d_%H%M%S).sql"
     echo "Dibatalkan."
     exit 1
 fi
@@ -136,14 +144,14 @@ COMMIT;
 ENDSQL
 
 # ── Eksekusi SQL ──
-psql "$DATABASE_URL" -f "$SQL_FILE"
+psql "$PSQL_URL" -f "$SQL_FILE"
 
 # ── Hapus temp file ──
 rm -f "$SQL_FILE"
 
 echo ""
 echo "📊 Verifikasi jumlah data SETELAH reset:"
-psql "$DATABASE_URL" --no-psqlrc -t -A -F '|' << 'EOF'
+psql "$PSQL_URL" --no-psqlrc -t -A -F '|' << 'EOF'
 SELECT 'ProductionTransaction' AS tabel, COUNT(*) AS jumlah FROM "ProductionTransaction"
 UNION ALL SELECT 'Invoice',          COUNT(*) FROM "Invoice"
 UNION ALL SELECT 'Payment',          COUNT(*) FROM "Payment"
