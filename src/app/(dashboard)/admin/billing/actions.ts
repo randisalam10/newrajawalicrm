@@ -112,6 +112,7 @@ export async function getUnbilledTransactions(filters: {
 export async function getInvoicesGroupedByCustomer(filters: {
     locationId?: string
     status?: string
+    showCancelled?: boolean
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return []
@@ -124,11 +125,14 @@ export async function getInvoicesGroupedByCustomer(filters: {
     const invoices = await prisma.invoice.findMany({
         where: {
             ...locationFilter,
-            ...(filters.status && filters.status !== "all" ? { status: filters.status as InvoiceStatus } : {}),
+            // Hide cancelled by default unless showCancelled flag is set
+            ...(filters.showCancelled ? {} : { NOT: { status: "CANCELLED" } }),
+            ...(filters.status && filters.status !== "all" ? { status: filters.status as any } : {}),
         },
         include: {
             project: { include: { customer: true } },
             items: { include: { transaction: { include: { concreteQuality: true } } } },
+            // Include ALL payments so we can show cancelled ones in detail
             payments: true,
         },
         orderBy: { issue_date: "desc" },
@@ -159,8 +163,15 @@ export async function getInvoicesGroupedByCustomer(filters: {
             })
         }
         const custData = customerMap.get(cust.id)!
-        custData.totalAmount += inv.total_amount
-        custData.totalPaid += inv.paid_amount
+        // Exclude cancelled invoices from totals
+        if (inv.status !== "CANCELLED") {
+            custData.totalAmount += inv.total_amount
+            // Only count non-cancelled payments
+            const activePaid = inv.payments
+                .filter(p => !p.is_cancelled)
+                .reduce((s, p) => s + p.amount, 0)
+            custData.totalPaid += activePaid
+        }
 
         if (!custData.projects.has(inv.projectId)) {
             custData.projects.set(inv.projectId, {
@@ -191,6 +202,7 @@ export async function getInvoiceDetail(invoiceId: string) {
                 },
                 orderBy: { transaction: { date: "asc" } }
             },
+            // Include all payments including cancelled so UI can show them
             payments: { orderBy: { payment_date: "asc" } },
             billingLogs: { orderBy: { createdAt: "asc" } },
         },
@@ -383,23 +395,89 @@ export async function recordPayment(params: {
     }
 }
 
-export async function cancelInvoice(invoiceId: string) {
+export async function cancelPayment(paymentId: string, reason: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
     if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
         return { success: false, error: "Akses ditolak" }
+    if (!reason.trim()) return { success: false, error: "Alasan cancel wajib diisi" }
+
+    try {
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            include: { invoice: true },
+        })
+        if (!payment) return { success: false, error: "Pembayaran tidak ditemukan" }
+        if (payment.is_cancelled) return { success: false, error: "Pembayaran sudah dicancel" }
+
+        // Soft cancel the payment
+        await prisma.payment.update({
+            where: { id: paymentId },
+            data: {
+                is_cancelled: true,
+                cancel_reason: reason.trim(),
+                cancelled_at: new Date(),
+            },
+        })
+
+        // Recalculate invoice paid_amount from remaining active payments
+        const activePayments = await prisma.payment.findMany({
+            where: { invoiceId: payment.invoiceId, is_cancelled: false },
+        })
+        const newPaid = activePayments.reduce((s, p) => s + p.amount, 0)
+        const inv = payment.invoice
+        let newStatus: InvoiceStatus =
+            newPaid <= 0 ? "ISSUED"
+                : newPaid >= inv.total_amount ? "PAID"
+                    : "PARTIAL"
+        // Keep CANCELLED status if invoice is cancelled
+        if (inv.status === "CANCELLED") newStatus = "CANCELLED"
+
+        await prisma.invoice.update({
+            where: { id: payment.invoiceId },
+            data: { paid_amount: newPaid, status: newStatus },
+        })
+
+        await writeBillingLog({
+            action: "PAYMENT_CANCELLED",
+            invoiceId: payment.invoiceId,
+            paymentId,
+            description: `Pembayaran Rp ${payment.amount.toLocaleString("id-ID")} dicancel. Alasan: ${reason.trim()}`,
+            metadata: { amount: payment.amount, reason, newPaid, newStatus },
+        })
+
+        revalidatePath("/admin/billing")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function cancelInvoice(invoiceId: string, reason: string) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
+        return { success: false, error: "Akses ditolak" }
+    if (!reason.trim()) return { success: false, error: "Alasan cancel wajib diisi" }
 
     try {
         const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } })
         if (!invoice) return { success: false, error: "Invoice tidak ditemukan" }
-        if (invoice.paid_amount > 0) return { success: false, error: "Invoice yang sudah ada pembayaran tidak bisa dibatalkan" }
 
-        await prisma.invoice.update({ where: { id: invoiceId }, data: { status: "CANCELLED" } })
+        await prisma.invoice.update({
+            where: { id: invoiceId },
+            data: {
+                status: "CANCELLED",
+                cancel_reason: reason.trim(),
+                cancelled_at: new Date(),
+            },
+        })
 
         await writeBillingLog({
             action: "INVOICE_CANCELLED",
             invoiceId,
-            description: `Invoice ${invoice.invoice_number} dibatalkan`,
+            description: `Invoice ${invoice.invoice_number} dibatalkan. Alasan: ${reason.trim()}`,
+            metadata: { invoiceNumber: invoice.invoice_number, reason },
         })
 
         revalidatePath("/admin/billing")

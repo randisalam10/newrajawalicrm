@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
-import { createInvoice, recordPayment, cancelInvoice, addDeposit, getInvoicesGroupedByCustomer, getUnbilledTransactions, getDepositSummary, getInvoiceDetail, getNextInvoiceSeq, getCustomerInvoiceSeq } from "./actions"
+import { createInvoice, recordPayment, cancelInvoice, cancelPayment, addDeposit, getInvoicesGroupedByCustomer, getUnbilledTransactions, getDepositSummary, getInvoiceDetail, getNextInvoiceSeq, getCustomerInvoiceSeq } from "./actions"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n))
 const fmtDate = (d: any) => d ? format(new Date(d), "dd MMM yyyy", { locale: idLocale }) : "-"
@@ -97,6 +97,20 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [depositForm, setDepositForm] = useState({ amount: "", description: "", reference: "" })
     const [depositLoading, setDepositLoading] = useState(false)
 
+    // Cancel invoice state
+    const [showCancelInvoiceDialog, setShowCancelInvoiceDialog] = useState(false)
+    const [cancelInvoiceReason, setCancelInvoiceReason] = useState("")
+    const [cancelInvoiceLoading, setCancelInvoiceLoading] = useState(false)
+
+    // Cancel payment state
+    const [cancelPaymentTarget, setCancelPaymentTarget] = useState<any>(null)
+    const [cancelPaymentReason, setCancelPaymentReason] = useState("")
+    const [cancelPaymentLoading, setCancelPaymentLoading] = useState(false)
+
+    // Show/hide cancelled toggles
+    const [showCancelledInvoices, setShowCancelledInvoices] = useState(false)
+    const [showCancelledPayments, setShowCancelledPayments] = useState(false)
+
     // Create invoice form
     const [invoiceForm, setInvoiceForm] = useState({
         initialsOverride: "", customerSeqOverride: "", includePpn: true, dueDate: "", notes: ""
@@ -112,7 +126,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         const effectiveLocId = locId !== undefined ? locId : (selectedLocation === "all" ? undefined : selectedLocation)
         const [unbilled, grouped, deposits] = await Promise.all([
             getUnbilledTransactions({ locationId: effectiveLocId }),
-            getInvoicesGroupedByCustomer({ locationId: effectiveLocId }),
+            getInvoicesGroupedByCustomer({ locationId: effectiveLocId, showCancelled: showCancelledInvoices }),
             getDepositSummary({ locationId: effectiveLocId }),
         ])
         setData((prev: any) => ({ ...prev, unbilled, grouped, deposits }))
@@ -280,9 +294,28 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
     const handleCancelInvoice = async () => {
         if (!invoiceDetail) return
-        if (!confirm("Batalkan invoice ini?")) return
-        await cancelInvoice(invoiceDetail.id)
+        if (!cancelInvoiceReason.trim()) return
+        setCancelInvoiceLoading(true)
+        await cancelInvoice(invoiceDetail.id, cancelInvoiceReason.trim())
+        setCancelInvoiceLoading(false)
+        setShowCancelInvoiceDialog(false)
+        setCancelInvoiceReason("")
         setSelectedInvoice(null)
+        await reload()
+    }
+
+    const handleCancelPayment = async () => {
+        if (!cancelPaymentTarget || !cancelPaymentReason.trim()) return
+        setCancelPaymentLoading(true)
+        await cancelPayment(cancelPaymentTarget.id, cancelPaymentReason.trim())
+        setCancelPaymentLoading(false)
+        setCancelPaymentTarget(null)
+        setCancelPaymentReason("")
+        // Refresh invoice detail
+        if (invoiceDetail) {
+            const detail = await getInvoiceDetail(invoiceDetail.id)
+            setInvoiceDetail(detail)
+        }
         await reload()
     }
 
@@ -586,6 +619,24 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     ))}
                                 </SelectContent>
                             </Select>
+                            <button
+                                onClick={async () => {
+                                    const next = !showCancelledInvoices
+                                    setShowCancelledInvoices(next)
+                                    setIsLoading(true)
+                                    const effectiveLocId = selectedLocation === "all" ? undefined : selectedLocation
+                                    const grouped = await getInvoicesGroupedByCustomer({ locationId: effectiveLocId, showCancelled: next })
+                                    setData((prev: any) => ({ ...prev, grouped }))
+                                    setIsLoading(false)
+                                }}
+                                className={`h-8 px-2.5 text-xs rounded border flex items-center gap-1.5 transition-colors ${showCancelledInvoices
+                                        ? 'bg-red-50 border-red-200 text-red-700'
+                                        : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                    }`}
+                            >
+                                <Eye className="w-3.5 h-3.5" />
+                                {showCancelledInvoices ? "Sembunyikan Dibatal" : "Tampilkan Dibatal"}
+                            </button>
                         </div>
                     </div>
 
@@ -643,14 +694,15 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         {invs.map((inv: any) => {
                                                             const sisa = inv.total_amount - inv.paid_amount
                                                             const cfg = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.DRAFT
+                                                            const isCancelled = inv.status === "CANCELLED"
                                                             return (
-                                                                <TableRow key={inv.id} className="text-xs hover:bg-blue-50/50">
-                                                                    <TableCell className="font-mono font-medium pl-6 text-slate-700">{inv.invoice_number}</TableCell>
+                                                                <TableRow key={inv.id} className={`text-xs hover:bg-blue-50/50 ${isCancelled ? 'opacity-50 bg-red-50/30' : ''}`}>
+                                                                    <TableCell className={`font-mono font-medium pl-6 text-slate-700 ${isCancelled ? 'line-through' : ''}`}>{inv.invoice_number}</TableCell>
                                                                     <TableCell className="text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[12rem]" title={inv.projectName}>{inv.projectName}</TableCell>
                                                                     <TableCell className="whitespace-nowrap">{fmtDate(inv.issue_date)}</TableCell>
                                                                     <TableCell className="text-right">{fmt(inv.total_amount)}</TableCell>
                                                                     <TableCell className="text-right text-green-700">{fmt(inv.paid_amount)}</TableCell>
-                                                                    <TableCell className={`text-right font-medium ${sisa > 0 ? 'text-red-600' : 'text-green-600'}`}>{fmt(sisa)}</TableCell>
+                                                                    <TableCell className={`text-right font-medium ${sisa > 0 && !isCancelled ? 'text-red-600' : 'text-green-600'}`}>{isCancelled ? '-' : fmt(sisa)}</TableCell>
                                                                     <TableCell>
                                                                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${cfg.color}`}>{cfg.label}</span>
                                                                     </TableCell>
@@ -958,26 +1010,66 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
                             {invoiceDetail.payments.length > 0 && (
                                 <div>
-                                    <h3 className="text-sm font-semibold text-slate-700 mb-2">Riwayat Pembayaran</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="text-sm font-semibold text-slate-700">Riwayat Pembayaran</h3>
+                                        {invoiceDetail.payments.some((p: any) => p.is_cancelled) && (
+                                            <button
+                                                onClick={() => setShowCancelledPayments(v => !v)}
+                                                className={`text-xs flex items-center gap-1 px-2 py-1 rounded border transition-colors ${showCancelledPayments
+                                                        ? 'bg-red-50 border-red-200 text-red-600'
+                                                        : 'bg-white border-slate-200 text-slate-500'
+                                                    }`}
+                                            >
+                                                <Eye className="w-3 h-3" />
+                                                {showCancelledPayments ? 'Sembunyikan Dibatal' : 'Tampilkan Dibatal'}
+                                            </button>
+                                        )}
+                                    </div>
                                     <div className="space-y-2">
-                                        {invoiceDetail.payments.map((p: any) => (
-                                            <div key={p.id} className="bg-green-50 border border-green-100 rounded-lg px-3 py-2 text-xs">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div>
-                                                        <div className="font-medium">{fmtDate(p.payment_date)} — {p.method}</div>
-                                                        {p.reference_no && <div className="text-slate-500">Ref: {p.reference_no}</div>}
-                                                        {p.notes && <div className="text-slate-500">{p.notes}</div>}
-                                                        {p.proof_url && (
-                                                            <a href={p.proof_url} target="_blank" rel="noopener noreferrer"
-                                                                className="inline-flex items-center gap-1 mt-1 text-blue-600 hover:underline">
-                                                                📎 Lihat Bukti Bayar
-                                                            </a>
-                                                        )}
+                                        {invoiceDetail.payments
+                                            .filter((p: any) => showCancelledPayments || !p.is_cancelled)
+                                            .map((p: any) => (
+                                                <div key={p.id} className={`border rounded-lg px-3 py-2 text-xs ${p.is_cancelled
+                                                        ? 'bg-red-50 border-red-100 opacity-70'
+                                                        : 'bg-green-50 border-green-100'
+                                                    }`}>
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className={`font-medium flex items-center gap-2 ${p.is_cancelled ? 'line-through text-slate-400' : ''
+                                                                }`}>
+                                                                {fmtDate(p.payment_date)} — {p.method}
+                                                                {p.is_cancelled && (
+                                                                    <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold no-underline" style={{ textDecoration: 'none' }}>DIBATAL</span>
+                                                                )}
+                                                            </div>
+                                                            {p.reference_no && <div className="text-slate-500">Ref: {p.reference_no}</div>}
+                                                            {p.notes && <div className="text-slate-500">{p.notes}</div>}
+                                                            {p.is_cancelled && p.cancel_reason && (
+                                                                <div className="text-red-600 mt-0.5">Alasan: {p.cancel_reason}</div>
+                                                            )}
+                                                            {p.proof_url && !p.is_cancelled && (
+                                                                <a href={p.proof_url} target="_blank" rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1 mt-1 text-blue-600 hover:underline">
+                                                                    📎 Lihat Bukti Bayar
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                                            <span className={`font-bold whitespace-nowrap ${p.is_cancelled ? 'text-slate-400 line-through' : 'text-green-700'
+                                                                }`}>{fmt(p.amount)}</span>
+                                                            {!p.is_cancelled && invoiceDetail.status !== "CANCELLED" && (
+                                                                <button
+                                                                    onClick={() => { setCancelPaymentTarget(p); setCancelPaymentReason("") }}
+                                                                    className="text-red-400 hover:text-red-600 transition-colors"
+                                                                    title="Cancel pembayaran ini"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                    <span className="font-bold text-green-700 whitespace-nowrap">{fmt(p.amount)}</span>
                                                 </div>
-                                            </div>
-                                        ))}
+                                            ))}
                                     </div>
                                 </div>
                             )}
@@ -992,10 +1084,19 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 <Button variant="outline" className="h-9" onClick={() => window.open(`/print/invoice/${invoiceDetail.id}`, "_blank")}>
                                     <Printer className="w-4 h-4 mr-1.5" /> Cetak
                                 </Button>
-                                {invoiceDetail.status !== "CANCELLED" && invoiceDetail.paid_amount === 0 && (
-                                    <Button variant="outline" className="h-9 text-red-600 border-red-200 hover:bg-red-50" onClick={handleCancelInvoice}>
-                                        <X className="w-4 h-4 mr-1.5" /> Batalkan
+                                {invoiceDetail.status !== "CANCELLED" && (
+                                    <Button
+                                        variant="outline"
+                                        className="h-9 text-red-600 border-red-200 hover:bg-red-50"
+                                        onClick={() => { setCancelInvoiceReason(""); setShowCancelInvoiceDialog(true) }}
+                                    >
+                                        <X className="w-4 h-4 mr-1.5" /> Batalkan Invoice
                                     </Button>
+                                )}
+                                {invoiceDetail.status === "CANCELLED" && invoiceDetail.cancel_reason && (
+                                    <div className="w-full text-xs text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mt-1">
+                                        <strong>Alasan dibatalkan:</strong> {invoiceDetail.cancel_reason}
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -1070,32 +1171,74 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                 </DialogContent>
             </Dialog>
 
-            {/* ═══ DEPOSIT DIALOG ══════════════════════════════════════════════════ */}
-            <Dialog open={showDepositDialog} onOpenChange={setShowDepositDialog}>
+            {/* ═══ CANCEL INVOICE DIALOG ══════════════════════════════════════════ */}
+            <Dialog open={showCancelInvoiceDialog} onOpenChange={setShowCancelInvoiceDialog}>
                 <DialogContent className="max-w-sm">
-                    <DialogHeader><DialogTitle>Tambah Setoran Deposito</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle className="text-red-600">Batalkan Invoice</DialogTitle></DialogHeader>
                     <div className="space-y-3">
-                        {depositTarget && <div className="text-sm text-slate-600 bg-slate-50 rounded p-2">{depositTarget.customerName} — {depositTarget.projectName}</div>}
-                        <div><Label className="text-xs">Jumlah (Rp)</Label>
-                            <Input type="number" className="mt-1 h-9"
-                                value={depositForm.amount}
-                                onChange={e => setDepositForm(f => ({ ...f, amount: e.target.value }))} />
+                        {invoiceDetail && (
+                            <div className="bg-red-50 border border-red-100 rounded p-3 text-sm text-slate-700">
+                                <div className="font-mono font-semibold">{invoiceDetail.invoice_number}</div>
+                                <div className="text-slate-500">{invoiceDetail.project?.customer?.customer_name}</div>
+                            </div>
+                        )}
+                        <div>
+                            <Label className="text-xs text-red-700 font-semibold">Alasan Pembatalan <span className="text-red-500">*</span></Label>
+                            <textarea
+                                className="mt-1 w-full border border-red-200 rounded-md p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400 bg-red-50"
+                                rows={3}
+                                placeholder="Tuliskan alasan pembatalan invoice ini..."
+                                value={cancelInvoiceReason}
+                                onChange={e => setCancelInvoiceReason(e.target.value)}
+                            />
                         </div>
-                        <div><Label className="text-xs">Keterangan</Label>
-                            <Input className="mt-1 h-9"
-                                value={depositForm.description}
-                                onChange={e => setDepositForm(f => ({ ...f, description: e.target.value }))} />
-                        </div>
-                        <div><Label className="text-xs">Referensi</Label>
-                            <Input className="mt-1 h-9"
-                                value={depositForm.reference}
-                                onChange={e => setDepositForm(f => ({ ...f, reference: e.target.value }))} />
-                        </div>
+                        <p className="text-xs text-slate-400">Invoice tidak akan dihapus, hanya dinonaktifkan dan disembunyikan.</p>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setShowDepositDialog(false)}>Batal</Button>
-                        <Button onClick={handleAddDeposit} disabled={depositLoading || !depositForm.amount || !depositForm.description}>
-                            {depositLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Simpan"}
+                        <Button variant="outline" onClick={() => setShowCancelInvoiceDialog(false)}>Batal</Button>
+                        <Button
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={handleCancelInvoice}
+                            disabled={cancelInvoiceLoading || !cancelInvoiceReason.trim()}
+                        >
+                            {cancelInvoiceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ya, Batalkan Invoice"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ═══ CANCEL PAYMENT DIALOG ══════════════════════════════════════════ */}
+            <Dialog open={!!cancelPaymentTarget} onOpenChange={open => { if (!open) setCancelPaymentTarget(null) }}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle className="text-red-600">Batalkan Pembayaran</DialogTitle></DialogHeader>
+                    <div className="space-y-3">
+                        {cancelPaymentTarget && (
+                            <div className="bg-red-50 border border-red-100 rounded p-3 text-sm text-slate-700">
+                                <div className="font-semibold text-green-700">{fmt(cancelPaymentTarget.amount)}</div>
+                                <div className="text-slate-500">{fmtDate(cancelPaymentTarget.payment_date)} — {cancelPaymentTarget.method}</div>
+                                {cancelPaymentTarget.reference_no && <div className="text-slate-400">Ref: {cancelPaymentTarget.reference_no}</div>}
+                            </div>
+                        )}
+                        <div>
+                            <Label className="text-xs text-red-700 font-semibold">Alasan Pembatalan <span className="text-red-500">*</span></Label>
+                            <textarea
+                                className="mt-1 w-full border border-red-200 rounded-md p-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400 bg-red-50"
+                                rows={3}
+                                placeholder="Tuliskan alasan pembatalan pembayaran ini..."
+                                value={cancelPaymentReason}
+                                onChange={e => setCancelPaymentReason(e.target.value)}
+                            />
+                        </div>
+                        <p className="text-xs text-slate-400">Pembayaran tidak dihapus. Saldo invoice akan otomatis direcalculate.</p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCancelPaymentTarget(null)}>Batal</Button>
+                        <Button
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                            onClick={handleCancelPayment}
+                            disabled={cancelPaymentLoading || !cancelPaymentReason.trim()}
+                        >
+                            {cancelPaymentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ya, Batalkan Pembayaran"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

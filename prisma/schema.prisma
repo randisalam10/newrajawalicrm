@@ -83,6 +83,7 @@ enum BillingAction {
   INVOICE_ISSUED
   INVOICE_CANCELLED
   PAYMENT_RECORDED
+  PAYMENT_CANCELLED
   DEPOSIT_ADDED
   DEPOSIT_USED
 }
@@ -305,6 +306,8 @@ model Invoice {
   total_amount   Float
   paid_amount    Float         @default(0)
   notes          String?
+  cancel_reason  String?       // Alasan pembatalan invoice
+  cancelled_at   DateTime?     // Waktu pembatalan
   items          InvoiceItem[]
   payments       Payment[]
   billingLogs    BillingLog[]
@@ -325,17 +328,20 @@ model InvoiceItem {
 }
 
 model Payment {
-  id           String        @id @default(uuid())
-  invoice      Invoice       @relation(fields: [invoiceId], references: [id])
-  invoiceId    String
-  payment_date DateTime
-  amount       Float
-  method       PaymentMethod
-  reference_no String?
-  proof_url    String?
-  notes        String?
-  billingLogs  BillingLog[]
-  createdAt    DateTime      @default(now())
+  id            String        @id @default(uuid())
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id])
+  invoiceId     String
+  payment_date  DateTime
+  amount        Float
+  method        PaymentMethod
+  reference_no  String?
+  proof_url     String?
+  notes         String?
+  is_cancelled  Boolean       @default(false) // Soft cancel
+  cancel_reason String?       // Alasan pembatalan
+  cancelled_at  DateTime?     // Waktu pembatalan
+  billingLogs   BillingLog[]
+  createdAt     DateTime      @default(now())
 }
 
 model Deposit {
