@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, format } from "date-fns"
 
+
 export async function getDashboardData() {
     const session = await auth()
     if (!session?.user?.employeeId) return null
@@ -184,6 +185,22 @@ export async function getDashboardData() {
         totalRetaseBulanIni = retaseAgg._sum.income_amount || 0
     }
 
+    // ============================================
+    // 11. PLANNING HARI INI
+    // ============================================
+    const todayPlans = await prisma.concretePlan.findMany({
+        where: {
+            ...locationFilter,
+            date: { gte: todayStart, lte: todayEnd },
+        },
+        include: {
+            project: { include: { customer: { select: { customer_name: true } } } },
+            concreteQuality: { select: { name: true } },
+            workItem: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'asc' },
+    })
+
     return {
         isSuperAdmin,
         // Today
@@ -206,5 +223,7 @@ export async function getDashboardData() {
         pendingCount,
         branchBreakdown,
         totalRetaseBulanIni,
+        // Planning
+        todayPlans,
     }
 }

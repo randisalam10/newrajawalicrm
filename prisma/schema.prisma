@@ -52,6 +52,13 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum PlanStatus {
+  Planned
+  OnGoing
+  Done
+  Cancelled
+}
+
 enum PaymentMethod {
   TRANSFER
   CASH
@@ -104,6 +111,7 @@ model Location {
   materialIncomings MaterialIncoming[]
   retaseSetting     RetaseSetting?
   invoices          Invoice[]
+  concretePlans     ConcretePlan[]
 }
 
 model Vehicle {
@@ -138,10 +146,11 @@ model Project {
   customer   Customer @relation(fields: [customerId], references: [id])
   customerId String
 
-  prices       ProjectPrice[] // Daftar harga per mutu untuk proyek ini
-  transactions ProductionTransaction[] // Transaksi sekarang mengarah ke Proyek
-  invoices     Invoice[]
-  deposits     Deposit[]
+  prices         ProjectPrice[] // Daftar harga per mutu untuk proyek ini
+  transactions   ProductionTransaction[] // Transaksi sekarang mengarah ke Proyek
+  invoices       Invoice[]
+  deposits       Deposit[]
+  concretePlans  ConcretePlan[]
 }
 
 model ProjectPrice {
@@ -156,11 +165,12 @@ model ProjectPrice {
 }
 
 model WorkItem {
-  id           String                  @id @default(uuid())
-  name         String                  @unique // e.g., Rigid, Kolom, Sloof
-  transactions ProductionTransaction[]
-  location     Location                @relation(fields: [locationId], references: [id])
-  locationId   String
+  id            String                  @id @default(uuid())
+  name          String                  @unique // e.g., Rigid, Kolom, Sloof
+  transactions  ProductionTransaction[]
+  concretePlans ConcretePlan[]
+  location      Location                @relation(fields: [locationId], references: [id])
+  locationId    String
 }
 
 model ConcreteQuality {
@@ -173,6 +183,7 @@ model ConcreteQuality {
   composition_cement   Float
   transactions         ProductionTransaction[]
   projectPrices        ProjectPrice[] // Added opposite relation for ProjectPrice
+  concretePlans        ConcretePlan[]
   location             Location                @relation(fields: [locationId], references: [id])
   locationId           String
 }
@@ -321,4 +332,24 @@ model BillingLog {
   description String
   metadata    String?
   createdAt   DateTime      @default(now())
+}
+
+// ─── PLANNING PENGECORAN ────────────────────────────────────────────────────
+
+model ConcretePlan {
+  id              String          @id @default(uuid())
+  date            DateTime        // Tanggal rencana pengecoran
+  project         Project         @relation(fields: [projectId], references: [id])
+  projectId       String
+  concreteQuality ConcreteQuality @relation(fields: [qualityId], references: [id])
+  qualityId       String
+  workItem        WorkItem        @relation(fields: [workItemId], references: [id])
+  workItemId      String
+  volume_plan     Float           // Volume rencana (m³)
+  notes           String?         // Catatan tambahan
+  status          PlanStatus      @default(Planned)
+  location        Location        @relation(fields: [locationId], references: [id])
+  locationId      String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 }

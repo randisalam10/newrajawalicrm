@@ -11,8 +11,9 @@ import {
 import {
     Factory, TrendingUp, AlertCircle, Package,
     Truck, CheckCircle2, Clock, Building2,
-    ArrowRight, BarChart3, Users, Layers, Zap
+    ArrowRight, BarChart3, Users, Layers, Zap, CalendarClock, Target, PlayCircle, XCircle
 } from "lucide-react"
+
 import Link from "next/link"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
@@ -38,6 +39,14 @@ type DashboardData = {
         volume: number; trips: number; pending: number; confirmed: number
     }>
     totalRetaseBulanIni: number
+    todayPlans: Array<{
+        id: string
+        volume_plan: number
+        status: string
+        project: { name: string; customer: { customer_name: string } }
+        concreteQuality: { name: string }
+        workItem: { name: string }
+    }>
 }
 
 // Mini sparkline for KPI cards using recharts
@@ -99,7 +108,71 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 </div>
             </div>
 
-            {/* ── ROW 1: COMPACT KPI CARDS ── */}
+            {/* ── ROW 1: PLANNING HARI INI ── */}
+            <Card className="border shadow-sm bg-white overflow-hidden">
+                <CardHeader className="pb-2 px-5 pt-4 flex flex-row items-center justify-between space-y-0">
+                    <div>
+                        <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                            <CalendarClock className="h-4 w-4 text-primary" />
+                            Planning Hari Ini
+                        </CardTitle>
+                        <CardDescription className="text-[11px]">
+                            {data.todayPlans.length > 0
+                                ? `${data.todayPlans.length} rencana · ${data.todayPlans.reduce((s, p) => s + p.volume_plan, 0).toFixed(1)} m³ target`
+                                : 'Belum ada rencana pengecoran hari ini'}
+                        </CardDescription>
+                    </div>
+                    <Link href="/admin/planning">
+                        <Button variant="ghost" size="sm" className="text-[11px] text-slate-400 gap-1 h-6 px-2">
+                            Kelola <ArrowRight className="w-3 h-3" />
+                        </Button>
+                    </Link>
+                </CardHeader>
+                <CardContent className="px-5 pb-4 pt-0">
+                    {data.todayPlans.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-16 text-slate-400 gap-2">
+                            <p className="text-xs">Belum ada planning untuk hari ini —</p>
+                            <Link href="/admin/planning">
+                                <Button variant="outline" size="sm" className="text-xs h-7 gap-1">
+                                    <CalendarClock className="w-3.5 h-3.5" /> Tambah Planning
+                                </Button>
+                            </Link>
+                        </div>
+                    ) : (
+                        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            {data.todayPlans.map((plan) => {
+                                const statusMap: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
+                                    Planned: { label: 'Direncanakan', cls: 'bg-blue-50 text-blue-700 border-blue-200', icon: <Clock className="w-3 h-3" /> },
+                                    OnGoing: { label: 'Berjalan', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: <PlayCircle className="w-3 h-3" /> },
+                                    Done: { label: 'Selesai', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="w-3 h-3" /> },
+                                    Cancelled: { label: 'Dibatalkan', cls: 'bg-slate-100 text-slate-500 border-slate-200', icon: <XCircle className="w-3 h-3" /> },
+                                }
+                                const s = statusMap[plan.status] || statusMap['Planned']
+                                return (
+                                    <div key={plan.id} className="border rounded-lg p-3 bg-slate-50/50 hover:bg-slate-100/50 transition-colors">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${s.cls}`}>
+                                                {s.icon}{s.label}
+                                            </span>
+                                            <span className="text-[10px] font-bold text-emerald-700 flex items-center gap-0.5">
+                                                <Target className="w-3 h-3" />{plan.volume_plan} m³
+                                            </span>
+                                        </div>
+                                        <div className="font-semibold text-xs text-slate-800 truncate">{plan.project.customer.customer_name}</div>
+                                        <div className="text-[10px] text-slate-500 truncate">{plan.project.name}</div>
+                                        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                            <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 rounded-full px-2 py-0.5">{plan.concreteQuality.name}</span>
+                                            <span className="text-[10px] bg-slate-100 text-slate-500 border border-slate-200 rounded-full px-2 py-0.5">{plan.workItem.name}</span>
+                                        </div>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* ── ROW 2: COMPACT KPI CARDS ── */}
             <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
                 {/* Produksi Hari Ini */}
                 <Card className="relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-700 border-none text-white shadow-md">
@@ -226,7 +299,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 </div>
             )}
 
-            {/* ── ROW 2: CHARTS + MUTU ── */}
+            {/* ── ROW 4: CHARTS + MUTU ── */}
+
             <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
                 {/* Trend Chart (2/3) */}
                 <Card className="lg:col-span-2 border shadow-sm bg-white overflow-hidden">
@@ -477,6 +551,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     </CardContent>
                 </Card>
             </div>
+
         </div>
     )
 }

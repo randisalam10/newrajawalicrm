@@ -14,7 +14,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -34,14 +34,16 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Utama",
             items: [
                 { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
+                { title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock },
             ]
         },
         {
             title: "Operasional & Transaksi",
             items: [
                 { title: "Input Produksi", url: "/admin/produksi", icon: Factory },
-                { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
                 { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
+                { title: "Data Customer", url: "/admin/customer", icon: HardHat },
+                { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
                 { title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory },
             ]
         },
@@ -58,7 +60,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
             items: [
                 { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
                 { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
-                { title: "Data Customer", url: "/admin/customer", icon: HardHat },
                 { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
                 { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
                 ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
