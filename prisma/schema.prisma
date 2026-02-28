@@ -44,6 +44,18 @@ enum MaterialType {
   Pasir
 }
 
+enum AggregateSourceType {
+  Internal // Quarry sendiri
+  External // Pembelian dari luar
+}
+
+enum AggregateType {
+  SplitHalfOne  // Batu Split 1/2
+  SplitTwoThree // Batu Split 2/3
+  Pasir         // Pasir
+  Other         // Lainnya
+}
+
 enum InvoiceStatus {
   DRAFT
   ISSUED
@@ -100,18 +112,19 @@ model Employee {
 }
 
 model Location {
-  id                String                  @id @default(uuid())
-  name              String                  @unique
-  employees         Employee[]
-  vehicles          Vehicle[]
-  customers         Customer[]
-  workItems         WorkItem[]
-  concreteQualities ConcreteQuality[]
-  transactions      ProductionTransaction[]
-  materialIncomings MaterialIncoming[]
-  retaseSetting     RetaseSetting?
-  invoices          Invoice[]
-  concretePlans     ConcretePlan[]
+  id                  String                @id @default(uuid())
+  name                String                @unique
+  employees           Employee[]
+  vehicles            Vehicle[]
+  customers           Customer[]
+  workItems           WorkItem[]
+  concreteQualities   ConcreteQuality[]
+  transactions        ProductionTransaction[]
+  materialIncomings   MaterialIncoming[]
+  aggregateIncomings  AggregateIncoming[]
+  retaseSetting       RetaseSetting?
+  invoices            Invoice[]
+  concretePlans       ConcretePlan[]
 }
 
 model Vehicle {
@@ -224,6 +237,22 @@ model MaterialIncoming {
   delivery_note String
   location      Location     @relation(fields: [locationId], references: [id])
   locationId    String
+}
+
+model AggregateIncoming {
+  id             String              @id @default(uuid())
+  date           DateTime
+  no_bon         String              // No Bon / Surat Jalan
+  driver_name    String              // Nama Sopir
+  plate_number   String              // Plat Nomor Kendaraan
+  volume_cubic   Float               // Jumlah dalam m³
+  aggregate_type AggregateType
+  source_type    AggregateSourceType
+  supplier       String?             // Nama supplier (jika External)
+  notes          String?
+  location       Location            @relation(fields: [locationId], references: [id])
+  locationId     String
+  createdAt      DateTime            @default(now())
 }
 
 model Retase {

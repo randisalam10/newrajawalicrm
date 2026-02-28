@@ -8,7 +8,7 @@ set -e
 
 APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="v1.0.7"
+IMAGE_TAG="v1.0.8"
 ENV_FILE=".env.production"
 PORT=3000
 
@@ -49,6 +49,13 @@ docker run --rm \
     --env-file $ENV_FILE \
     $IMAGE_NAME:$IMAGE_TAG \
     sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
+
+# Resolve the new aggregate incoming migration if database already has table (safe fallback)
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    $IMAGE_NAME:$IMAGE_TAG \
+    sh -c "npx prisma migrate resolve --applied 20260228170000_add_aggregate_incoming 2>/dev/null || true"
 
 docker run --rm \
     --network host \

@@ -14,7 +14,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -44,6 +44,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
                 { title: "Data Customer", url: "/admin/customer", icon: HardHat },
                 { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
+                { title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers },
                 { title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory },
             ]
         },
