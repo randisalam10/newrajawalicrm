@@ -1,5 +1,7 @@
 "use client"
 
+import { useState, useEffect } from "react"
+
 import {
     Sidebar,
     SidebarContent,
@@ -28,10 +30,12 @@ type AppSidebarProps = {
 
 export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
+    const [openGroup, setOpenGroup] = useState<string | null>("Operasional & Transaksi")
 
     const navGroups = [
         {
-            title: "Utama",
+            title: "Monitoring",
+            defaultOpen: true,
             items: [
                 { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
                 { title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock },
@@ -39,6 +43,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         },
         {
             title: "Operasional & Transaksi",
+            defaultOpen: true,
             items: [
                 { title: "Input Produksi", url: "/admin/produksi", icon: Factory },
                 { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
@@ -50,12 +55,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
         },
         {
             title: "Laporan & Tagihan",
+            defaultOpen: false,
             items: [
+                ...(user?.role === "SuperAdminBP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
                 { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
             ]
         },
         {
             title: "Data Master",
+            defaultOpen: false,
             items: [
                 { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
                 { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
@@ -67,13 +75,29 @@ export function AppSidebar({ user }: AppSidebarProps) {
         ...(user?.role === "SuperAdminBP" ? [
             {
                 title: "Administrator & Akses",
+                defaultOpen: false,
                 items: [
-                    { title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt },
                     { title: "Manajemen User", url: "/admin/users", icon: ShieldCheck },
                 ]
             }
         ] : []),
     ]
+
+    useEffect(() => {
+        // Jangan auto-expand grup Monitoring jika sedang di halaman utama Dashboard,
+        // biarkan default state ("Operasional & Transaksi") yang terbuka.
+        if (pathname === '/admin') return
+
+        const activeGroup = navGroups.find(group =>
+            group.items.some(
+                item => pathname === item.url || (pathname.startsWith(item.url + '/') && item.url !== '/admin')
+            )
+        )
+        if (activeGroup) {
+            setOpenGroup(activeGroup.title)
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pathname])
 
     return (
         <Sidebar variant="inset">
@@ -86,43 +110,52 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 </div>
             </SidebarHeader>
 
-            <SidebarContent className="px-3 pt-4 gap-4">
-                {navGroups.map((group) => (
-                    <Collapsible key={group.title} defaultOpen={true} className="group/collapsible">
-                        <SidebarGroup className="p-0">
-                            <CollapsibleTrigger asChild>
-                                <SidebarGroupLabel className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2 cursor-pointer hover:text-primary transition-colors">
-                                    {group.title}
-                                    <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                                </SidebarGroupLabel>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                                <SidebarGroupContent>
-                                    <SidebarMenu>
-                                        {group.items.map((item) => {
-                                            const isActive = pathname === item.url || (pathname.startsWith(item.url + '/') && item.url !== '/admin')
-                                            return (
-                                                <SidebarMenuItem key={item.title}>
-                                                    <SidebarMenuButton
-                                                        asChild
-                                                        isActive={isActive}
-                                                        tooltip={item.title}
-                                                        className="rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100/50 data-[active=true]:shadow-sm transition-all"
-                                                    >
-                                                        <Link href={item.url}>
-                                                            <item.icon className="!h-4 !w-4 opacity-70" />
-                                                            <span>{item.title}</span>
-                                                        </Link>
-                                                    </SidebarMenuButton>
-                                                </SidebarMenuItem>
-                                            )
-                                        })}
-                                    </SidebarMenu>
-                                </SidebarGroupContent>
-                            </CollapsibleContent>
-                        </SidebarGroup>
-                    </Collapsible>
-                ))}
+            <SidebarContent className="px-3 pt-4 gap-1">
+                {navGroups.map((group) => {
+                    const isOpen = openGroup === group.title
+
+                    return (
+                        <Collapsible
+                            key={group.title}
+                            open={isOpen}
+                            onOpenChange={(open) => setOpenGroup(open ? group.title : null)}
+                            className="group/collapsible"
+                        >
+                            <SidebarGroup className="p-0">
+                                <CollapsibleTrigger asChild>
+                                    <SidebarGroupLabel className="flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 px-2 cursor-pointer hover:text-primary transition-colors">
+                                        {group.title}
+                                        <ChevronRight className="h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                                    </SidebarGroupLabel>
+                                </CollapsibleTrigger>
+                                <CollapsibleContent>
+                                    <SidebarGroupContent>
+                                        <SidebarMenu>
+                                            {group.items.map((item) => {
+                                                const isActive = pathname === item.url || (pathname.startsWith(item.url + '/') && item.url !== '/admin')
+                                                return (
+                                                    <SidebarMenuItem key={item.title}>
+                                                        <SidebarMenuButton
+                                                            asChild
+                                                            isActive={isActive}
+                                                            tooltip={item.title}
+                                                            className="rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100/50 data-[active=true]:shadow-sm transition-all"
+                                                        >
+                                                            <Link href={item.url}>
+                                                                <item.icon className="!h-4 !w-4 opacity-70" />
+                                                                <span>{item.title}</span>
+                                                            </Link>
+                                                        </SidebarMenuButton>
+                                                    </SidebarMenuItem>
+                                                )
+                                            })}
+                                        </SidebarMenu>
+                                    </SidebarGroupContent>
+                                </CollapsibleContent>
+                            </SidebarGroup>
+                        </Collapsible>
+                    )
+                })}
             </SidebarContent>
 
             <SidebarSeparator className="mx-4" />
