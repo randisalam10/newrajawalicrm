@@ -164,6 +164,7 @@ export function UserForm({
                                         </SelectItem>
                                         <SelectItem value="AdminBP">Admin Cabang</SelectItem>
                                         <SelectItem value="OperatorBP">Operator / Kasir</SelectItem>
+                                        <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />
@@ -179,6 +180,6 @@ export function UserForm({
                     </Button>
                 </div>
             </form>
-        </Form>
+        </Form >
     )
 }
