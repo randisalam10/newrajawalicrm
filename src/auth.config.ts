@@ -17,7 +17,9 @@ export const authConfig = {
                 if (isLoggedIn) {
                     // Redirect based on role
                     const userRole = auth.user.role as string
-                    const target = ['AdminBP', 'SuperAdminBP'].includes(userRole) ? '/admin' : '/operator'
+                    let target = '/operator'
+                    if (['AdminBP', 'SuperAdminBP'].includes(userRole)) target = '/admin'
+                    else if (userRole === 'AdminLogistik') target = '/logistik'
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 return true
@@ -34,17 +36,27 @@ export const authConfig = {
             if (isLoggedIn) {
                 const userRole = auth.user.role
 
+                const isLogistikRoute = nextUrl.pathname.startsWith('/logistik')
+
                 // Root path redirects to appropriate dashboard
                 if (nextUrl.pathname === '/') {
-                    const target = ['AdminBP', 'SuperAdminBP'].includes(userRole) ? '/admin' : '/operator'
+                    let target = '/operator'
+                    if (['AdminBP', 'SuperAdminBP'].includes(userRole as string)) target = '/admin'
+                    else if (userRole === 'AdminLogistik') target = '/logistik'
                     return Response.redirect(new URL(target, nextUrl))
                 }
 
                 if (isAdminRoute && !['AdminBP', 'SuperAdminBP'].includes(userRole as string)) {
-                    return Response.redirect(new URL('/operator', nextUrl))
+                    const target = userRole === 'AdminLogistik' ? '/logistik' : '/operator'
+                    return Response.redirect(new URL(target, nextUrl))
                 }
                 if (isOperatorRoute && userRole !== 'OperatorBP') {
-                    return Response.redirect(new URL('/admin', nextUrl))
+                    const target = userRole === 'AdminLogistik' ? '/logistik' : '/admin'
+                    return Response.redirect(new URL(target, nextUrl))
+                }
+                if (isLogistikRoute && !['AdminBP', 'SuperAdminBP', 'AdminLogistik'].includes(userRole as string)) {
+                    const target = userRole === 'OperatorBP' ? '/operator' : '/admin'
+                    return Response.redirect(new URL(target, nextUrl))
                 }
             }
 
@@ -54,7 +66,7 @@ export const authConfig = {
             if (user) {
                 token.id = user.id
                 token.username = user.username
-                token.role = user.role as "AdminBP" | "OperatorBP" | "SuperAdminBP"
+                token.role = user.role as "AdminBP" | "OperatorBP" | "SuperAdminBP" | "AdminLogistik"
                 token.employeeId = user.employeeId
                 token.locationId = user.locationId
             }
@@ -64,7 +76,7 @@ export const authConfig = {
             if (session.user && token) {
                 session.user.id = token.id
                 session.user.username = token.username as string
-                session.user.role = token.role as "AdminBP" | "OperatorBP" | "SuperAdminBP"
+                session.user.role = token.role as "AdminBP" | "OperatorBP" | "SuperAdminBP" | "AdminLogistik"
                 session.user.employeeId = token.employeeId as string
                 session.user.locationId = token.locationId as string | null
             }

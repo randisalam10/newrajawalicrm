@@ -33,45 +33,47 @@ export function AppSidebar({ user }: AppSidebarProps) {
     const [openGroup, setOpenGroup] = useState<string | null>("Operasional & Transaksi")
 
     const navGroups = [
-        {
-            title: "Monitoring",
-            defaultOpen: true,
-            items: [
-                { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
-                { title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock },
-            ]
-        },
-        {
-            title: "Operasional & Transaksi",
-            defaultOpen: true,
-            items: [
-                { title: "Input Produksi", url: "/admin/produksi", icon: Factory },
-                { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
-                { title: "Data Customer", url: "/admin/customer", icon: HardHat },
-                { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
-                { title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers },
-                { title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory },
-            ]
-        },
-        {
-            title: "Laporan & Tagihan",
-            defaultOpen: false,
-            items: [
-                ...(user?.role === "SuperAdminBP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
-                { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
-            ]
-        },
-        {
-            title: "Data Master",
-            defaultOpen: false,
-            items: [
-                { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
-                { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
-                { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
-                { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
-                ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
-            ]
-        },
+        ...(user?.role !== "AdminLogistik" ? [
+            {
+                title: "Monitoring",
+                defaultOpen: true,
+                items: [
+                    { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
+                    { title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock },
+                ]
+            },
+            {
+                title: "Operasional & Transaksi",
+                defaultOpen: true,
+                items: [
+                    { title: "Input Produksi", url: "/admin/produksi", icon: Factory },
+                    { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
+                    { title: "Data Customer", url: "/admin/customer", icon: HardHat },
+                    { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
+                    { title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers },
+                    { title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory },
+                ]
+            },
+            {
+                title: "Laporan & Tagihan",
+                defaultOpen: false,
+                items: [
+                    ...(user?.role === "SuperAdminBP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                    { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
+                ]
+            },
+            {
+                title: "Data Master",
+                defaultOpen: false,
+                items: [
+                    { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
+                    { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
+                    { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
+                    { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
+                    ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
+                ]
+            }
+        ] : []),
         ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" ? [
             {
                 title: "Logistik & Peralatan",

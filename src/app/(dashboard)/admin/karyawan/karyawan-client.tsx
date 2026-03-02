@@ -33,6 +33,7 @@ import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-tab
 export function KaryawanClient({ initialData, locations, userRole }: { initialData: any[], locations: any[], userRole: string }) {
     const [open, setOpen] = useState(false)
     const [editData, setEditData] = useState<any>(null)
+    const [selectedPosition, setSelectedPosition] = useState<string>("Sopir")
 
     async function handleSubmit(formData: FormData) {
         let result;
@@ -62,11 +63,13 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
             ...data,
             join_date: new Date(data.join_date).toISOString().split('T')[0]
         })
+        setSelectedPosition(data.position)
         setOpen(true)
     }
 
     const handleOpenNew = () => {
         setEditData(null)
+        setSelectedPosition("Sopir")
         setOpen(true)
     }
 
@@ -92,7 +95,7 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="position">Posisi *</Label>
-                                    <Select name="position" defaultValue={editData?.position || "Sopir"}>
+                                    <Select name="position" value={selectedPosition} onValueChange={setSelectedPosition}>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Pilih Posisi" />
                                         </SelectTrigger>
@@ -100,6 +103,7 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
                                             <SelectItem value="Sopir">Sopir</SelectItem>
                                             <SelectItem value="Operator">Operator</SelectItem>
                                             <SelectItem value="Admin">Admin</SelectItem>
+                                            <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -122,7 +126,7 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
                                 <Input id="join_date" name="join_date" type="date" defaultValue={editData?.join_date} required />
                             </div>
 
-                            {userRole === "SuperAdminBP" && (
+                            {userRole === "SuperAdminBP" && selectedPosition !== "AdminLogistik" && (
                                 <div className="space-y-2">
                                     <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
                                     <Select name="locationId" defaultValue={editData?.locationId || ""}>

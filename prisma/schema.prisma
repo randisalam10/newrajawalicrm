@@ -11,12 +11,14 @@ enum Role {
   SuperAdminBP
   AdminBP
   OperatorBP
+  AdminLogistik
 }
 
 enum Position {
   Sopir
   Operator
   Admin
+  AdminLogistik
 }
 
 enum EmployeeStatus {

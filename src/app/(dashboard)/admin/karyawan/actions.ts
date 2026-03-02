@@ -8,7 +8,7 @@ import { z } from "zod"
 const karyawanSchema = z.object({
     id: z.string().optional(),
     name: z.string().min(1, "Nama Karyawan required"),
-    position: z.enum(["Sopir", "Operator", "Admin"]),
+    position: z.enum(["Sopir", "Operator", "Admin", "AdminLogistik"]),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     join_date: z.string().min(1, "Tanggal Bergabung required"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
@@ -41,9 +41,11 @@ export async function createKaryawan(formData: FormData) {
 
     try {
         const isSuperAdmin = session.user.role === 'SuperAdminBP'
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
+        const finalLocationId = (isSuperAdmin && parsed.data.locationId) ? parsed.data.locationId : session.user.locationId
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId && parsed.data.position !== "AdminLogistik") {
+            return { success: false, error: "Location is required for this position." }
+        }
 
         const { locationId, ...insertData } = parsed.data
 
@@ -53,7 +55,7 @@ export async function createKaryawan(formData: FormData) {
                 position: insertData.position,
                 status: insertData.status,
                 join_date: new Date(insertData.join_date),
-                locationId: finalLocationId
+                locationId: parsed.data.position === "AdminLogistik" ? null : finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")
@@ -85,9 +87,11 @@ export async function updateKaryawan(id: string, formData: FormData) {
             return { success: false, error: "Unauthorized" }
         }
 
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+        const finalLocationId = (isSuperAdmin && parsed.data.locationId) ? parsed.data.locationId : existing?.locationId
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId && parsed.data.position !== "AdminLogistik") {
+            return { success: false, error: "Location is required for this position." }
+        }
 
         const { locationId, ...updateData } = parsed.data
 
@@ -98,7 +102,7 @@ export async function updateKaryawan(id: string, formData: FormData) {
                 position: updateData.position,
                 status: updateData.status,
                 join_date: new Date(updateData.join_date),
-                locationId: finalLocationId
+                locationId: parsed.data.position === "AdminLogistik" ? null : finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")

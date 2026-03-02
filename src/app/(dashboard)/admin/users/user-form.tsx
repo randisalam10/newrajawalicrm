@@ -28,7 +28,7 @@ const userSchema = z.object({
     id: z.string().optional(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().optional(),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
