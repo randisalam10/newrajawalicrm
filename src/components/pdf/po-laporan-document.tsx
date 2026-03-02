@@ -1,5 +1,5 @@
 "use client"
-// PDF Template: Laporan Bulanan PO
+// PDF Template: Laporan Bulanan PO — Compact version
 
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer"
 import { shared, COLORS } from "./pdf-shared"
@@ -38,101 +38,104 @@ export type LaporanPOData = {
 }
 
 const fmt = (n: number) => "Rp " + n.toLocaleString("id-ID")
-const fmtDate = (d: Date | string) => format(new Date(d), "dd/MM/yyyy", { locale: idLocale })
+const fmtDate = (d: Date | string) => format(new Date(d), "dd/MM/yy", { locale: idLocale })
 
 const s = StyleSheet.create({
     headerBox: {
         backgroundColor: COLORS.primary,
-        padding: "10 14",
-        marginBottom: 12,
-        borderRadius: 4,
+        padding: "6 10",
+        marginBottom: 6,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
     },
     headerTitle: {
-        fontSize: 14,
+        fontSize: 11,
         fontFamily: "Helvetica-Bold",
         color: COLORS.white,
         textTransform: "uppercase",
-        letterSpacing: 1,
+        letterSpacing: 0.5,
     },
     headerSub: {
-        fontSize: 9,
+        fontSize: 7,
         color: "#93c5fd",
-        marginTop: 3,
+        marginTop: 1,
     },
-    filterRow: {
+    headerRight: {
+        alignItems: "flex-end",
+    },
+    metaRow: {
         flexDirection: "row",
+        gap: 5,
+        marginBottom: 6,
         flexWrap: "wrap",
-        gap: 6,
-        marginBottom: 10,
     },
-    filterBadge: {
+    badge: {
         backgroundColor: COLORS.primaryLight,
         color: COLORS.primary,
-        fontSize: 7,
+        fontSize: 6.5,
         fontFamily: "Helvetica-Bold",
-        padding: "2 7",
-        borderRadius: 3,
+        padding: "1.5 5",
+        borderRadius: 2,
     },
     summaryRow: {
         flexDirection: "row",
-        gap: 10,
-        marginBottom: 14,
+        gap: 6,
+        marginBottom: 8,
     },
     summaryBox: {
         flex: 1,
         backgroundColor: COLORS.bg,
-        borderRadius: 4,
-        padding: "7 10",
-        borderLeftWidth: 3,
+        borderRadius: 3,
+        padding: "4 7",
+        borderLeftWidth: 2,
         borderLeftColor: COLORS.accent,
     },
-    summaryLabel: { fontSize: 7, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 0.5 },
-    summaryValue: { fontSize: 13, fontFamily: "Helvetica-Bold", color: COLORS.primary, marginTop: 2 },
+    summaryLabel: { fontSize: 6, color: COLORS.muted, textTransform: "uppercase", letterSpacing: 0.4 },
+    summaryValue: { fontSize: 10, fontFamily: "Helvetica-Bold", color: COLORS.primary, marginTop: 1 },
     groupHeader: {
         flexDirection: "row",
         justifyContent: "space-between",
-        backgroundColor: COLORS.primary,
-        padding: "5 8",
-        marginTop: 10,
+        backgroundColor: "#334155",
+        padding: "3.5 7",
+        marginTop: 7,
     },
-    groupLabel: { fontSize: 9, fontFamily: "Helvetica-Bold", color: COLORS.white },
-    groupSubtotal: { fontSize: 9, fontFamily: "Helvetica-Bold", color: "#86efac" },
+    groupLabel: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: COLORS.white },
+    groupSubtotal: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: "#86efac" },
     tableHead: {
         flexDirection: "row",
         backgroundColor: "#e8edf5",
-        borderBottomWidth: 1,
+        borderBottomWidth: 0.5,
         borderBottomColor: COLORS.border,
     },
-    th: { fontSize: 7, fontFamily: "Helvetica-Bold", color: COLORS.muted, padding: "3 5", textTransform: "uppercase" },
-    tr: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: COLORS.border },
-    trAlt: { flexDirection: "row", borderBottomWidth: 0.5, borderBottomColor: COLORS.border, backgroundColor: COLORS.bg },
-    td: { fontSize: 7.5, color: COLORS.dark, padding: "3 5" },
-    tdMono: { fontSize: 7, fontFamily: "Helvetica-Bold", color: COLORS.dark, padding: "3 5" },
+    th: { fontSize: 6, fontFamily: "Helvetica-Bold", color: COLORS.muted, padding: "2.5 4", textTransform: "uppercase" },
+    tr: { flexDirection: "row", borderBottomWidth: 0.3, borderBottomColor: COLORS.border },
+    trAlt: { flexDirection: "row", borderBottomWidth: 0.3, borderBottomColor: COLORS.border, backgroundColor: "#f8fafc" },
+    td: { fontSize: 7, color: COLORS.dark, padding: "2 4" },
+    tdMono: { fontSize: 6.5, fontFamily: "Helvetica-Bold", color: COLORS.dark, padding: "2 4" },
     subtotalRow: {
         flexDirection: "row",
         backgroundColor: "#f1f5f9",
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-        padding: "3 5",
+        borderTopWidth: 0.8,
+        borderTopColor: "#cbd5e1",
+        padding: "2.5 4",
     },
-    subtotalLabel: { fontSize: 8, fontFamily: "Helvetica-Bold", color: COLORS.muted, textTransform: "uppercase" },
-    subtotalValue: { fontSize: 8, fontFamily: "Helvetica-Bold", color: COLORS.primary },
     grandTotalBox: {
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
         backgroundColor: COLORS.primary,
-        padding: "8 12",
-        marginTop: 14,
-        borderRadius: 4,
+        padding: "5 10",
+        marginTop: 8,
+        borderRadius: 3,
     },
-    grandLabel: { fontSize: 10, fontFamily: "Helvetica-Bold", color: "#93c5fd" },
-    grandValue: { fontSize: 14, fontFamily: "Helvetica-Bold", color: "#86efac" },
-    footer: { fontSize: 7, color: COLORS.muted, marginTop: 6 },
+    grandLabel: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#93c5fd" },
+    grandValue: { fontSize: 12, fontFamily: "Helvetica-Bold", color: "#86efac" },
+    footer: { fontSize: 6, color: COLORS.muted, marginTop: 4 },
 })
 
 const statusLabel: Record<string, string> = {
-    DRAFT: "Draft", APPROVED: "Disetujui", CANCELLED: "Dibatalkan"
+    DRAFT: "Draft", APPROVED: "Disetujui", CANCELLED: "Batal"
 }
 
 export function LaporanPODocument({ data }: { data: LaporanPOData }) {
@@ -140,76 +143,74 @@ export function LaporanPODocument({ data }: { data: LaporanPOData }) {
 
     return (
         <Document title={`Laporan PO ${MONTHS[data.bulan]} ${data.tahun}`}>
-            <Page size="A4" orientation="landscape" style={[shared.page, { paddingTop: 30, paddingHorizontal: 36 }]}>
+            <Page size="A4" orientation="landscape"
+                style={[shared.page, { paddingTop: 20, paddingBottom: 30, paddingHorizontal: 28 }]}>
 
                 {/* Header */}
-                <View style={s.headerBox}>
-                    <Text style={s.headerTitle}>Rekapitulasi Purchase Order Bulanan</Text>
-                    <Text style={s.headerSub}>
-                        Periode: {MONTHS[data.bulan]} {data.tahun}
-                        {data.filterPerusahaan ? `  |  Perusahaan: ${data.filterPerusahaan}` : ""}
-                        {data.filterKategori ? `  |  Kategori: ${data.filterKategori}` : ""}
-                    </Text>
-                </View>
-
-                {/* Filter Badges */}
-                <View style={s.filterRow}>
-                    <Text style={s.filterBadge}>Grup: {data.grupBy === "kategori" ? "Per Kategori" : "Per Perusahaan"}</Text>
-                    <Text style={s.filterBadge}>Status: {data.filterStatus || "Semua"}</Text>
-                    <Text style={s.filterBadge}>Total PO: {data.totalPO}</Text>
-                </View>
-
-                {/* Summary */}
-                <View style={s.summaryRow}>
-                    <View style={s.summaryBox}>
-                        <Text style={s.summaryLabel}>Total PO</Text>
-                        <Text style={s.summaryValue}>{data.totalPO}</Text>
+                <View style={s.headerBox} fixed>
+                    <View>
+                        <Text style={s.headerTitle}>Rekapitulasi Purchase Order Bulanan</Text>
+                        <Text style={s.headerSub}>
+                            Periode: {MONTHS[data.bulan]} {data.tahun}
+                            {data.filterPerusahaan ? `  ·  ${data.filterPerusahaan}` : ""}
+                            {data.filterKategori ? `  ·  ${data.filterKategori}` : ""}
+                        </Text>
                     </View>
-                    <View style={[s.summaryBox, { borderLeftColor: "#059669" }]}>
-                        <Text style={s.summaryLabel}>Grand Total</Text>
-                        <Text style={[s.summaryValue, { color: "#059669" }]}>{fmt(data.grandTotal)}</Text>
-                    </View>
-                    <View style={[s.summaryBox, { borderLeftColor: "#7c3aed" }]}>
-                        <Text style={s.summaryLabel}>Rata-rata per PO</Text>
-                        <Text style={[s.summaryValue, { color: "#7c3aed", fontSize: 11 }]}>
-                            {data.totalPO > 0 ? fmt(Math.round(data.grandTotal / data.totalPO)) : "-"}
+                    <View style={s.headerRight}>
+                        <Text style={[s.headerSub, { fontSize: 7, color: COLORS.white, fontFamily: "Helvetica-Bold" }]}>
+                            {data.totalPO} PO  |  {fmt(data.grandTotal)}
+                        </Text>
+                        <Text style={s.headerSub}>
+                            {format(new Date(data.generatedAt), "dd MMM yyyy, HH:mm", { locale: idLocale })}
                         </Text>
                     </View>
                 </View>
 
+                {/* Filter Badges + Summary on same row */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                    <Text style={s.badge}>Grup: {data.grupBy === "kategori" ? "Per Kategori" : "Per Perusahaan"}</Text>
+                    {data.filterStatus && <Text style={s.badge}>Status: {data.filterStatus}</Text>}
+                    <View style={{ flex: 1 }} />
+                    <Text style={{ fontSize: 6.5, color: COLORS.muted }}>
+                        Rata-rata / PO: {data.totalPO > 0 ? fmt(Math.round(data.grandTotal / data.totalPO)) : "-"}
+                    </Text>
+                </View>
+
                 {/* Groups */}
                 {data.groups.map((group, gi) => (
-                    <View key={gi} wrap={false}>
+                    <View key={gi}>
                         {/* Group Header */}
                         <View style={s.groupHeader}>
                             <Text style={s.groupLabel}>{group.label}</Text>
-                            <Text style={s.groupSubtotal}>{group.items.length} PO  |  {fmt(group.subtotal)}</Text>
+                            <Text style={s.groupSubtotal}>
+                                {group.items.length} PO  ·  {fmt(group.subtotal)}
+                            </Text>
                         </View>
 
                         {/* Table Head */}
                         <View style={s.tableHead}>
-                            <Text style={[s.th, { flex: 0.4 }]}>No</Text>
+                            <Text style={[s.th, { width: 16 }]}>#</Text>
                             <Text style={[s.th, { flex: 1.8 }]}>Nomor PO</Text>
-                            <Text style={[s.th, { flex: 1 }]}>Tanggal</Text>
+                            <Text style={[s.th, { width: 46 }]}>Tanggal</Text>
                             <Text style={[s.th, { flex: 2 }]}>{isDynCol}</Text>
-                            <Text style={[s.th, { flex: 1.5 }]}>Supplier</Text>
-                            <Text style={[s.th, { flex: 0.8 }]}>Metode</Text>
-                            <Text style={[s.th, { flex: 0.8 }]}>Status</Text>
+                            <Text style={[s.th, { flex: 1.6 }]}>Supplier</Text>
+                            <Text style={[s.th, { width: 38 }]}>Metode</Text>
+                            <Text style={[s.th, { width: 42 }]}>Status</Text>
                             <Text style={[s.th, { flex: 1.2, textAlign: "right" }]}>Total</Text>
                         </View>
 
                         {/* Rows */}
                         {group.items.map((po, idx) => (
                             <View key={idx} style={idx % 2 === 0 ? s.tr : s.trAlt}>
-                                <Text style={[s.td, { flex: 0.4, color: COLORS.muted }]}>{idx + 1}</Text>
+                                <Text style={[s.td, { width: 16, color: COLORS.muted, fontSize: 6 }]}>{idx + 1}</Text>
                                 <Text style={[s.tdMono, { flex: 1.8 }]}>{po.po_number}</Text>
-                                <Text style={[s.td, { flex: 1 }]}>{fmtDate(po.tanggal_terbit)}</Text>
+                                <Text style={[s.td, { width: 46 }]}>{fmtDate(po.tanggal_terbit)}</Text>
                                 <Text style={[s.td, { flex: 2 }]}>
                                     {data.grupBy === "kategori" ? po.perusahaan_nama : po.kategori_nama}
                                 </Text>
-                                <Text style={[s.td, { flex: 1.5 }]}>{po.supplier_nama}</Text>
-                                <Text style={[s.td, { flex: 0.8 }]}>{po.metode_pembayaran}</Text>
-                                <Text style={[s.td, { flex: 0.8 }]}>{statusLabel[po.status] || po.status}</Text>
+                                <Text style={[s.td, { flex: 1.6 }]}>{po.supplier_nama}</Text>
+                                <Text style={[s.td, { width: 38 }]}>{po.metode_pembayaran}</Text>
+                                <Text style={[s.td, { width: 42 }]}>{statusLabel[po.status] || po.status}</Text>
                                 <Text style={[s.td, { flex: 1.2, textAlign: "right", fontFamily: "Helvetica-Bold", color: "#15803d" }]}>
                                     {fmt(po.total)}
                                 </Text>
@@ -218,11 +219,8 @@ export function LaporanPODocument({ data }: { data: LaporanPOData }) {
 
                         {/* Subtotal */}
                         <View style={s.subtotalRow}>
-                            <Text style={[s.subtotalLabel, { flex: 7.7, textAlign: "right" }]}>
-                                Subtotal {group.label}
-                            </Text>
-                            <Text style={[s.subtotalValue, { flex: 1.2, textAlign: "right" }]}>
-                                {fmt(group.subtotal)}
+                            <Text style={{ flex: 1, fontSize: 7, fontFamily: "Helvetica-Bold", color: COLORS.muted, textAlign: "right" }}>
+                                Subtotal: {fmt(group.subtotal)}
                             </Text>
                         </View>
                     </View>
@@ -233,11 +231,6 @@ export function LaporanPODocument({ data }: { data: LaporanPOData }) {
                     <Text style={s.grandLabel}>GRAND TOTAL — {data.totalPO} Purchase Order</Text>
                     <Text style={s.grandValue}>{fmt(data.grandTotal)}</Text>
                 </View>
-
-                {/* Footer */}
-                <Text style={s.footer}>
-                    Dicetak: {format(new Date(data.generatedAt), "dd MMMM yyyy, HH:mm", { locale: idLocale })} WIT
-                </Text>
 
                 <Text style={shared.pageNumber} render={({ pageNumber, totalPages }) =>
                     `Halaman ${pageNumber} dari ${totalPages}`
