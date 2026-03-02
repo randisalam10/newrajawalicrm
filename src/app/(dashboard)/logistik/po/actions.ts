@@ -163,3 +163,73 @@ export async function getPoFormData() {
     ])
     return { companies, categories, suppliers, items }
 }
+
+// For PO Report tab: get filtered & grouped PO data
+export async function getPOReport(filters: {
+    bulan: number      // 1-12
+    tahun: number
+    grupBy: "kategori" | "perusahaan"
+    categoryId?: string
+    companyGroupId?: string
+    status?: "DRAFT" | "APPROVED" | "CANCELLED" | "ALL"
+}) {
+    const startDate = new Date(filters.tahun, filters.bulan - 1, 1)
+    const endDate = new Date(filters.tahun, filters.bulan, 0, 23, 59, 59)
+
+    const where: any = {
+        tanggal_terbit: { gte: startDate, lte: endDate },
+    }
+    if (filters.categoryId) where.categoryId = filters.categoryId
+    if (filters.companyGroupId) where.companyGroupId = filters.companyGroupId
+    if (filters.status && filters.status !== "ALL") where.status = filters.status
+
+    const orders = await prisma.purchaseOrder.findMany({
+        where,
+        include: {
+            companyGroup: true,
+            category: true,
+            items: true,
+        },
+        orderBy: [{ companyGroupId: 'asc' }, { categoryId: 'asc' }, { tanggal_terbit: 'asc' }]
+    })
+
+    // Fetch supplier names via raw (supplierId not a relation object)
+    const supplierIds = [...new Set(orders.map(o => o.supplierId))]
+    const suppliers = supplierIds.length > 0
+        ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+        : []
+    const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
+
+    const enriched = orders.map(po => ({
+        id: po.id,
+        po_number: po.po_number,
+        tanggal_terbit: po.tanggal_terbit,
+        status: po.status,
+        metode_pembayaran: po.metode_pembayaran,
+        supplier_nama: supplierMap[po.supplierId] || "-",
+        perusahaan_nama: po.companyGroup?.name || "-",
+        perusahaan_id: po.companyGroupId,
+        kategori_nama: po.category?.name || "-",
+        kategori_id: po.categoryId,
+        total: po.items.reduce((acc, item) => acc + item.subtotal, 0),
+    }))
+
+    // Group
+    const groups: Record<string, { label: string; items: typeof enriched; subtotal: number }> = {}
+    for (const po of enriched) {
+        const key = filters.grupBy === "kategori" ? po.kategori_id : po.perusahaan_id
+        const label = filters.grupBy === "kategori" ? po.kategori_nama : po.perusahaan_nama
+        if (!groups[key]) groups[key] = { label, items: [], subtotal: 0 }
+        groups[key].items.push(po)
+        groups[key].subtotal += po.total
+    }
+
+    const grandTotal = enriched.reduce((acc, po) => acc + po.total, 0)
+
+    return {
+        groups: Object.values(groups),
+        grandTotal,
+        totalPO: enriched.length,
+        filters,
+    }
+}
