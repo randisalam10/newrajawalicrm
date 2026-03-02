@@ -14,7 +14,8 @@ import { id as idLocale } from "date-fns/locale"
 type ReportRow = {
     id: string
     date: Date | string
-    project?: { name?: string; customer?: { customer_name?: string } }
+    qualityId: string
+    project?: { name?: string; customer?: { customer_name?: string }; prices?: any[] }
     concreteQuality?: { name?: string }
     volume_cubic?: number
     cumulative_volume?: number
@@ -74,7 +75,10 @@ export function RetaseLaporanClient({
     }
 
     const totalVolume = rows?.reduce((acc, r) => acc + (r.volume_cubic || 0), 0) || 0
-    const totalRetase = rows?.reduce((acc, r) => acc + (r.retase?.income_amount || 0), 0) || 0
+    const totalRetase = rows?.reduce((acc, r) => {
+        const pprice = r.project?.prices?.find((p: any) => p.qualityId === r.qualityId)
+        return acc + (pprice ? pprice.price * (r.volume_cubic || 0) : 0)
+    }, 0) || 0
 
     return (
         <div className="space-y-5 p-4">
@@ -153,7 +157,7 @@ export function RetaseLaporanClient({
                         </div>
                         <div className="w-px h-8 bg-blue-200" />
                         <div>
-                            <p className="text-xs text-blue-500 font-semibold uppercase tracking-wide">Total Retase</p>
+                            <p className="text-xs text-blue-500 font-semibold uppercase tracking-wide">Total Pendapatan</p>
                             <p className="font-bold text-green-700 text-lg">{fmt(totalRetase)}</p>
                         </div>
                     </div>
@@ -170,8 +174,8 @@ export function RetaseLaporanClient({
                                     <th className="py-2 px-3 text-left text-xs font-semibold">Vol (M³)</th>
                                     <th className="py-2 px-3 text-left text-xs font-semibold">Sopir / Kend</th>
                                     <th className="py-2 px-3 text-left text-xs font-semibold">KM</th>
-                                    <th className="py-2 px-3 text-left text-xs font-semibold">Kalkulasi</th>
-                                    <th className="py-2 px-3 text-right text-xs font-semibold">Retase</th>
+                                    <th className="py-2 px-3 text-left text-xs font-semibold">Kalkulasi Pendapatan</th>
+                                    <th className="py-2 px-3 text-right text-xs font-semibold">Total</th>
                                     {userRole === "SuperAdminBP" && <th className="py-2 px-3 text-left text-xs font-semibold">Cabang</th>}
                                 </tr>
                             </thead>
@@ -192,16 +196,24 @@ export function RetaseLaporanClient({
                                         </td>
                                         <td className="py-2 px-3 text-xs text-slate-600">{r.retase?.calculated_distance ?? "-"}</td>
                                         <td className="py-2 px-3 text-xs text-slate-500">
-                                            {r.retase?.price_per_cubic_km != null ? (
-                                                <span className="font-mono text-[11px]">
-                                                    {(r.retase.volume ?? r.volume_cubic ?? 0).toFixed(2)}
-                                                    {" × "}{r.retase.calculated_distance}
-                                                    {" × "}{r.retase.price_per_cubic_km.toLocaleString("id-ID")}
-                                                </span>
-                                            ) : <span className="text-slate-300">-</span>}
+                                            {(() => {
+                                                const pprice = r.project?.prices?.find((p: any) => p.qualityId === r.qualityId)
+                                                if (pprice) {
+                                                    return (
+                                                        <span className="font-mono text-[11px]">
+                                                            {(r.volume_cubic ?? 0).toFixed(2)}
+                                                            {" × "}{fmt(pprice.price)}
+                                                        </span>
+                                                    )
+                                                }
+                                                return <span className="text-slate-300">-</span>
+                                            })()}
                                         </td>
                                         <td className="py-2 px-3 text-right text-xs font-semibold text-green-700">
-                                            {r.retase?.income_amount != null ? fmt(r.retase.income_amount) : "-"}
+                                            {(() => {
+                                                const pprice = r.project?.prices?.find((p: any) => p.qualityId === r.qualityId)
+                                                return pprice ? fmt(pprice.price * (r.volume_cubic ?? 0)) : "-"
+                                            })()}
                                         </td>
                                         {userRole === "SuperAdminBP" && <td className="py-2 px-3 text-xs text-slate-600">{r.location?.name || "-"}</td>}
                                     </tr>

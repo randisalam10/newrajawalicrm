@@ -113,7 +113,7 @@ export async function getTransactionReport(filters: {
             driver: true,
             location: true,
             retase: true,
-            project: { include: { customer: true } },
+            project: { include: { customer: true, prices: true } },
             vehicle: true,
             concreteQuality: true,
         },

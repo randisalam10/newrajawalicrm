@@ -16,9 +16,8 @@ export type RetaseLaporanRow = {
     sopir: string
     kendaraan: string
     km: number | null
-    income_amount: number | null
-    price_per_cubic_km: number | null
-    volume_rts: number | null
+    concrete_price: number | null
+    concrete_income: number | null
     cabang: string
 }
 
@@ -29,7 +28,7 @@ export type RetaseLaporanData = {
     filterCabang?: string
     rows: RetaseLaporanRow[]
     totalVolume: number
-    totalRetase: number
+    totalIncome: number
     pembuat: string
     generatedAt: string
 }
@@ -96,7 +95,7 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     </View>
                     <View style={{ alignItems: "flex-end" }}>
                         <Text style={[s.headerSub, { color: COLORS.white, fontFamily: "Helvetica-Bold" }]}>
-                            {data.rows.length} SJ  |  {data.totalVolume.toFixed(2)} M³  |  {fmt(data.totalRetase)}
+                            {data.rows.length} SJ  |  {data.totalVolume.toFixed(2)} M³  |  {fmt(data.totalIncome)}
                         </Text>
                         <Text style={s.headerSub}>
                             {format(new Date(data.generatedAt), "dd MMM yyyy, HH:mm", { locale: idLocale })}
@@ -111,7 +110,7 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     {data.filterCabang && <Text style={s.badge}>Cabang: {data.filterCabang}</Text>}
                     <View style={{ flex: 1 }} />
                     <Text style={{ fontSize: 6.5, color: COLORS.muted }}>
-                        Rata-rata retase: {data.rows.length > 0 ? fmt(Math.round(data.totalRetase / data.rows.length)) : "-"} / SJ
+                        Rata-rata pendapatan: {data.rows.length > 0 ? fmt(Math.round(data.totalIncome / data.rows.length)) : "-"} / SJ
                     </Text>
                 </View>
 
@@ -126,8 +125,8 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     <Text style={[s.th, { flex: 1.2 }]}>Sopir</Text>
                     <Text style={[s.th, { width: 48 }]}>Kendaraan</Text>
                     <Text style={[s.th, { width: 26 }]}>KM</Text>
-                    <Text style={[s.th, { flex: 1.5 }]}>Rincian (Vol×KM×Harga)</Text>
-                    <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Retase</Text>
+                    <Text style={[s.th, { flex: 1.5 }]}>Kalkulasi Harga Beton</Text>
+                    <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Total</Text>
                     {hasCabang && <Text style={[s.th, { width: 45 }]}>Cabang</Text>}
                 </View>
 
@@ -143,12 +142,12 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                         <Text style={[s.td, { width: 48, fontSize: 6 }]}>{r.kendaraan}</Text>
                         <Text style={[s.td, { width: 26 }]}>{r.km ?? "-"}</Text>
                         <Text style={[s.td, { flex: 1.5, fontSize: 6, color: COLORS.muted }]}>
-                            {r.price_per_cubic_km != null
-                                ? `${(r.volume_rts ?? r.volume_cubic).toFixed(2)} × ${r.km} × ${r.price_per_cubic_km.toLocaleString("id-ID")}`
+                            {r.concrete_price != null
+                                ? `${r.volume_cubic.toFixed(2)} × ${fmt(r.concrete_price)}`
                                 : "-"}
                         </Text>
                         <Text style={[s.td, { flex: 1, textAlign: "right", fontFamily: "Helvetica-Bold", color: "#15803d" }]}>
-                            {r.income_amount != null ? fmt(r.income_amount) : "-"}
+                            {r.concrete_income != null ? fmt(r.concrete_income) : "-"}
                         </Text>
                         {hasCabang && <Text style={[s.td, { width: 45, fontSize: 6 }]}>{r.cabang}</Text>}
                     </View>
@@ -166,16 +165,16 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     <Text style={[s.tdTotal, { width: 48 }]} />
                     <Text style={[s.tdTotal, { width: 26 }]} />
                     <Text style={[s.tdTotal, { flex: 1.5 }]} />
-                    <Text style={[s.tdTotal, { flex: 1, textAlign: "right", color: "#86efac" }]}>{fmt(data.totalRetase)}</Text>
+                    <Text style={[s.tdTotal, { flex: 1, textAlign: "right", color: "#86efac" }]}>{fmt(data.totalIncome)}</Text>
                     {hasCabang && <Text style={[s.tdTotal, { width: 45 }]} />}
                 </View>
 
                 {/* Grand Total */}
                 <View style={s.grandTotalBox}>
                     <Text style={s.grandLabel}>
-                        GRAND TOTAL  ·  {data.rows.length} Surat Jalan  ·  {data.totalVolume.toFixed(2)} M³
+                        GRAND TOTAL PENDAPATAN  ·  {data.rows.length} Surat Jalan  ·  {data.totalVolume.toFixed(2)} M³
                     </Text>
-                    <Text style={s.grandValue}>{fmt(data.totalRetase)}</Text>
+                    <Text style={s.grandValue}>{fmt(data.totalIncome)}</Text>
                 </View>
 
                 {/* TTD */}

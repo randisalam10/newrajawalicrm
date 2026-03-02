@@ -26,7 +26,10 @@ export default async function PrintRetaseLaporanPage({
     ])
 
     const totalVolume = report.rows.reduce((acc: number, r: any) => acc + (r.volume_cubic || 0), 0)
-    const totalRetase = report.rows.reduce((acc: number, r: any) => acc + (r.retase?.income_amount || 0), 0)
+    const totalIncome = report.rows.reduce((acc: number, r: any) => {
+        const pprice = r.project?.prices?.find((p: any) => p.qualityId === r.qualityId)
+        return acc + (pprice ? pprice.price * (r.volume_cubic || 0) : 0)
+    }, 0)
 
     const serialized = {
         dateFrom,
@@ -36,22 +39,24 @@ export default async function PrintRetaseLaporanPage({
         pembuat: params.pembuat || report.pembuat,
         generatedAt: new Date().toISOString(),
         totalVolume,
-        totalRetase,
-        rows: report.rows.map((r: any) => ({
-            id: r.id,
-            date: r.date instanceof Date ? r.date.toISOString() : r.date,
-            customer_name: r.project?.customer?.customer_name || "-",
-            project_name: r.project?.name || "-",
-            mutu: r.concreteQuality?.name || "-",
-            volume_cubic: r.volume_cubic || 0,
-            sopir: r.driver?.name || "-",
-            kendaraan: `${r.vehicle?.code || ""} (${r.vehicle?.plate_number || "-"})`,
-            km: r.retase?.calculated_distance ?? null,
-            income_amount: r.retase?.income_amount ?? null,
-            price_per_cubic_km: r.retase?.price_per_cubic_km ?? null,
-            volume_rts: r.retase?.volume ?? null,
-            cabang: r.location?.name || "-",
-        }))
+        totalIncome,
+        rows: report.rows.map((r: any) => {
+            const pprice = r.project?.prices?.find((p: any) => p.qualityId === r.qualityId)
+            return {
+                id: r.id,
+                date: r.date instanceof Date ? r.date.toISOString() : r.date,
+                customer_name: r.project?.customer?.customer_name || "-",
+                project_name: r.project?.name || "-",
+                mutu: r.concreteQuality?.name || "-",
+                volume_cubic: r.volume_cubic || 0,
+                sopir: r.driver?.name || "-",
+                kendaraan: `${r.vehicle?.code || ""} (${r.vehicle?.plate_number || "-"})`,
+                km: r.retase?.calculated_distance ?? null,
+                concrete_price: pprice ? pprice.price : null,
+                concrete_income: pprice ? pprice.price * (r.volume_cubic || 0) : null,
+                cabang: r.location?.name || "-",
+            }
+        })
     }
 
     return <RetaseLaporanPrintClient data={serialized} />
