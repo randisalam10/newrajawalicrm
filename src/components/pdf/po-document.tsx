@@ -267,18 +267,6 @@ export function PODocument({ po }: { po: POData }) {
                     </View>
                 </View>
 
-                {/* ── TOTAL BOX ──────────────────────────────────────────────────── */}
-                <View style={s.totalBox}>
-                    <View style={s.totalRow}>
-                        <Text style={s.totalLabel}>Total Barang</Text>
-                        <Text style={s.totalValue}>{fmt(totalBarang)}</Text>
-                    </View>
-                    <View style={s.totalRowFinal}>
-                        <Text style={s.totalLabel}>TOTAL PESANAN</Text>
-                        <Text style={s.totalValueBold}>{fmt(totalBarang)}</Text>
-                    </View>
-                </View>
-
                 {/* ── CATATAN ────────────────────────────────────────────────────── */}
                 {po.catatan && (
                     <View style={s.noteBox}>
@@ -286,23 +274,8 @@ export function PODocument({ po }: { po: POData }) {
                     </View>
                 )}
 
-                <View style={s.noteBox}>
-                    <Text style={s.noteText}>
-                        Harap kirimkan barang sesuai spesifikasi di atas. Konfirmasi penerimaan PO ini
-                        dianggap sebagai persetujuan terhadap seluruh ketentuan yang tertera.
-                    </Text>
-                </View>
-
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Menyetujui,</Text>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pimpinan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Pimpinan Perusahaan
-                        </Text>
-                    </View>
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Dibuat oleh,</Text>
                         <View style={shared.signLine} />
@@ -317,6 +290,14 @@ export function PODocument({ po }: { po: POData }) {
                         <Text style={shared.signName}>{po.kepala_peralatan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
                             Kepala Peralatan
+                        </Text>
+                    </View>
+                    <View style={shared.signBox}>
+                        <Text style={shared.signLabel}>Menyetujui,</Text>
+                        <View style={shared.signLine} />
+                        <Text style={shared.signName}>{po.pimpinan}</Text>
+                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                            Pimpinan Perusahaan
                         </Text>
                     </View>
                 </View>
