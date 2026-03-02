@@ -49,7 +49,7 @@ export function POReportClient({
     const now = new Date()
     const [bulan, setBulan] = useState(String(now.getMonth() + 1))
     const [tahun, setTahun] = useState(String(now.getFullYear()))
-    const [grupBy, setGrupBy] = useState<"kategori" | "perusahaan">("kategori")
+    const [grupBy, setGrupBy] = useState<"kategori" | "perusahaan" | "metode_pembayaran">("kategori")
     const [categoryId, setCategoryId] = useState("")
     const [companyGroupId, setCompanyGroupId] = useState("")
     const [status, setStatus] = useState("ALL")
@@ -102,7 +102,11 @@ export function POReportClient({
                         <div className="space-y-1.5">
                             <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Grup Berdasarkan</Label>
                             <Combobox
-                                options={[{ value: "kategori", label: "Kategori" }, { value: "perusahaan", label: "Perusahaan" }]}
+                                options={[
+                                    { value: "kategori", label: "Kategori" },
+                                    { value: "perusahaan", label: "Perusahaan" },
+                                    { value: "metode_pembayaran", label: "Metode Pembayaran" },
+                                ]}
                                 value={grupBy}
                                 onChange={v => setGrupBy(v as any)}
                                 placeholder="Grup..."
@@ -199,8 +203,14 @@ export function POReportClient({
                                         {grupBy === "perusahaan" && (
                                             <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Kategori</th>
                                         )}
+                                        {grupBy === "metode_pembayaran" && (
+                                            <>
+                                                <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Perusahaan</th>
+                                                <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Kategori</th>
+                                            </>
+                                        )}
+                                        <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Proyek</th>
                                         <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Supplier</th>
-                                        <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Metode</th>
                                         <th className="py-2 px-3 text-left text-xs font-semibold text-slate-500">Status</th>
                                         <th className="py-2 px-3 text-right text-xs font-semibold text-slate-500">Total</th>
                                     </tr>
@@ -221,6 +231,15 @@ export function POReportClient({
                                                     </span>
                                                 </td>
                                             )}
+                                            {grupBy === "metode_pembayaran" && (
+                                                <>
+                                                    <td className="py-2 px-3 text-xs text-slate-700">{po.perusahaan_nama}</td>
+                                                    <td className="py-2 px-3 text-xs">
+                                                        <span className="inline-flex items-center rounded bg-orange-50 px-1.5 py-0.5 text-xs font-medium text-orange-700">{po.kategori_nama}</span>
+                                                    </td>
+                                                </>
+                                            )}
+                                            <td className="py-2 px-3 text-xs text-slate-500 italic">{(po as any).proyek_nama || "-"}</td>
                                             <td className="py-2 px-3 text-xs text-slate-700">{po.supplier_nama}</td>
                                             <td className="py-2 px-3 text-xs text-slate-600">{po.metode_pembayaran}</td>
                                             <td className="py-2 px-3">

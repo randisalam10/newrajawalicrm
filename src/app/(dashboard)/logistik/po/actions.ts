@@ -168,11 +168,12 @@ export async function getPoFormData() {
 export async function getPOReport(filters: {
     bulan: number      // 1-12
     tahun: number
-    grupBy: "kategori" | "perusahaan"
+    grupBy: "kategori" | "perusahaan" | "metode_pembayaran"
     categoryId?: string
     companyGroupId?: string
     status?: "DRAFT" | "APPROVED" | "CANCELLED" | "ALL"
 }) {
+    const session = await auth()
     const startDate = new Date(filters.tahun, filters.bulan - 1, 1)
     const endDate = new Date(filters.tahun, filters.bulan, 0, 23, 59, 59)
 
@@ -193,12 +194,25 @@ export async function getPOReport(filters: {
         orderBy: [{ companyGroupId: 'asc' }, { categoryId: 'asc' }, { tanggal_terbit: 'asc' }]
     })
 
-    // Fetch supplier names via raw (supplierId not a relation object)
+    // Fetch supplier names
     const supplierIds = [...new Set(orders.map(o => o.supplierId))]
     const suppliers = supplierIds.length > 0
         ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
         : []
     const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
+
+    // Fetch project names via raw SQL
+    const orderIds = orders.map(o => o.id)
+    const rawProjects = orderIds.length > 0
+        ? await prisma.$queryRaw<{ id: string; companyProjectId: string | null }[]>`
+            SELECT id, "companyProjectId" FROM "PurchaseOrder" WHERE id = ANY(${orderIds}::text[])`
+        : []
+    const projectIds = [...new Set(rawProjects.map(r => r.companyProjectId).filter(Boolean))] as string[]
+    const projects = projectIds.length > 0
+        ? await prisma.poCompanyProject.findMany({ where: { id: { in: projectIds } } })
+        : []
+    const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
+    const poProjectMap = Object.fromEntries(rawProjects.map(r => [r.id, r.companyProjectId ? projectMap[r.companyProjectId] || null : null]))
 
     const enriched = orders.map(po => ({
         id: po.id,
@@ -207,18 +221,26 @@ export async function getPOReport(filters: {
         status: po.status,
         metode_pembayaran: po.metode_pembayaran,
         supplier_nama: supplierMap[po.supplierId] || "-",
-        perusahaan_nama: po.companyGroup?.name || "-",
+        perusahaan_nama: (po as any).companyGroup?.name || "-",
         perusahaan_id: po.companyGroupId,
-        kategori_nama: po.category?.name || "-",
+        kategori_nama: (po as any).category?.name || "-",
         kategori_id: po.categoryId,
-        total: po.items.reduce((acc, item) => acc + item.subtotal, 0),
+        proyek_nama: poProjectMap[po.id] || null,
+        total: (po as any).items?.reduce((acc: number, item: any) => acc + item.subtotal, 0) || 0,
     }))
 
     // Group
     const groups: Record<string, { label: string; items: typeof enriched; subtotal: number }> = {}
     for (const po of enriched) {
-        const key = filters.grupBy === "kategori" ? po.kategori_id : po.perusahaan_id
-        const label = filters.grupBy === "kategori" ? po.kategori_nama : po.perusahaan_nama
+        let key: string
+        let label: string
+        if (filters.grupBy === "kategori") {
+            key = po.kategori_id; label = po.kategori_nama
+        } else if (filters.grupBy === "perusahaan") {
+            key = po.perusahaan_id; label = po.perusahaan_nama
+        } else {
+            key = po.metode_pembayaran; label = po.metode_pembayaran === "CASH" ? "CASH" : "KREDIT"
+        }
         if (!groups[key]) groups[key] = { label, items: [], subtotal: 0 }
         groups[key].items.push(po)
         groups[key].subtotal += po.total
@@ -231,5 +253,7 @@ export async function getPOReport(filters: {
         grandTotal,
         totalPO: enriched.length,
         filters,
+        pembuat: session?.user?.username || "-",
     }
 }
+
