@@ -277,11 +277,11 @@ export function PODocument({ po }: { po: POData }) {
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
                     <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Dibuat oleh,</Text>
+                        <Text style={shared.signLabel}>Menyetujui,</Text>
                         <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pembuat}</Text>
+                        <Text style={shared.signName}>{po.pimpinan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Admin
+                            Pimpinan Perusahaan
                         </Text>
                     </View>
                     <View style={shared.signBox}>
@@ -293,11 +293,11 @@ export function PODocument({ po }: { po: POData }) {
                         </Text>
                     </View>
                     <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Menyetujui,</Text>
+                        <Text style={shared.signLabel}>Dibuat oleh,</Text>
                         <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pimpinan}</Text>
+                        <Text style={shared.signName}>{po.pembuat}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Pimpinan Perusahaan
+                            Admin
                         </Text>
                     </View>
                 </View>
