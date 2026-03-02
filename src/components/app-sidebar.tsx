@@ -72,19 +72,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
             ]
         },
-        // ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" ? [
-        //     {
-        //         title: "Logistik & Peralatan",
-        //         defaultOpen: false,
-        //         items: [
-        //             { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
-        //             { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
-        //             { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
-        //             { title: "Master Supplier", url: "/logistik/supplier", icon: Store },
-        //             { title: "Master Barang", url: "/logistik/master-barang", icon: Box },
-        //         ]
-        //     }
-        // ] : []),
+        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" ? [
+            {
+                title: "Logistik & Peralatan",
+                defaultOpen: false,
+                items: [
+                    { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
+                    { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
+                    { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
+                    { title: "Master Supplier", url: "/logistik/supplier", icon: Store },
+                    { title: "Master Barang", url: "/logistik/master-barang", icon: Box },
+                ]
+            }
+        ] : []),
         ...(user?.role === "SuperAdminBP" ? [
             {
                 title: "Administrator & Akses",
