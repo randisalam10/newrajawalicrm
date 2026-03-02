@@ -77,6 +77,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 title: "Logistik & Peralatan",
                 defaultOpen: false,
                 items: [
+                    { title: "Dashboard", url: "/logistik", icon: LayoutDashboard },
                     { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
                     { title: "Daftar PO", url: "/logistik/po", icon: FileText },
                     { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
@@ -97,15 +98,25 @@ export function AppSidebar({ user }: AppSidebarProps) {
         ] : []),
     ]
 
+    let bestMatchUrl = ""
+    for (const group of navGroups) {
+        for (const item of group.items) {
+            if (pathname === item.url || pathname.startsWith(item.url + '/')) {
+                if (item.url !== '/admin' && item.url.length > bestMatchUrl.length) {
+                    bestMatchUrl = item.url
+                }
+            }
+        }
+    }
+    if (pathname === '/admin') bestMatchUrl = '/admin'
+
     useEffect(() => {
         // Jangan auto-expand grup Monitoring jika sedang di halaman utama Dashboard,
         // biarkan default state ("Operasional & Transaksi") yang terbuka.
         if (pathname === '/admin') return
 
         const activeGroup = navGroups.find(group =>
-            group.items.some(
-                item => pathname === item.url || (pathname.startsWith(item.url + '/') && item.url !== '/admin')
-            )
+            group.items.some(item => item.url === bestMatchUrl)
         )
         if (activeGroup) {
             setOpenGroup(activeGroup.title)
@@ -146,7 +157,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                                     <SidebarGroupContent>
                                         <SidebarMenu>
                                             {group.items.map((item) => {
-                                                const isActive = pathname === item.url || (pathname.startsWith(item.url + '/') && item.url !== '/admin')
+                                                const isActive = item.url === bestMatchUrl
                                                 return (
                                                     <SidebarMenuItem key={item.title}>
                                                         <SidebarMenuButton
