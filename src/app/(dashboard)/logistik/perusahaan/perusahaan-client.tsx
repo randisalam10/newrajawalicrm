@@ -219,6 +219,11 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                                 <Label>Nama Pimpinan (Default)</Label>
                                 <Input name="pimpinan_default" defaultValue={editData?.pimpinan_default} placeholder="JEFFRY FERDY S.T." />
                             </div>
+                            <div className="space-y-2 col-span-2">
+                                <Label>Nama Kepala Peralatan (Default)</Label>
+                                <Input name="kepala_peralatan_default" defaultValue={editData?.kepala_peralatan_default} placeholder="RUSLAN" />
+                                <p className="text-[10px] text-slate-500">Akan otomatis terisi di form Buat PO</p>
+                            </div>
                         </div>
                         <Button type="submit" className="w-full mt-4">Simpan</Button>
                     </form>

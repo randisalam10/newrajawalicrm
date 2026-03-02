@@ -11,6 +11,7 @@ const companySchema = z.object({
     address: z.string().optional(),
     email: z.string().email().optional().or(z.literal("")),
     pimpinan_default: z.string().optional(),
+    kepala_peralatan_default: z.string().optional(),
 })
 
 const projectSchema = z.object({

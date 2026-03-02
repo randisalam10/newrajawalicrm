@@ -46,7 +46,10 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
         setSelectedCompanyId(val)
         setSelectedProjectId("")
         const comp = companies.find((c: any) => c.id === val)
-        if (comp) setPimpinan(comp.pimpinan_default || "")
+        if (comp) {
+            setPimpinan(comp.pimpinan_default || "")
+            setKepalaPeralatan(comp.kepala_peralatan_default || "")
+        }
     }
 
     const handleAddItem = () => {
@@ -197,8 +200,8 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                         </div>
                         <div className="space-y-2">
                             <Label>Nama Kepala Peralatan / Pemesan *</Label>
-                            <Input value={kepalaPeralatan} onChange={e => setKepalaPeralatan(e.target.value)} placeholder="Contoh: MUSRAN" required />
-                            <p className="text-xs text-slate-500">Tampil di TTD paling kanan</p>
+                            <Input value={kepalaPeralatan} onChange={e => setKepalaPeralatan(e.target.value)} placeholder="Diisi otomatis dari data perusahaan" required />
+                            <p className="text-xs text-slate-500">Tampil di TTD tengah (Mengajukan)</p>
                         </div>
                         <div className="space-y-2 border-t pt-4">
                             <Label>Nama Pimpinan Perusahaan *</Label>

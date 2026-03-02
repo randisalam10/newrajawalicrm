@@ -50,10 +50,10 @@ enum AggregateSourceType {
 }
 
 enum AggregateType {
-  SplitHalfOne  // Batu Split 1/2
+  SplitHalfOne // Batu Split 1/2
   SplitTwoThree // Batu Split 2/3
-  Pasir         // Pasir
-  Other         // Lainnya
+  Pasir // Pasir
+  Other // Lainnya
 }
 
 enum InvoiceStatus {
@@ -113,22 +113,22 @@ model Employee {
 }
 
 model Location {
-  id                  String                @id @default(uuid())
-  name                String                @unique
-  employees           Employee[]
-  vehicles            Vehicle[]
-  customers           Customer[]            @relation("CustomerOwner") // Changed
-  workItems           WorkItem[]
-  concreteQualities   ConcreteQuality[]
-  transactions        ProductionTransaction[]
-  materialIncomings   MaterialIncoming[]
-  aggregateIncomings  AggregateIncoming[]
-  retaseSetting       RetaseSetting?
-  invoices            Invoice[]
-  concretePlans       ConcretePlan[]
-  sharedCustomers     Customer[]            @relation("CustomerSharedLocations") // Added
-  sharedProjects      Project[]             @relation("ProjectSharedLocations") // Added
-  purchaseOrders      PurchaseOrder[]
+  id                 String                  @id @default(uuid())
+  name               String                  @unique
+  employees          Employee[]
+  vehicles           Vehicle[]
+  customers          Customer[]              @relation("CustomerOwner") // Changed
+  workItems          WorkItem[]
+  concreteQualities  ConcreteQuality[]
+  transactions       ProductionTransaction[]
+  materialIncomings  MaterialIncoming[]
+  aggregateIncomings AggregateIncoming[]
+  retaseSetting      RetaseSetting?
+  invoices           Invoice[]
+  concretePlans      ConcretePlan[]
+  sharedCustomers    Customer[]              @relation("CustomerSharedLocations") // Added
+  sharedProjects     Project[]               @relation("ProjectSharedLocations") // Added
+  purchaseOrders     PurchaseOrder[]
 }
 
 model Vehicle {
@@ -142,17 +142,17 @@ model Vehicle {
 }
 
 model Customer {
-  id               String                  @id @default(uuid())
-  customer_name    String
-  address          String                  // Billing Address / Alamat Tagih
-  status           CustomerStatus          @default(Active)
+  id            String         @id @default(uuid())
+  customer_name String
+  address       String // Billing Address / Alamat Tagih
+  status        CustomerStatus @default(Active)
 
-  projects         Project[]               // 1 Customer punya banyak Project
-  
-  location         Location                @relation("CustomerOwner", fields: [locationId], references: [id]) // Changed
-  locationId       String
+  projects Project[] // 1 Customer punya banyak Project
 
-  sharedLocations  Location[]              @relation("CustomerSharedLocations") // Added
+  location   Location @relation("CustomerOwner", fields: [locationId], references: [id]) // Changed
+  locationId String
+
+  sharedLocations Location[] @relation("CustomerSharedLocations") // Added
 }
 
 model Project {
@@ -165,13 +165,13 @@ model Project {
   customer   Customer @relation(fields: [customerId], references: [id])
   customerId String
 
-  prices         ProjectPrice[] // Daftar harga per mutu untuk proyek ini
-  transactions   ProductionTransaction[] // Transaksi sekarang mengarah ke Proyek
-  invoices       Invoice[]
-  deposits       Deposit[]
-  concretePlans  ConcretePlan[]
+  prices        ProjectPrice[] // Daftar harga per mutu untuk proyek ini
+  transactions  ProductionTransaction[] // Transaksi sekarang mengarah ke Proyek
+  invoices      Invoice[]
+  deposits      Deposit[]
+  concretePlans ConcretePlan[]
 
-  sharedLocations Location[]             @relation("ProjectSharedLocations")
+  sharedLocations Location[] @relation("ProjectSharedLocations")
 }
 
 model ProjectPrice {
@@ -250,13 +250,13 @@ model MaterialIncoming {
 model AggregateIncoming {
   id             String              @id @default(uuid())
   date           DateTime
-  no_bon         String              // No Bon / Surat Jalan
-  driver_name    String              // Nama Sopir
-  plate_number   String              // Plat Nomor Kendaraan
-  volume_cubic   Float               // Jumlah dalam m³
+  no_bon         String // No Bon / Surat Jalan
+  driver_name    String // Nama Sopir
+  plate_number   String // Plat Nomor Kendaraan
+  volume_cubic   Float // Jumlah dalam m³
   aggregate_type AggregateType
   source_type    AggregateSourceType
-  supplier       String?             // Nama supplier (jika External)
+  supplier       String? // Nama supplier (jika External)
   notes          String?
   location       Location            @relation(fields: [locationId], references: [id])
   locationId     String
@@ -313,8 +313,8 @@ model Invoice {
   total_amount   Float
   paid_amount    Float         @default(0)
   notes          String?
-  cancel_reason  String?       // Alasan pembatalan invoice
-  cancelled_at   DateTime?     // Waktu pembatalan
+  cancel_reason  String? // Alasan pembatalan invoice
+  cancelled_at   DateTime? // Waktu pembatalan
   items          InvoiceItem[]
   payments       Payment[]
   billingLogs    BillingLog[]
@@ -345,8 +345,8 @@ model Payment {
   proof_url     String?
   notes         String?
   is_cancelled  Boolean       @default(false) // Soft cancel
-  cancel_reason String?       // Alasan pembatalan
-  cancelled_at  DateTime?     // Waktu pembatalan
+  cancel_reason String? // Alasan pembatalan
+  cancelled_at  DateTime? // Waktu pembatalan
   billingLogs   BillingLog[]
   createdAt     DateTime      @default(now())
 }
@@ -380,15 +380,15 @@ model BillingLog {
 
 model ConcretePlan {
   id              String          @id @default(uuid())
-  date            DateTime        // Tanggal rencana pengecoran
+  date            DateTime // Tanggal rencana pengecoran
   project         Project         @relation(fields: [projectId], references: [id])
   projectId       String
   concreteQuality ConcreteQuality @relation(fields: [qualityId], references: [id])
   qualityId       String
   workItem        WorkItem        @relation(fields: [workItemId], references: [id])
   workItemId      String
-  volume_plan     Float           // Volume rencana (m³)
-  notes           String?         // Catatan tambahan
+  volume_plan     Float // Volume rencana (m³)
+  notes           String? // Catatan tambahan
   status          PlanStatus      @default(Planned)
   location        Location        @relation(fields: [locationId], references: [id])
   locationId      String
@@ -412,11 +412,12 @@ enum PurchaseOrderStatus {
 model PoCompanyGroup {
   id               String             @id @default(uuid())
   name             String
-  kode_cabang      String             // Singkatan untuk nomor PO, e.g. "RPJ"
-  kota             String             // Kota tanda tangan
-  address          String?            // Alamat KOP Surat
+  kode_cabang      String // Singkatan untuk nomor PO, e.g. "RPJ"
+  kota             String // Kota tanda tangan
+  address          String? // Alamat KOP Surat
   email            String?
-  pimpinan_default String?            // Nama pimpinan default
+  pimpinan_default String? // Nama pimpinan default
+  kepala_peralatan_default String? // Nama kepala peralatan default
   projects         PoCompanyProject[]
   purchaseOrders   PurchaseOrder[]
   createdAt        DateTime           @default(now())
@@ -424,21 +425,21 @@ model PoCompanyGroup {
 
 model PoCompanyProject {
   id             String         @id @default(uuid())
-  name           String         // Nama / lokasi proyek
-  kode_proyek    String?        // Kode singkat opsional, e.g. "005"
+  name           String // Nama / lokasi proyek
+  kode_proyek    String? // Kode singkat opsional, e.g. "005"
   companyGroup   PoCompanyGroup @relation(fields: [companyGroupId], references: [id])
   companyGroupId String
   createdAt      DateTime       @default(now())
 }
 
 model PoCategory {
-  id              String          @id @default(uuid())
-  name            String
-  kode_kategori   String          @unique // e.g. "ATK", "SPR", "BBM"
-  require_hm_km   Boolean         @default(false)
-  masterItems     MasterItem[]
-  purchaseOrders  PurchaseOrder[]
-  createdAt       DateTime        @default(now())
+  id             String          @id @default(uuid())
+  name           String
+  kode_kategori  String          @unique // e.g. "ATK", "SPR", "BBM"
+  require_hm_km  Boolean         @default(false)
+  masterItems    MasterItem[]
+  purchaseOrders PurchaseOrder[]
+  createdAt      DateTime        @default(now())
 }
 
 model Supplier {
@@ -451,62 +452,62 @@ model Supplier {
 }
 
 model MasterItem {
-  id           String      @id @default(uuid())
-  kode_barang  String      @unique
-  name         String
-  part_number  String?
-  merk         String?
-  satuan       String      // PCS, SET, LTR, dll
-  harga        Float       // Harga satuan default
-  supplier     Supplier    @relation(fields: [supplierId], references: [id])
-  supplierId   String
-  category     PoCategory  @relation(fields: [categoryId], references: [id])
-  categoryId   String
-  poItems      PoItem[]
-  createdAt    DateTime    @default(now())
+  id          String     @id @default(uuid())
+  kode_barang String     @unique
+  name        String
+  part_number String?
+  merk        String?
+  satuan      String // PCS, SET, LTR, dll
+  harga       Float // Harga satuan default
+  supplier    Supplier   @relation(fields: [supplierId], references: [id])
+  supplierId  String
+  category    PoCategory @relation(fields: [categoryId], references: [id])
+  categoryId  String
+  poItems     PoItem[]
+  createdAt   DateTime   @default(now())
 }
 
 model PurchaseOrder {
-  id                String              @id @default(uuid())
-  po_number         String              @unique // Auto-generated: 001/RPJ/ATK/03/2026
-  tanggal_terbit    DateTime
-  
-  companyGroup      PoCompanyGroup      @relation(fields: [companyGroupId], references: [id])
-  companyGroupId    String
-  companyProjectId  String?             // Opsional, tujuan/lokasi proyek
-  
-  category          PoCategory          @relation(fields: [categoryId], references: [id])
-  categoryId        String
-  
-  supplierId        String
-  
+  id             String   @id @default(uuid())
+  po_number      String   @unique // Auto-generated: 001/RPJ/ATK/03/2026
+  tanggal_terbit DateTime
+
+  companyGroup     PoCompanyGroup @relation(fields: [companyGroupId], references: [id])
+  companyGroupId   String
+  companyProjectId String? // Opsional, tujuan/lokasi proyek
+
+  category   PoCategory @relation(fields: [categoryId], references: [id])
+  categoryId String
+
+  supplierId String
+
   // Tanda tangan
-  pimpinan          String              // Nama pimpinan (bisa di-override dari default)
-  kepala_peralatan  String              // Nama pemesan / kepala peralatan
-  pembuat_admin     String              // Nama admin pembuat
+  pimpinan         String // Nama pimpinan (bisa di-override dari default)
+  kepala_peralatan String // Nama pemesan / kepala peralatan
+  pembuat_admin    String // Nama admin pembuat
 
-  metode_pembayaran PoPaymentMethod     @default(CREDIT)
-  km_hm_kendaraan   String?             // Opsional, untuk kategori SPR
-  
+  metode_pembayaran PoPaymentMethod @default(CREDIT)
+  km_hm_kendaraan   String? // Opsional, untuk kategori SPR
+
   // Terikat cabang (opsional)
-  location          Location?           @relation(fields: [locationId], references: [id])
-  locationId        String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  locationId String?
 
-  status            PurchaseOrderStatus @default(DRAFT)
-  notes             String?
+  status PurchaseOrderStatus @default(DRAFT)
+  notes  String?
 
-  items             PoItem[]
-  createdAt         DateTime            @default(now())
+  items     PoItem[]
+  createdAt DateTime @default(now())
 }
 
 model PoItem {
-  id             String        @id @default(uuid())
-  purchaseOrder  PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   purchaseOrderId String
-  masterItem     MasterItem    @relation(fields: [masterItemId], references: [id])
-  masterItemId   String
-  quantity       Float
-  harga_satuan   Float         // Snapshot harga saat PO dibuat
-  keterangan     String?       // e.g. "Plat DT 8258 RI"
-  subtotal       Float
+  masterItem      MasterItem    @relation(fields: [masterItemId], references: [id])
+  masterItemId    String
+  quantity        Float
+  harga_satuan    Float // Snapshot harga saat PO dibuat
+  keterangan      String? // e.g. "Plat DT 8258 RI"
+  subtotal        Float
 }
