@@ -33,7 +33,12 @@ export async function createPoCompany(formData: FormData) {
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
     try {
-        await prisma.poCompanyGroup.create({ data: parsed.data })
+        const { kepala_peralatan_default, ...prismaData } = parsed.data
+        const created = await prisma.poCompanyGroup.create({ data: prismaData })
+        // Simpan kepala_peralatan_default via raw SQL karena Prisma client belum di-regenerate
+        if (kepala_peralatan_default !== undefined) {
+            await prisma.$executeRaw`UPDATE "PoCompanyGroup" SET "kepala_peralatan_default" = ${kepala_peralatan_default} WHERE id = ${created.id}`
+        }
         revalidatePath("/logistik/perusahaan")
         return { success: true }
     } catch (e: any) {
@@ -47,7 +52,10 @@ export async function updatePoCompany(id: string, formData: FormData) {
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
     try {
-        await prisma.poCompanyGroup.update({ where: { id }, data: parsed.data })
+        const { kepala_peralatan_default, ...prismaData } = parsed.data
+        await prisma.poCompanyGroup.update({ where: { id }, data: prismaData })
+        // Simpan kepala_peralatan_default via raw SQL karena Prisma client belum di-regenerate
+        await prisma.$executeRaw`UPDATE "PoCompanyGroup" SET "kepala_peralatan_default" = ${kepala_peralatan_default ?? null} WHERE id = ${id}`
         revalidatePath("/logistik/perusahaan")
         return { success: true }
     } catch (e: any) {
