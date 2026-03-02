@@ -48,6 +48,8 @@ export default async function PrintRetaseLaporanPage({
             kendaraan: `${r.vehicle?.code || ""} (${r.vehicle?.plate_number || "-"})`,
             km: r.retase?.calculated_distance ?? null,
             income_amount: r.retase?.income_amount ?? null,
+            price_per_cubic_km: r.retase?.price_per_cubic_km ?? null,
+            volume_rts: r.retase?.volume ?? null,
             cabang: r.location?.name || "-",
         }))
     }

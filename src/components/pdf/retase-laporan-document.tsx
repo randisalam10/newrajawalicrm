@@ -17,6 +17,8 @@ export type RetaseLaporanRow = {
     kendaraan: string
     km: number | null
     income_amount: number | null
+    price_per_cubic_km: number | null
+    volume_rts: number | null
     cabang: string
 }
 
@@ -124,6 +126,7 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     <Text style={[s.th, { flex: 1.2 }]}>Sopir</Text>
                     <Text style={[s.th, { width: 48 }]}>Kendaraan</Text>
                     <Text style={[s.th, { width: 26 }]}>KM</Text>
+                    <Text style={[s.th, { flex: 1.5 }]}>Rincian (Vol×KM×Harga)</Text>
                     <Text style={[s.th, { flex: 1, textAlign: "right" }]}>Retase</Text>
                     {hasCabang && <Text style={[s.th, { width: 45 }]}>Cabang</Text>}
                 </View>
@@ -139,6 +142,11 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                         <Text style={[s.td, { flex: 1.2 }]}>{r.sopir}</Text>
                         <Text style={[s.td, { width: 48, fontSize: 6 }]}>{r.kendaraan}</Text>
                         <Text style={[s.td, { width: 26 }]}>{r.km ?? "-"}</Text>
+                        <Text style={[s.td, { flex: 1.5, fontSize: 6, color: COLORS.muted }]}>
+                            {r.price_per_cubic_km != null
+                                ? `${(r.volume_rts ?? r.volume_cubic).toFixed(2)} × ${r.km} × ${r.price_per_cubic_km.toLocaleString("id-ID")}`
+                                : "-"}
+                        </Text>
                         <Text style={[s.td, { flex: 1, textAlign: "right", fontFamily: "Helvetica-Bold", color: "#15803d" }]}>
                             {r.income_amount != null ? fmt(r.income_amount) : "-"}
                         </Text>
@@ -157,6 +165,7 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                     <Text style={[s.tdTotal, { flex: 1.2 }]} />
                     <Text style={[s.tdTotal, { width: 48 }]} />
                     <Text style={[s.tdTotal, { width: 26 }]} />
+                    <Text style={[s.tdTotal, { flex: 1.5 }]} />
                     <Text style={[s.tdTotal, { flex: 1, textAlign: "right", color: "#86efac" }]}>{fmt(data.totalRetase)}</Text>
                     {hasCabang && <Text style={[s.tdTotal, { width: 45 }]} />}
                 </View>

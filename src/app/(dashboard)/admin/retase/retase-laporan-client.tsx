@@ -21,7 +21,7 @@ type ReportRow = {
     trip_sequence?: number
     driver?: { name?: string }
     vehicle?: { plate_number?: string; code?: string }
-    retase?: { calculated_distance?: number; income_amount?: number } | null
+    retase?: { calculated_distance?: number; income_amount?: number; price_per_cubic_km?: number; volume?: number } | null
     location?: { name?: string }
 }
 
@@ -170,6 +170,7 @@ export function RetaseLaporanClient({
                                     <th className="py-2 px-3 text-left text-xs font-semibold">Vol (M³)</th>
                                     <th className="py-2 px-3 text-left text-xs font-semibold">Sopir / Kend</th>
                                     <th className="py-2 px-3 text-left text-xs font-semibold">KM</th>
+                                    <th className="py-2 px-3 text-left text-xs font-semibold">Kalkulasi</th>
                                     <th className="py-2 px-3 text-right text-xs font-semibold">Retase</th>
                                     {userRole === "SuperAdminBP" && <th className="py-2 px-3 text-left text-xs font-semibold">Cabang</th>}
                                 </tr>
@@ -190,6 +191,15 @@ export function RetaseLaporanClient({
                                             <div className="text-[11px] text-slate-500">{r.vehicle?.plate_number}</div>
                                         </td>
                                         <td className="py-2 px-3 text-xs text-slate-600">{r.retase?.calculated_distance ?? "-"}</td>
+                                        <td className="py-2 px-3 text-xs text-slate-500">
+                                            {r.retase?.price_per_cubic_km != null ? (
+                                                <span className="font-mono text-[11px]">
+                                                    {(r.retase.volume ?? r.volume_cubic ?? 0).toFixed(2)}
+                                                    {" × "}{r.retase.calculated_distance}
+                                                    {" × "}{r.retase.price_per_cubic_km.toLocaleString("id-ID")}
+                                                </span>
+                                            ) : <span className="text-slate-300">-</span>}
+                                        </td>
                                         <td className="py-2 px-3 text-right text-xs font-semibold text-green-700">
                                             {r.retase?.income_amount != null ? fmt(r.retase.income_amount) : "-"}
                                         </td>
@@ -203,7 +213,7 @@ export function RetaseLaporanClient({
                                         Grand Total
                                     </td>
                                     <td className="py-2 px-3 text-xs font-bold">{totalVolume.toFixed(2)} M³</td>
-                                    <td colSpan={2} />
+                                    <td colSpan={3} />
                                     <td className="py-2 px-3 text-right text-sm font-bold text-green-300">{fmt(totalRetase)}</td>
                                     {userRole === "SuperAdminBP" && <td />}
                                 </tr>
