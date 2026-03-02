@@ -190,7 +190,7 @@ export function PODocument({ po }: { po: POData }) {
                             />
                         )}
                         <View style={{ flex: 1 }}>
-                            <Text style={shared.companyName}>{po.perusahaan_nama}</Text>
+                            <Text style={[shared.companyName, { fontSize: 13, lineHeight: 1 }]}>{po.perusahaan_nama}</Text>
                             {po.perusahaan_alamat && (
                                 <Text style={shared.companySub}>{po.perusahaan_alamat}</Text>
                             )}
