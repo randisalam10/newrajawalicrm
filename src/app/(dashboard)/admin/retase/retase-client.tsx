@@ -26,19 +26,22 @@ import { format } from "date-fns"
 import { id } from "date-fns/locale"
 import { confirmTransaction, upsertRetaseSetting, deleteConfirmedTransaction } from "./actions"
 import { useToast } from "@/hooks/use-toast"
+import { RetaseLaporanClient } from "./retase-laporan-client"
 
 export function RetaseClient({
     pendingTransactions,
     confirmedTransactions,
     settings,
     locations,
-    userRole
+    userRole,
+    customers,
 }: {
     pendingTransactions: any[],
     confirmedTransactions: any[],
     settings: any[],
     locations: any[],
-    userRole: string
+    userRole: string,
+    customers: any[],
 }) {
     const { toast } = useToast()
     const [isConfirming, setIsConfirming] = useState<string | null>(null)
@@ -138,7 +141,7 @@ export function RetaseClient({
     return (
         <div className="space-y-6">
             <Tabs defaultValue="pending">
-                <TabsList className="grid w-full grid-cols-3 max-w-2xl mb-8">
+                <TabsList className="grid w-full grid-cols-4 max-w-3xl mb-8">
                     <TabsTrigger value="pending" className="flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4" />
                         Konfirmasi Retase ({pendingTransactions.length})
@@ -146,6 +149,10 @@ export function RetaseClient({
                     <TabsTrigger value="confirmed" className="flex items-center gap-2">
                         <Printer className="w-4 h-4" />
                         Surat Jalan & Selesai
+                    </TabsTrigger>
+                    <TabsTrigger value="laporan" className="flex items-center gap-2">
+                        <Settings className="w-4 h-4" />
+                        Laporan
                     </TabsTrigger>
                     <TabsTrigger value="settings" className="flex items-center gap-2">
                         <Settings className="w-4 h-4" />
@@ -426,6 +433,19 @@ export function RetaseClient({
                                     </Table>
                                 )}
                             </SimpleDataTable>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                {/* ── TAB LAPORAN ──────────────────────────────── */}
+                <TabsContent value="laporan">
+                    <Card>
+                        <CardContent className="p-0">
+                            <RetaseLaporanClient
+                                locations={locations}
+                                customers={customers}
+                                userRole={userRole}
+                            />
                         </CardContent>
                     </Card>
                 </TabsContent>

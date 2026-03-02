@@ -1,6 +1,7 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { getTransactions, getRetaseSettings } from "./actions"
+import { getCustomersForReport } from "@/app/(dashboard)/admin/reports/retase/actions"
 import { prisma } from "@/lib/prisma"
 import { RetaseClient } from "./retase-client"
 
@@ -11,9 +12,12 @@ export default async function RetasePage() {
     }
 
     const role = session.user.role
-    const pendingTransactions = await getTransactions("Pending")
-    const confirmedTransactions = await getTransactions("Confirmed")
-    const settings = await getRetaseSettings()
+    const [pendingTransactions, confirmedTransactions, settings, customers] = await Promise.all([
+        getTransactions("Pending"),
+        getTransactions("Confirmed"),
+        getRetaseSettings(),
+        getCustomersForReport(),
+    ])
 
     // Fetch locations for SuperAdmin to set generic pricing
     let locations: any[] = []
@@ -36,6 +40,7 @@ export default async function RetasePage() {
                 settings={settings || []}
                 locations={locations}
                 userRole={role}
+                customers={customers}
             />
         </div>
     )
