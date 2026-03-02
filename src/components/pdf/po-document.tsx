@@ -195,7 +195,7 @@ export function PODocument({ po }: { po: POData }) {
                                 <Text style={shared.companySub}>{po.perusahaan_alamat}</Text>
                             )}
                             {po.perusahaan_telepon && (
-                                <Text style={shared.companySub}>Telp: {po.perusahaan_telepon}</Text>
+                                <Text style={shared.companySub}>Email: {po.perusahaan_telepon}</Text>
                             )}
                         </View>
                     </View>
