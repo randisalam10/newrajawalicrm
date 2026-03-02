@@ -11,7 +11,7 @@ import {
     Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, FolderOpen } from "lucide-react"
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, FolderOpen, Upload, X } from "lucide-react"
 import {
     createPoCompany, updatePoCompany, deletePoCompany,
     createPoCompanyProject, updatePoCompanyProject, deletePoCompanyProject
@@ -22,13 +22,43 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
     const [dialogMode, setDialogMode] = useState<"companyNew" | "companyEdit" | "projectNew" | "projectEdit" | null>(null)
     const [editData, setEditData] = useState<any>(null)
     const [parentCompany, setParentCompany] = useState<any>(null)
+    const [logoPreview, setLogoPreview] = useState<string | null>(null)
+    const [logoUrl, setLogoUrl] = useState<string>("")
+    const [uploadingLogo, setUploadingLogo] = useState(false)
 
     async function handleCompanySubmit(formData: FormData) {
+        // Inject logo_url if uploaded
+        if (logoUrl) formData.set("logo_url", logoUrl)
         const result = dialogMode === "companyEdit"
             ? await updatePoCompany(editData.id, formData)
             : await createPoCompany(formData)
-        if (result.success) { setDialogMode(null); setEditData(null) }
+        if (result.success) { setDialogMode(null); setEditData(null); setLogoPreview(null); setLogoUrl("") }
         else alert("Error: " + JSON.stringify(result.error))
+    }
+
+    async function handleLogoUpload(file: File) {
+        setUploadingLogo(true)
+        try {
+            const fd = new FormData()
+            fd.append("file", file)
+            const res = await fetch("/api/upload/logo", { method: "POST", body: fd })
+            const data = await res.json()
+            if (data.url) {
+                setLogoUrl(data.url)
+                setLogoPreview(data.url)
+            } else {
+                alert(data.error || "Upload gagal")
+            }
+        } finally {
+            setUploadingLogo(false)
+        }
+    }
+
+    function openCompanyDialog(mode: "companyNew" | "companyEdit", data?: any) {
+        setEditData(data || null)
+        setLogoPreview(data?.logo_url || null)
+        setLogoUrl(data?.logo_url || "")
+        setDialogMode(mode)
     }
 
     async function handleProjectSubmit(formData: FormData) {
@@ -44,7 +74,7 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
         <div className="space-y-4 p-4">
             <div className="flex justify-between items-center">
                 <div />
-                <Button onClick={() => { setEditData(null); setDialogMode("companyNew") }}>
+                <Button onClick={() => openCompanyDialog("companyNew")}>
                     <Plus className="w-4 h-4 mr-2" /> Tambah Perusahaan
                 </Button>
             </div>
@@ -103,7 +133,7 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                                             </Button>
                                             <Button
                                                 variant="ghost" size="icon" className="h-8 w-8"
-                                                onClick={() => { setEditData(company); setDialogMode("companyEdit") }}
+                                                onClick={() => openCompanyDialog("companyEdit", company)}
                                             >
                                                 <Pencil className="w-4 h-4 text-slate-500" />
                                             </Button>
@@ -193,6 +223,36 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                         <DialogTitle>{dialogMode === "companyEdit" ? "Edit Perusahaan" : "Tambah Perusahaan Baru"}</DialogTitle>
                     </DialogHeader>
                     <form key={editData?.id || "new"} action={handleCompanySubmit} className="space-y-4 pt-4">
+                        {/* Logo Upload */}
+                        <div className="space-y-2">
+                            <Label>Logo Perusahaan (untuk KOP Surat)</Label>
+                            <div className="flex items-center gap-4">
+                                {logoPreview ? (
+                                    <div className="relative w-24 h-16 border rounded overflow-hidden bg-gray-50 flex items-center justify-center">
+                                        <img src={logoPreview} alt="Logo" className="object-contain max-w-full max-h-full" />
+                                        <button type="button" onClick={() => { setLogoPreview(null); setLogoUrl("") }}
+                                            className="absolute top-0 right-0 bg-red-500 text-white rounded-bl p-0.5">
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="w-24 h-16 border-2 border-dashed rounded flex items-center justify-center text-slate-400 text-xs">No logo</div>
+                                )}
+                                <div>
+                                    <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" id="logo-file-input"
+                                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLogoUpload(f) }}
+                                    />
+                                    <label htmlFor="logo-file-input">
+                                        <Button type="button" variant="outline" size="sm" disabled={uploadingLogo}
+                                            onClick={() => document.getElementById("logo-file-input")?.click()}>
+                                            <Upload className="w-3 h-3 mr-1" />
+                                            {uploadingLogo ? "Mengupload..." : "Pilih File"}
+                                        </Button>
+                                    </label>
+                                    <p className="text-[10px] text-slate-500 mt-1">JPG/PNG/WebP, maks 2MB</p>
+                                </div>
+                            </div>
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2 col-span-2">
                                 <Label>Nama Perusahaan *</Label>
@@ -219,10 +279,14 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                                 <Label>Nama Pimpinan (Default)</Label>
                                 <Input name="pimpinan_default" defaultValue={editData?.pimpinan_default} placeholder="JEFFRY FERDY S.T." />
                             </div>
-                            <div className="space-y-2 col-span-2">
+                            <div className="space-y-2">
                                 <Label>Nama Kepala Peralatan (Default)</Label>
                                 <Input name="kepala_peralatan_default" defaultValue={editData?.kepala_peralatan_default} placeholder="RUSLAN" />
-                                <p className="text-[10px] text-slate-500">Akan otomatis terisi di form Buat PO</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Jabatan Kepala (Default)</Label>
+                                <Input name="jabatan_kepala_default" defaultValue={editData?.jabatan_kepala_default} placeholder="Kepala Peralatan" />
+                                <p className="text-[10px] text-slate-500">Misal: Kepala Peralatan, Kepala Teknik</p>
                             </div>
                         </div>
                         <Button type="submit" className="w-full mt-4">Simpan</Button>

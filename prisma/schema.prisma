@@ -410,17 +410,19 @@ enum PurchaseOrderStatus {
 }
 
 model PoCompanyGroup {
-  id               String             @id @default(uuid())
-  name             String
-  kode_cabang      String // Singkatan untuk nomor PO, e.g. "RPJ"
-  kota             String // Kota tanda tangan
-  address          String? // Alamat KOP Surat
-  email            String?
-  pimpinan_default String? // Nama pimpinan default
+  id                       String             @id @default(uuid())
+  name                     String
+  kode_cabang              String // Singkatan untuk nomor PO, e.g. "RPJ"
+  kota                     String // Kota tanda tangan
+  address                  String? // Alamat KOP Surat
+  email                    String?
+  pimpinan_default         String? // Nama pimpinan default
   kepala_peralatan_default String? // Nama kepala peralatan default
-  projects         PoCompanyProject[]
-  purchaseOrders   PurchaseOrder[]
-  createdAt        DateTime           @default(now())
+  jabatan_kepala_default   String? // Jabatan kepala peralatan, misal: "Kepala Peralatan"
+  logo_url                 String? // Path logo perusahaan untuk KOP surat
+  projects                 PoCompanyProject[]
+  purchaseOrders           PurchaseOrder[]
+  createdAt                DateTime           @default(now())
 }
 
 model PoCompanyProject {
@@ -484,6 +486,7 @@ model PurchaseOrder {
   // Tanda tangan
   pimpinan         String // Nama pimpinan (bisa di-override dari default)
   kepala_peralatan String // Nama pemesan / kepala peralatan
+  jabatan_kepala   String? // Label jabatan kepala peralatan (dinamis)
   pembuat_admin    String // Nama admin pembuat
 
   metode_pembayaran PoPaymentMethod @default(CREDIT)

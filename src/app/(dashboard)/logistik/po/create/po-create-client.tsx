@@ -26,6 +26,7 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
     const [selectedSupplierId, setSelectedSupplierId] = useState("")
     const [pimpinan, setPimpinan] = useState("")
     const [kepalaPeralatan, setKepalaPeralatan] = useState("")
+    const [jabatanKepala, setJabatanKepala] = useState("")
     const [poItems, setPoItems] = useState<any[]>([])
     const [selectedItemId, setSelectedItemId] = useState("")
     const [metodePembayaran, setMetodePembayaran] = useState<PoPaymentMethod>("CREDIT")
@@ -49,6 +50,7 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
         if (comp) {
             setPimpinan(comp.pimpinan_default || "")
             setKepalaPeralatan(comp.kepala_peralatan_default || "")
+            setJabatanKepala(comp.jabatan_kepala_default || "Kepala Peralatan")
         }
     }
 
@@ -84,6 +86,7 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                 supplierId: selectedSupplierId,
                 pimpinan,
                 kepala_peralatan: kepalaPeralatan,
+                jabatan_kepala: jabatanKepala || undefined,
                 metode_pembayaran: metodePembayaran,
                 km_hm_kendaraan: kmHm || undefined,
                 tanggal_terbit: new Date(tanggalTerbit),
@@ -201,6 +204,10 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                         <div className="space-y-2">
                             <Label>Nama Kepala Peralatan / Pemesan *</Label>
                             <Input value={kepalaPeralatan} onChange={e => setKepalaPeralatan(e.target.value)} placeholder="Diisi otomatis dari data perusahaan" required />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Jabatan Kepala Peralatan</Label>
+                            <Input value={jabatanKepala} onChange={e => setJabatanKepala(e.target.value)} placeholder="Kepala Peralatan" />
                             <p className="text-xs text-slate-500">Tampil di TTD tengah (Mengajukan)</p>
                         </div>
                         <div className="space-y-2 border-t pt-4">

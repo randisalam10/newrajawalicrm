@@ -3,7 +3,7 @@
 // Data source: PO data (currently mock — will be connected to DB when PO model is implemented)
 
 import {
-    Document, Page, Text, View, StyleSheet
+    Document, Page, Text, View, StyleSheet, Image
 } from "@react-pdf/renderer"
 import { shared, COLORS } from "./pdf-shared"
 import { format } from "date-fns"
@@ -28,6 +28,7 @@ export type POData = {
     perusahaan_nama: string
     perusahaan_alamat?: string
     perusahaan_telepon?: string
+    perusahaan_logo?: string  // URL absolut logo
     // Tujuan
     proyek_nama: string
     proyek_kode?: string
@@ -43,6 +44,7 @@ export type POData = {
     // Penandatangan
     pimpinan: string
     kepala_peralatan: string
+    jabatan_kepala?: string  // Label jabatan dinamis
     pembuat: string
     // Optional
     catatan?: string | null
@@ -180,14 +182,22 @@ export function PODocument({ po }: { po: POData }) {
 
                 {/* ── KOP SURAT ──────────────────────────────────────────────────── */}
                 <View style={s.kopRow}>
-                    <View style={s.kopLeft}>
-                        <Text style={shared.companyName}>{po.perusahaan_nama}</Text>
-                        {po.perusahaan_alamat && (
-                            <Text style={shared.companySub}>{po.perusahaan_alamat}</Text>
+                    <View style={[s.kopLeft, { flexDirection: "row", alignItems: "flex-start", gap: 10 }]}>
+                        {po.perusahaan_logo && (
+                            <Image
+                                src={po.perusahaan_logo}
+                                style={{ width: 56, height: 56, objectFit: "contain" }}
+                            />
                         )}
-                        {po.perusahaan_telepon && (
-                            <Text style={shared.companySub}>Telp: {po.perusahaan_telepon}</Text>
-                        )}
+                        <View style={{ flex: 1 }}>
+                            <Text style={shared.companyName}>{po.perusahaan_nama}</Text>
+                            {po.perusahaan_alamat && (
+                                <Text style={shared.companySub}>{po.perusahaan_alamat}</Text>
+                            )}
+                            {po.perusahaan_telepon && (
+                                <Text style={shared.companySub}>Telp: {po.perusahaan_telepon}</Text>
+                            )}
+                        </View>
                     </View>
                     <View style={s.kopRight}>
                         <Text style={s.poTitle}>Purchase Order</Text>
@@ -289,7 +299,7 @@ export function PODocument({ po }: { po: POData }) {
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.kepala_peralatan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Kepala Peralatan
+                            {po.jabatan_kepala || "Kepala Peralatan"}
                         </Text>
                     </View>
                     <View style={shared.signBox}>

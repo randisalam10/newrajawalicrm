@@ -21,6 +21,7 @@ const poSchema = z.object({
     supplierId: z.string().min(1, "Supplier wajib dipilih"),
     pimpinan: z.string().min(1, "Pimpinan wajib diisi"),
     kepala_peralatan: z.string().min(1, "Kepala Peralatan wajib diisi"),
+    jabatan_kepala: z.string().optional(),
     metode_pembayaran: z.nativeEnum(PoPaymentMethod).default("CREDIT"),
     km_hm_kendaraan: z.string().optional(),
     tanggal_terbit: z.string().transform(v => new Date(v)),
@@ -78,6 +79,7 @@ export async function createPurchaseOrder(data: {
     supplierId: string
     pimpinan: string
     kepala_peralatan: string
+    jabatan_kepala?: string
     metode_pembayaran: PoPaymentMethod
     km_hm_kendaraan?: string
     tanggal_terbit: Date
@@ -92,9 +94,9 @@ export async function createPurchaseOrder(data: {
     try {
         const po_number = await generatePoNumber(data.companyGroupId, data.categoryId)
 
-        const { items, ...poData } = data
+        const { items, jabatan_kepala, ...poData } = data
 
-        await prisma.purchaseOrder.create({
+        const created = await prisma.purchaseOrder.create({
             data: {
                 ...poData,
                 po_number,
@@ -111,6 +113,11 @@ export async function createPurchaseOrder(data: {
                 }
             }
         })
+
+        // Simpan jabatan_kepala via raw SQL karena Prisma client belum di-regenerate
+        if (jabatan_kepala) {
+            await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
+        }
 
         revalidatePath("/logistik/po")
         revalidatePath("/logistik/po/create")
