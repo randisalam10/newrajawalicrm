@@ -117,7 +117,7 @@ model Location {
   name                String                @unique
   employees           Employee[]
   vehicles            Vehicle[]
-  customers           Customer[]
+  customers           Customer[]            @relation("CustomerOwner") // Changed
   workItems           WorkItem[]
   concreteQualities   ConcreteQuality[]
   transactions        ProductionTransaction[]
@@ -126,6 +126,8 @@ model Location {
   retaseSetting       RetaseSetting?
   invoices            Invoice[]
   concretePlans       ConcretePlan[]
+  sharedCustomers     Customer[]            @relation("CustomerSharedLocations") // Added
+  sharedProjects      Project[]             @relation("ProjectSharedLocations") // Added
 }
 
 model Vehicle {
@@ -146,8 +148,10 @@ model Customer {
 
   projects         Project[]               // 1 Customer punya banyak Project
   
-  location         Location                @relation(fields: [locationId], references: [id])
+  location         Location                @relation("CustomerOwner", fields: [locationId], references: [id]) // Changed
   locationId       String
+
+  sharedLocations  Location[]              @relation("CustomerSharedLocations") // Added
 }
 
 model Project {
@@ -165,6 +169,8 @@ model Project {
   invoices       Invoice[]
   deposits       Deposit[]
   concretePlans  ConcretePlan[]
+
+  sharedLocations Location[]             @relation("ProjectSharedLocations")
 }
 
 model ProjectPrice {

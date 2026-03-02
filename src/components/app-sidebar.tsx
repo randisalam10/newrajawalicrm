@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -72,6 +72,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
             ]
         },
+        // ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" ? [
+        //     {
+        //         title: "Logistik & Peralatan",
+        //         defaultOpen: false,
+        //         items: [
+        //             { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
+        //             { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
+        //             { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
+        //             { title: "Master Supplier", url: "/logistik/supplier", icon: Store },
+        //             { title: "Master Barang", url: "/logistik/master-barang", icon: Box },
+        //         ]
+        //     }
+        // ] : []),
         ...(user?.role === "SuperAdminBP" ? [
             {
                 title: "Administrator & Akses",

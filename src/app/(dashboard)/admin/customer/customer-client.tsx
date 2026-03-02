@@ -51,6 +51,19 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
     const [priceForm, setPriceForm] = useState<{ qualityId: string; price: string }>({ qualityId: "", price: "" })
     const [priceLoading, setPriceLoading] = useState(false)
 
+    // Shared Locations state
+    const [selectedSharedLocs, setSelectedSharedLocs] = useState<string[]>([])
+
+    React.useEffect(() => {
+        if (dialogMode) {
+            setSelectedSharedLocs(editData?.sharedLocations?.map((l: any) => l.id) || [])
+        }
+    }, [dialogMode, editData])
+
+    function toggleSharedLoc(id: string) {
+        setSelectedSharedLocs(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+    }
+
     // Search / sort / pagination
     const [searchQuery, setSearchQuery] = useState("")
     const [sortKey, setSortKey] = useState<SortKey>("customer_name")
@@ -118,6 +131,8 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
 
     // ── Customer Handlers ──────────────────────────────────────────
     async function handleCustomerSubmit(formData: FormData) {
+        selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
+
         const result = dialogMode === "customerEdit"
             ? await updateCustomer(editData.id, formData)
             : await createCustomer(formData)
@@ -133,6 +148,8 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
 
     // ── Project Handlers ───────────────────────────────────────────
     async function handleProjectSubmit(formData: FormData) {
+        selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
+
         const result = dialogMode === "projectEdit"
             ? await updateProject(editData.id, formData)
             : await createProject(formData)
@@ -223,7 +240,14 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                             </span>
                                         </TableCell>
                                     )}
-                                    <TableCell className="font-semibold text-sm">{cust.customer_name}</TableCell>
+                                    <TableCell>
+                                        <div className="font-semibold text-sm">{cust.customer_name}</div>
+                                        {cust.sharedLocations?.length > 0 && (
+                                            <div className="text-[10px] text-slate-500 mt-0.5 max-w-[200px] truncate" title={`Di-share ke: ${cust.sharedLocations.map((l: any) => l.name).join(", ")}`}>
+                                                <span className="font-medium">Di-share ke:</span> {cust.sharedLocations.map((l: any) => l.name).join(", ")}
+                                            </div>
+                                        )}
+                                    </TableCell>
                                     <TableCell className="text-sm text-slate-500">{cust.address}</TableCell>
                                     <TableCell>
                                         <Badge variant="secondary">{cust.projects?.length ?? 0} proyek</Badge>
@@ -310,6 +334,13 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                                                                     </span>
                                                                                 )}
                                                                             </button>
+                                                                            <div className="ml-4 mt-0.5">
+                                                                                {proj.sharedLocations?.length > 0 && (
+                                                                                    <div className="text-[10px] text-slate-500 truncate max-w-[200px]" title={`Akses khusus: ${proj.sharedLocations.map((l: any) => l.name).join(", ")}`}>
+                                                                                        <span className="font-medium">Akses khusus ke:</span> {proj.sharedLocations.map((l: any) => l.name).join(", ")}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
                                                                         </td>
                                                                         <td className="py-2 pr-4 text-slate-500 text-xs">{proj.address}</td>
                                                                         <td className="py-2 pr-4 text-xs">{proj.default_distance} km</td>
@@ -481,6 +512,24 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                 </Select>
                             </div>
                         )}
+                        <div className="space-y-2 pt-2 border-t">
+                            <Label>Bagikan Akses Referensi (Opsional)</Label>
+                            <p className="text-xs text-slate-500">Pilih cabang lain yang diizinkan untuk melihat dan menggunakan Customer ini.</p>
+                            <div className="grid grid-cols-2 gap-2 mt-2 max-h-[120px] overflow-y-auto p-2 border rounded-md bg-slate-50/50">
+                                {locations.map(loc => (
+                                    <label key={loc.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-slate-300"
+                                            checked={selectedSharedLocs.includes(loc.id)}
+                                            onChange={() => toggleSharedLoc(loc.id)}
+                                            disabled={userRole !== "SuperAdminBP" && false} // Owner always can share? Yes. Exception if SuperAdmin sets locationId explicitly, but that's edge case handled fine.
+                                        />
+                                        <span>{loc.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
                         <Button type="submit" className="w-full mt-4">Simpan</Button>
                     </form>
                 </DialogContent>
@@ -524,6 +573,30 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                     defaultValue={editData?.tax_ppn ?? ""}
                                     placeholder="Ex: 11" required
                                 />
+                            </div>
+                        </div>
+                        <div className="space-y-2 pt-2 border-t mt-4">
+                            <Label>Bagikan Akses Proyek (Opsional)</Label>
+                            <p className="text-xs text-slate-500">Pilih cabang lain yang diizinkan secara khusus menggunakan Proyek ini.</p>
+                            <div className="grid grid-cols-2 gap-2 mt-2 max-h-[120px] overflow-y-auto p-2 border rounded-md bg-slate-50/50">
+                                {locations.map(loc => {
+                                    const isCustomerShared = parentCustomer?.sharedLocations?.some((sl: any) => sl.id === loc.id)
+                                    const isDisabled = isCustomerShared // Disable if already shared at customer level (implicit access)
+                                    return (
+                                        <label key={loc.id} className={`flex items-center gap-2 text-sm ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-slate-300"
+                                                checked={isDisabled ? true : selectedSharedLocs.includes(loc.id)}
+                                                onChange={() => { if (!isDisabled) toggleSharedLoc(loc.id) }}
+                                                disabled={isDisabled}
+                                            />
+                                            <span className="flex-1 truncate" title={loc.name}>
+                                                {loc.name} {isDisabled && <span className="text-[10px] text-blue-500 ml-1">(Tertagih)</span>}
+                                            </span>
+                                        </label>
+                                    )
+                                })}
                             </div>
                         </div>
                         <Button type="submit" className="w-full mt-2">Simpan Proyek</Button>

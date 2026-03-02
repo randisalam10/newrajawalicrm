@@ -185,6 +185,7 @@ export function DataTable({
                                 position: editingUser.position as any,
                                 locationId: editingUser.locationId,
                                 join_date: editingUser.join_date,
+                                employeeId: editingUser.employeeId,
                             }}
                             onSuccess={() => setEditingUser(null)}
                             onCancel={() => setEditingUser(null)}

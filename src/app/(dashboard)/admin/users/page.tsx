@@ -30,16 +30,23 @@ export default async function UsersPage() {
         getEligibleEmployees()
     ])
 
-    // Map relations for the datatable
+    const serializedEligibleEmployees = eligibleEmployees.map((emp: any) => ({
+        ...emp,
+        join_date: emp.join_date?.toISOString(),
+        location: emp.location ? { ...emp.location } : null
+    }))
+
+    // Map relations for the datatable, handled SuperAdmin without employee safely
     const formattedUsers = users.map((user: any) => ({
         id: user.id,
         username: user.username,
         role: user.role,
-        name: user.employee.name,
-        position: user.employee.position,
-        locationId: user.employee.locationId || "N/A",
-        locationName: (user.employee as any).location?.name || "N/A",
-        join_date: user.employee.join_date.toISOString().split('T')[0],
+        employeeId: user.employeeId || "",
+        name: user.employee?.name || "-",
+        position: user.employee?.position || "-",
+        locationId: user.employee?.locationId || "N/A",
+        locationName: user.employee?.location?.name || "-",
+        join_date: user.employee?.join_date ? user.employee.join_date.toISOString().split('T')[0] : "-",
     }))
 
     return (
@@ -62,7 +69,7 @@ export default async function UsersPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <DataTable data={formattedUsers} eligibleEmployees={eligibleEmployees} />
+                    <DataTable data={formattedUsers} eligibleEmployees={serializedEligibleEmployees} />
                 </CardContent>
             </Card>
         </div>

@@ -11,6 +11,7 @@ const projectSchema = z.object({
     address: z.string().min(1, "Lokasi Proyek required"),
     default_distance: z.coerce.number().min(0, "Jarak minimal 0"),
     tax_ppn: z.coerce.number().min(0).max(100, "PPN max 100%"),
+    sharedLocationIds: z.array(z.string()).optional(),
 })
 
 const customerSchema = z.object({
@@ -19,6 +20,7 @@ const customerSchema = z.object({
     address: z.string().min(1, "Alamat Tagih required"),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
+    sharedLocationIds: z.array(z.string()).optional(),
 })
 
 export async function getCustomers() {
@@ -26,11 +28,16 @@ export async function getCustomers() {
     if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
 
     const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const filter = isSuperAdmin ? {} : {
+        OR: [
+            { locationId: session.user.locationId! },
+            { sharedLocations: { some: { id: session.user.locationId! } } }
+        ]
+    }
 
     return await prisma.customer.findMany({
         where: filter,
-        include: { location: true },
+        include: { location: true, sharedLocations: true },
         orderBy: { customer_name: 'asc' }
     })
 }
@@ -39,7 +46,10 @@ export async function createCustomer(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
-    const data = Object.fromEntries(formData.entries())
+    const data = {
+        ...Object.fromEntries(formData.entries()),
+        sharedLocationIds: formData.getAll("sharedLocationIds")
+    }
     const parsed = customerSchema.safeParse(data)
 
     if (!parsed.success) {
@@ -52,13 +62,18 @@ export async function createCustomer(formData: FormData) {
 
         if (!finalLocationId) return { success: false, error: "Location is required" }
 
-        // Exclude locationId from the actual insert data
-        const { locationId, ...insertData } = parsed.data
+        // Exclude locationId and sharedLocationIds from the actual insert data
+        const { locationId, sharedLocationIds, ...insertData } = parsed.data
+
+        const sharedLocationsQuery = sharedLocationIds && sharedLocationIds.length > 0
+            ? { connect: sharedLocationIds.map(id => ({ id })) }
+            : undefined
 
         await prisma.customer.create({
             data: {
                 ...insertData,
-                locationId: finalLocationId
+                locationId: finalLocationId,
+                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
             }
         })
         revalidatePath("/admin/customer")
@@ -72,7 +87,10 @@ export async function updateCustomer(id: string, formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
-    const data = Object.fromEntries(formData.entries())
+    const data = {
+        ...Object.fromEntries(formData.entries()),
+        sharedLocationIds: formData.getAll("sharedLocationIds")
+    }
     const parsed = customerSchema.safeParse(data)
 
     if (!parsed.success) {
@@ -92,13 +110,18 @@ export async function updateCustomer(id: string, formData: FormData) {
 
         if (!finalLocationId) return { success: false, error: "Location is required" }
 
-        const { locationId, ...updateData } = parsed.data
+        const { locationId, sharedLocationIds, ...updateData } = parsed.data
+
+        const sharedLocationsQuery = sharedLocationIds
+            ? { set: sharedLocationIds.map(id => ({ id })) }
+            : undefined
 
         await prisma.customer.update({
             where: { id },
             data: {
                 ...updateData,
-                locationId: finalLocationId
+                locationId: finalLocationId,
+                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
             }
         })
         revalidatePath("/admin/customer")
@@ -136,14 +159,23 @@ export async function getCustomersWithProjects() {
     if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
 
     const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const filter = isSuperAdmin ? {} : {
+        OR: [
+            { locationId: session.user.locationId! },
+            { sharedLocations: { some: { id: session.user.locationId! } } }
+        ]
+    }
 
     return await prisma.customer.findMany({
         where: filter,
         include: {
             location: true,
+            sharedLocations: true,
             projects: {
-                include: { prices: { include: { concreteQuality: true } } },
+                include: {
+                    prices: { include: { concreteQuality: true } },
+                    sharedLocations: true
+                },
                 orderBy: { name: 'asc' }
             }
         },
@@ -155,7 +187,10 @@ export async function createProject(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
-    const data = Object.fromEntries(formData.entries())
+    const data = {
+        ...Object.fromEntries(formData.entries()),
+        sharedLocationIds: formData.getAll("sharedLocationIds")
+    }
     const parsed = projectSchema.safeParse(data)
 
     if (!parsed.success) {
@@ -163,7 +198,17 @@ export async function createProject(formData: FormData) {
     }
 
     try {
-        await prisma.project.create({ data: parsed.data })
+        const { sharedLocationIds, ...projectData } = parsed.data
+        const sharedLocationsQuery = sharedLocationIds && sharedLocationIds.length > 0
+            ? { connect: sharedLocationIds.map(id => ({ id })) }
+            : undefined
+
+        await prisma.project.create({
+            data: {
+                ...projectData,
+                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
+            }
+        })
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
@@ -175,7 +220,10 @@ export async function updateProject(id: string, formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
-    const data = Object.fromEntries(formData.entries())
+    const data = {
+        ...Object.fromEntries(formData.entries()),
+        sharedLocationIds: formData.getAll("sharedLocationIds")
+    }
     const parsed = projectSchema.safeParse(data)
 
     if (!parsed.success) {
@@ -183,7 +231,18 @@ export async function updateProject(id: string, formData: FormData) {
     }
 
     try {
-        await prisma.project.update({ where: { id }, data: parsed.data })
+        const { sharedLocationIds, ...projectData } = parsed.data
+        const sharedLocationsQuery = sharedLocationIds
+            ? { set: sharedLocationIds.map(id => ({ id })) }
+            : undefined
+
+        await prisma.project.update({
+            where: { id },
+            data: {
+                ...projectData,
+                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
+            }
+        })
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {

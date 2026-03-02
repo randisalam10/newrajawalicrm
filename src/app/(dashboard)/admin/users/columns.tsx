@@ -37,6 +37,7 @@ export type UserRow = {
     locationName: string
     locationId: string
     join_date: string
+    employeeId: string
 }
 
 export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
@@ -135,6 +136,7 @@ export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
                                     position: user.position as any,
                                     locationId: user.locationId,
                                     join_date: user.join_date,
+                                    employeeId: user.employeeId,
                                 }}
                                 onSuccess={() => setIsEditOpen(false)}
                                 onCancel={() => setIsEditOpen(false)}

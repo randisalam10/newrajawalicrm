@@ -92,13 +92,9 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
     }
 
     const handlePrintDriver = (driver: DriverSummary) => {
-        const printContent = buildPrintContent(driver, selectedYear, selectedMonth)
-        const win = window.open('', '_blank')
-        if (win) {
-            win.document.write(printContent)
-            win.document.close()
-            win.print()
-        }
+        const url = `/print/retase/${driver.driverId}?month=${selectedMonth}&year=${selectedYear}${selectedLocation !== 'all' ? `&locationId=${selectedLocation}` : ''
+            }`
+        window.open(url, '_blank')
     }
 
     return (
