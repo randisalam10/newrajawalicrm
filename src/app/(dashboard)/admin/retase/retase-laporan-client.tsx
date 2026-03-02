@@ -21,7 +21,7 @@ type ReportRow = {
     trip_sequence?: number
     driver?: { name?: string }
     vehicle?: { plate_number?: string; code?: string }
-    retase?: { calculated_distance?: number; total_retase?: number } | null
+    retase?: { calculated_distance?: number; income_amount?: number } | null
     location?: { name?: string }
 }
 
@@ -74,7 +74,7 @@ export function RetaseLaporanClient({
     }
 
     const totalVolume = rows?.reduce((acc, r) => acc + (r.volume_cubic || 0), 0) || 0
-    const totalRetase = rows?.reduce((acc, r) => acc + (r.retase?.total_retase || 0), 0) || 0
+    const totalRetase = rows?.reduce((acc, r) => acc + (r.retase?.income_amount || 0), 0) || 0
 
     return (
         <div className="space-y-5 p-4">
@@ -191,7 +191,7 @@ export function RetaseLaporanClient({
                                         </td>
                                         <td className="py-2 px-3 text-xs text-slate-600">{r.retase?.calculated_distance ?? "-"}</td>
                                         <td className="py-2 px-3 text-right text-xs font-semibold text-green-700">
-                                            {r.retase?.total_retase != null ? fmt(r.retase.total_retase) : "-"}
+                                            {r.retase?.income_amount != null ? fmt(r.retase.income_amount) : "-"}
                                         </td>
                                         {userRole === "SuperAdminBP" && <td className="py-2 px-3 text-xs text-slate-600">{r.location?.name || "-"}</td>}
                                     </tr>

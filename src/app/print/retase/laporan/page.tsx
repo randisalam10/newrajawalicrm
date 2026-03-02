@@ -26,7 +26,7 @@ export default async function PrintRetaseLaporanPage({
     ])
 
     const totalVolume = report.rows.reduce((acc: number, r: any) => acc + (r.volume_cubic || 0), 0)
-    const totalRetase = report.rows.reduce((acc: number, r: any) => acc + (r.retase?.total_retase || 0), 0)
+    const totalRetase = report.rows.reduce((acc: number, r: any) => acc + (r.retase?.income_amount || 0), 0)
 
     const serialized = {
         dateFrom,
@@ -47,7 +47,7 @@ export default async function PrintRetaseLaporanPage({
             sopir: r.driver?.name || "-",
             kendaraan: `${r.vehicle?.code || ""} (${r.vehicle?.plate_number || "-"})`,
             km: r.retase?.calculated_distance ?? null,
-            total_retase: r.retase?.total_retase ?? null,
+            income_amount: r.retase?.income_amount ?? null,
             cabang: r.location?.name || "-",
         }))
     }

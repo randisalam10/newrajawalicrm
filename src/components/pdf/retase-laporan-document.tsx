@@ -16,7 +16,7 @@ export type RetaseLaporanRow = {
     sopir: string
     kendaraan: string
     km: number | null
-    total_retase: number | null
+    income_amount: number | null
     cabang: string
 }
 
@@ -140,7 +140,7 @@ export function RetaseLaporanDocument({ data }: { data: RetaseLaporanData }) {
                         <Text style={[s.td, { width: 48, fontSize: 6 }]}>{r.kendaraan}</Text>
                         <Text style={[s.td, { width: 26 }]}>{r.km ?? "-"}</Text>
                         <Text style={[s.td, { flex: 1, textAlign: "right", fontFamily: "Helvetica-Bold", color: "#15803d" }]}>
-                            {r.total_retase != null ? fmt(r.total_retase) : "-"}
+                            {r.income_amount != null ? fmt(r.income_amount) : "-"}
                         </Text>
                         {hasCabang && <Text style={[s.td, { width: 45, fontSize: 6 }]}>{r.cabang}</Text>}
                     </View>
