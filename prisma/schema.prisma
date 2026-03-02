@@ -128,6 +128,7 @@ model Location {
   concretePlans       ConcretePlan[]
   sharedCustomers     Customer[]            @relation("CustomerSharedLocations") // Added
   sharedProjects      Project[]             @relation("ProjectSharedLocations") // Added
+  purchaseOrders      PurchaseOrder[]
 }
 
 model Vehicle {
@@ -393,4 +394,119 @@ model ConcretePlan {
   locationId      String
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
+}
+
+// ─── LOGISTIK & PERALATAN ───────────────────────────────────────────────────
+
+enum PoPaymentMethod {
+  CASH
+  CREDIT
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  CANCELLED
+}
+
+model PoCompanyGroup {
+  id               String             @id @default(uuid())
+  name             String
+  kode_cabang      String             // Singkatan untuk nomor PO, e.g. "RPJ"
+  kota             String             // Kota tanda tangan
+  address          String?            // Alamat KOP Surat
+  email            String?
+  pimpinan_default String?            // Nama pimpinan default
+  projects         PoCompanyProject[]
+  purchaseOrders   PurchaseOrder[]
+  createdAt        DateTime           @default(now())
+}
+
+model PoCompanyProject {
+  id             String         @id @default(uuid())
+  name           String         // Nama / lokasi proyek
+  kode_proyek    String?        // Kode singkat opsional, e.g. "005"
+  companyGroup   PoCompanyGroup @relation(fields: [companyGroupId], references: [id])
+  companyGroupId String
+  createdAt      DateTime       @default(now())
+}
+
+model PoCategory {
+  id              String          @id @default(uuid())
+  name            String
+  kode_kategori   String          @unique // e.g. "ATK", "SPR", "BBM"
+  require_hm_km   Boolean         @default(false)
+  masterItems     MasterItem[]
+  purchaseOrders  PurchaseOrder[]
+  createdAt       DateTime        @default(now())
+}
+
+model Supplier {
+  id          String       @id @default(uuid())
+  name        String
+  address     String?
+  contact     String?
+  masterItems MasterItem[]
+  createdAt   DateTime     @default(now())
+}
+
+model MasterItem {
+  id           String      @id @default(uuid())
+  kode_barang  String      @unique
+  name         String
+  part_number  String?
+  merk         String?
+  satuan       String      // PCS, SET, LTR, dll
+  harga        Float       // Harga satuan default
+  supplier     Supplier    @relation(fields: [supplierId], references: [id])
+  supplierId   String
+  category     PoCategory  @relation(fields: [categoryId], references: [id])
+  categoryId   String
+  poItems      PoItem[]
+  createdAt    DateTime    @default(now())
+}
+
+model PurchaseOrder {
+  id                String              @id @default(uuid())
+  po_number         String              @unique // Auto-generated: 001/RPJ/ATK/03/2026
+  tanggal_terbit    DateTime
+  
+  companyGroup      PoCompanyGroup      @relation(fields: [companyGroupId], references: [id])
+  companyGroupId    String
+  companyProjectId  String?             // Opsional, tujuan/lokasi proyek
+  
+  category          PoCategory          @relation(fields: [categoryId], references: [id])
+  categoryId        String
+  
+  supplierId        String
+  
+  // Tanda tangan
+  pimpinan          String              // Nama pimpinan (bisa di-override dari default)
+  kepala_peralatan  String              // Nama pemesan / kepala peralatan
+  pembuat_admin     String              // Nama admin pembuat
+
+  metode_pembayaran PoPaymentMethod     @default(CREDIT)
+  km_hm_kendaraan   String?             // Opsional, untuk kategori SPR
+  
+  // Terikat cabang (opsional)
+  location          Location?           @relation(fields: [locationId], references: [id])
+  locationId        String?
+
+  status            PurchaseOrderStatus @default(DRAFT)
+  notes             String?
+
+  items             PoItem[]
+  createdAt         DateTime            @default(now())
+}
+
+model PoItem {
+  id             String        @id @default(uuid())
+  purchaseOrder  PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  purchaseOrderId String
+  masterItem     MasterItem    @relation(fields: [masterItemId], references: [id])
+  masterItemId   String
+  quantity       Float
+  harga_satuan   Float         // Snapshot harga saat PO dibuat
+  keterangan     String?       // e.g. "Plat DT 8258 RI"
+  subtotal       Float
 }

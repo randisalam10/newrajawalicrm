@@ -78,6 +78,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 defaultOpen: false,
                 items: [
                     { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
+                    { title: "Daftar PO", url: "/logistik/po", icon: FileText },
                     { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
                     { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
                     { title: "Master Supplier", url: "/logistik/supplier", icon: Store },

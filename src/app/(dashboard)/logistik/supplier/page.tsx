@@ -1,19 +1,21 @@
+import { getSuppliers } from "./actions"
 import { SupplierClient } from "./supplier-client"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default async function SupplierPage() {
-    const mockData = [
-        { id: "1", name: "PT Jasindo Trans Papua", address: "Jayapura Selatan", contact: "08123456789" },
-        { id: "2", name: "Toko Abadi Jaya", address: "Entrop", contact: "08987654321" },
-    ];
+    const suppliers = await getSuppliers()
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col space-y-1">
-                <h1 className="text-3xl font-bold tracking-tight">Master Supplier (Toko)</h1>
-                <p className="text-slate-500">Kelola daftar toko penyedia barang untuk PO.</p>
+        <div className="space-y-4">
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">Master Supplier / Toko</h1>
+                <p className="text-muted-foreground text-sm">Kelola data toko dan supplier pembelian barang.</p>
             </div>
-
-            <SupplierClient initialData={mockData} />
+            <Card>
+                <CardContent className="p-0">
+                    <SupplierClient initialData={suppliers} />
+                </CardContent>
+            </Card>
         </div>
     )
 }

@@ -1,22 +1,21 @@
+import { getPoCategories } from "./actions"
 import { KategoriClient } from "./kategori-client"
+import { Card, CardContent } from "@/components/ui/card"
 
-// This is a mockup page. No database connection yet.
 export default async function KategoriPage() {
-    const mockData = [
-        { id: "1", name: "Sparepart", kode_kategori: "SPR", require_hm_km: true },
-        { id: "2", name: "Service Alat dan Kendaraan", kode_kategori: "SAK", require_hm_km: false },
-        { id: "3", name: "BBM dan Pelumas", kode_kategori: "BBP", require_hm_km: false },
-        { id: "4", name: "Pengadaan Baru", kode_kategori: "PEN", require_hm_km: false },
-    ];
+    const categories = await getPoCategories()
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col space-y-1">
-                <h1 className="text-3xl font-bold tracking-tight">Master Kategori PO</h1>
-                <p className="text-slate-500">Kelola kategori pengadaan untuk Modul Logistik.</p>
+        <div className="space-y-4">
+            <div>
+                <h1 className="text-2xl font-bold tracking-tight">Kategori PO</h1>
+                <p className="text-muted-foreground text-sm">Kelola kategori Purchase Order (ATK, BBM, SPR, dll).</p>
             </div>
-
-            <KategoriClient initialData={mockData} />
+            <Card>
+                <CardContent className="p-0">
+                    <KategoriClient initialData={categories} />
+                </CardContent>
+            </Card>
         </div>
     )
 }
