@@ -9,7 +9,7 @@ import { z } from "zod"
 const userCreateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter"),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
@@ -17,16 +17,16 @@ const userUpdateSchema = z.object({
     id: z.string(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter").optional().or(z.literal("")),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
 })
 
 export async function getEligibleEmployees() {
     const session = await auth()
     if (session?.user?.role !== "SuperAdminBP") return []
 
-    // For SuperAdminBP role, allow all positions; for others only Admin/Operator
+    // For SuperAdminBP role, allow all positions except Sopir
     return await prisma.employee.findMany({
-        where: { user: null },
+        where: { user: null, position: { not: "Sopir" } },
         include: { location: true },
         orderBy: { name: 'asc' }
     })
