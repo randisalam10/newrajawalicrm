@@ -31,6 +31,6 @@ export async function POST(req: NextRequest) {
     await mkdir(uploadDir, { recursive: true })
     await writeFile(join(uploadDir, filename), buffer)
 
-    const url = `/uploads/logos/${filename}`
+    const url = `/api/files/logo/${filename}`
     return NextResponse.json({ url })
 }

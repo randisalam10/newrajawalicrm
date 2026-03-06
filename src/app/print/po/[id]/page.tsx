@@ -49,6 +49,18 @@ export default async function PrintPOPage({
     // Build absolute URL for logo (react-pdf needs full URL)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
 
+    // Fetch Employee name based on pembuat_admin (username)
+    let pembuatName = po.pembuat_admin || "ADMIN" // Default fallback
+    if (po.pembuat_admin) {
+        const adminUser = await prisma.user.findUnique({
+            where: { username: po.pembuat_admin },
+            include: { employee: true }
+        })
+        if (adminUser?.employee?.name) {
+            pembuatName = adminUser.employee.name
+        }
+    }
+
     const formattedPO = {
         po_number: po.po_number,
         tanggal_terbit: po.tanggal_terbit.toISOString(),
@@ -75,7 +87,7 @@ export default async function PrintPOPage({
         pimpinan: po.pimpinan || "PIMPINAN",
         kepala_peralatan: po.kepala_peralatan || "KEPALA PERALATAN",
         jabatan_kepala: jabatanKepala,
-        pembuat: po.pembuat_admin || "ADMIN",
+        pembuat: pembuatName,
         catatan: po.notes || undefined,
     }
 

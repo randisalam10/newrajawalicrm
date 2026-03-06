@@ -229,7 +229,11 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                             <div className="flex items-center gap-4">
                                 {logoPreview ? (
                                     <div className="relative w-24 h-16 border rounded overflow-hidden bg-gray-50 flex items-center justify-center">
-                                        <img src={logoPreview} alt="Logo" className="object-contain max-w-full max-h-full" />
+                                        <img
+                                            src={logoPreview.startsWith('/uploads/logos/') ? logoPreview.replace('/uploads/logos/', '/api/files/logo/') : logoPreview}
+                                            alt="Logo"
+                                            className="object-contain max-w-full max-h-full"
+                                        />
                                         <button type="button" onClick={() => { setLogoPreview(null); setLogoUrl("") }}
                                             className="absolute top-0 right-0 bg-red-500 text-white rounded-bl p-0.5">
                                             <X className="w-3 h-3" />

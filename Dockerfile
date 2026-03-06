@@ -58,7 +58,7 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 # Ensure uploads directory exists OUTSIDE public/ so Next.js does NOT serve it statically
 # Files are only accessible via the authenticated /api/files/ route
-RUN mkdir -p /app/uploads/payments && chown -R nextjs:nodejs /app/uploads
+RUN mkdir -p /app/uploads/payments /app/uploads/logos && chown -R nextjs:nodejs /app/uploads
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
