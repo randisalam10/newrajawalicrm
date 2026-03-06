@@ -44,7 +44,10 @@ export default async function PrintPOPage({
         SELECT "logo_url" FROM "PoCompanyGroup" WHERE id = ${po.companyGroupId} LIMIT 1`
 
     const jabatanKepala = rawPO[0]?.jabatan_kepala || "Kepala Peralatan"
-    const logoUrl = rawCompany[0]?.logo_url || null
+    let logoUrl = rawCompany[0]?.logo_url || null
+    if (logoUrl && logoUrl.startsWith('/uploads/logos/')) {
+        logoUrl = logoUrl.replace('/uploads/logos/', '/api/files/logo/')
+    }
 
     // Build absolute URL for logo (react-pdf needs full URL)
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
