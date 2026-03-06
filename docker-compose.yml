@@ -11,6 +11,7 @@ services:
       - DATABASE_URL=postgresql://admin:password123@db:5432/rajawali_db?schema=public
       - NEXTAUTH_SECRET=supersecretbase64stringforauth1q2w3e4r5t6y7u8i9o0p
       - NEXTAUTH_URL=http://localhost:3000
+      - TZ=Asia/Jayapura
     volumes:
       # Map the host's ./uploads to /app/uploads inside the container for persistent storage
       - ./uploads:/app/uploads

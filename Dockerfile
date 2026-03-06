@@ -44,11 +44,12 @@ RUN ./node_modules/.bin/esbuild prisma/seed.ts \
 # Stage 3: Production runner (minimal image)
 # ─────────────────────────────────────────────
 FROM node:20-alpine AS runner
-RUN apk add --no-cache openssl
+RUN apk add --no-cache openssl tzdata
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV TZ="Asia/Jayapura"
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs
