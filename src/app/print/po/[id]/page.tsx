@@ -2,6 +2,7 @@
 // Route: /print/po/[id]
 
 import { POPrintClient } from "./client"
+import { headers } from "next/headers"
 import { prisma } from "@/lib/prisma"
 import { notFound } from "next/navigation"
 
@@ -50,7 +51,11 @@ export default async function PrintPOPage({
     }
 
     // Build absolute URL for logo (react-pdf needs full URL)
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+    const headersList = await headers()
+    const host = headersList.get("host") || "localhost:3000"
+    const protocol = headersList.get("x-forwarded-proto") || "http"
+    const dynamicBaseUrl = `${protocol}://${host}`
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || dynamicBaseUrl
 
     // Fetch Employee name based on pembuat_admin (username)
     let pembuatName = po.pembuat_admin || "ADMIN" // Default fallback
