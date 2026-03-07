@@ -43,13 +43,12 @@ async function generatePoNumber(companyGroupId: string, categoryId: string): Pro
     const kodePerusahaan = company?.kode_cabang ?? 'XX'
     const kodeKategori = category?.kode_kategori ?? 'XX'
 
-    // Count existing POs this year for this company+category
+    // Count existing POs this year for this company
     // Mengambil hitungan data dari awal TAHUN agar reset tiap tahun, bukan tiap bulan.
     const startOfYear = new Date(now.getFullYear(), 0, 1)
     const count = await prisma.purchaseOrder.count({
         where: {
             companyGroupId,
-            categoryId,
             tanggal_terbit: { gte: startOfYear }
         }
     })
