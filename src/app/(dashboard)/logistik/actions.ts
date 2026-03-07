@@ -71,7 +71,7 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
     pos.forEach(po => {
         const poTotal = po.items.reduce((acc, item) => acc + item.subtotal, 0)
         totalPengeluaran += poTotal
-        totalItems += po.items.reduce((acc, item) => acc + item.quantity, 0)
+        totalItems += po.items.length
 
         if (po.status === 'DRAFT') poDraftCount++
         else if (po.status === 'APPROVED') poApprovedCount++
