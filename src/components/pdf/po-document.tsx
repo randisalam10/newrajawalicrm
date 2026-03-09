@@ -48,6 +48,8 @@ export type POData = {
     pembuat: string
     // Optional
     catatan?: string | null
+    status?: string
+    updatedAt?: string | null
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -286,28 +288,49 @@ export function PODocument({ po }: { po: POData }) {
 
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Menyetujui,</Text>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pimpinan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Pimpinan Perusahaan
-                        </Text>
-                    </View>
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Mengajukan,</Text>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.kepala_peralatan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            {po.jabatan_kepala || "Kepala Peralatan"}
-                        </Text>
-                    </View>
+                    {/* DIBUAT OLEH (KIRI) */}
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Dibuat oleh,</Text>
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.pembuat}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
                             Admin
+                        </Text>
+                    </View>
+
+                    {/* MENGETAHUI (TENGAH) */}
+                    <View style={shared.signBox}>
+                        <Text style={shared.signLabel}>Mengetahui,</Text>
+                        <View style={shared.signLine} />
+                        <Text style={shared.signName}>{po.kepala_peralatan}</Text>
+                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                            {po.jabatan_kepala || "Kepala Peralatan"}
+                        </Text>
+                    </View>
+
+                    {/* MENYETUJUI (KANAN) */}
+                    <View style={shared.signBox}>
+                        {/* Override marginBottom 40 to accommodate digital badge */}
+                        <Text style={[shared.signLabel, { marginBottom: 4 }]}>Menyetujui,</Text>
+                        <View style={{ height: 36, justifyContent: 'center', alignItems: 'center' }}>
+                            {po.status === 'APPROVED' && po.updatedAt && (
+                                <>
+                                    <Text style={{ fontSize: 6, color: COLORS.primary, fontFamily: 'Helvetica-Bold' }}>
+                                        Approved by {po.pimpinan}
+                                    </Text>
+                                    <Text style={{ fontSize: 5.5, color: COLORS.primary, marginTop: 1.5 }}>
+                                        {format(new Date(po.updatedAt), "dd MMM yy HH:mm", { locale: idLocale })}
+                                    </Text>
+                                    <Text style={{ fontSize: 5.5, color: COLORS.primary, marginTop: 1.5 }}>
+                                        via Aplikasi M-Rajawali
+                                    </Text>
+                                </>
+                            )}
+                        </View>
+                        <View style={shared.signLine} />
+                        <Text style={shared.signName}>{po.pimpinan}</Text>
+                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                            Pemilik Perusahaan
                         </Text>
                     </View>
                 </View>

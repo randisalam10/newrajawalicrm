@@ -77,7 +77,6 @@ export async function getPurchaseOrders() {
         orderBy: { createdAt: 'desc' }
     })
 }
-
 export async function createPurchaseOrder(data: {
     companyGroupId: string
     companyProjectId?: string
@@ -120,11 +119,9 @@ export async function createPurchaseOrder(data: {
             }
         })
 
-        // Simpan jabatan_kepala via raw SQL karena Prisma client belum di-regenerate
         if (jabatan_kepala) {
             await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
         }
-
         revalidatePath("/logistik/po")
         revalidatePath("/logistik/po/create")
         return { success: true, po_number }
@@ -137,8 +134,13 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
+    const userRole = session.user.role as string
+    if (!['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)) {
+        return { success: false, error: "Forbidden: Anda tidak memiliki izin untuk mengubah status PO" }
+    }
+
     try {
-        await prisma.purchaseOrder.update({ where: { id }, data: { status } })
+        const po = await prisma.purchaseOrder.update({ where: { id }, data: { status } })
         revalidatePath("/logistik/po")
         return { success: true }
     } catch (e: any) {
@@ -253,7 +255,6 @@ export async function getPOReport(filters: {
     }
 
     const grandTotal = enriched.reduce((acc, po) => acc + po.total, 0)
-
     return {
         groups: Object.values(groups),
         grandTotal,
@@ -263,3 +264,67 @@ export async function getPOReport(filters: {
     }
 }
 
+export async function updatePurchaseOrder(poId: string, data: {
+    companyGroupId: string
+    companyProjectId?: string
+    categoryId: string
+    supplierId: string
+    pimpinan: string
+    kepala_peralatan: string
+    jabatan_kepala?: string
+    metode_pembayaran: PoPaymentMethod
+    km_hm_kendaraan?: string
+    tanggal_terbit: Date
+    locationId?: string
+    notes?: string
+    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
+    pembuat_admin: string
+}) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+
+    try {
+        const existingPO = await prisma.purchaseOrder.findUnique({ where: { id: poId } })
+        if (!existingPO) return { success: false, error: "PO tidak ditemukan" }
+        if (existingPO.status !== "DRAFT") {
+            return { success: false, error: "Hanya PO berstatus Draft yang bisa diubah." }
+        }
+
+        const { items, jabatan_kepala, ...poData } = data
+
+        await prisma.$transaction(async (tx) => {
+            await tx.poItem.deleteMany({
+                where: { purchaseOrderId: poId }
+            })
+
+            await tx.purchaseOrder.update({
+                where: { id: poId },
+                data: {
+                    ...poData,
+                    companyProjectId: poData.companyProjectId || null,
+                    locationId: poData.locationId || null,
+                    items: {
+                        create: items.map(item => ({
+                            masterItemId: item.masterItemId,
+                            quantity: item.quantity,
+                            harga_satuan: item.harga_satuan,
+                            keterangan: item.keterangan || undefined,
+                            subtotal: item.subtotal,
+                        }))
+                    }
+                }
+            })
+
+            if (jabatan_kepala !== undefined) {
+                await tx.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${poId}`
+            }
+        })
+
+        revalidatePath("/logistik/po")
+        revalidatePath(`/logistik/po/${poId}/edit`)
+        return { success: true }
+    } catch (e: any) {
+        console.error("Update PO Error:", e)
+        return { success: false, error: e.message }
+    }
+}

@@ -4,8 +4,12 @@ import { POReportClient } from "./po-report-client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClipboardList, BarChart2 } from "lucide-react"
+import { auth } from "@/auth"
 
 export default async function POListPage() {
+    const session = await auth()
+    const userRole = session?.user?.role || ""
+
     const [orders, formData] = await Promise.all([
         getPurchaseOrders(),
         getPoFormData(),
@@ -31,7 +35,7 @@ export default async function POListPage() {
                 <TabsContent value="daftar">
                     <Card>
                         <CardContent className="p-0">
-                            <POListClient initialData={orders} />
+                            <POListClient initialData={orders} userRole={userRole} />
                         </CardContent>
                     </Card>
                 </TabsContent>

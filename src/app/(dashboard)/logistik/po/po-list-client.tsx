@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { Search, CheckCircle, XCircle, Eye, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Search, CheckCircle, XCircle, Printer, Pencil, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { updatePoStatus, deletePurchaseOrder } from "./actions"
 import Link from "next/link"
 
@@ -156,11 +156,20 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                     </TableCell>
                                     <TableCell>
                                         <div className="flex items-center justify-center gap-1">
-                                            <Link href={`/print/po/${po.id}`} target="_blank">
-                                                <Button variant="ghost" size="icon" className="h-8 w-8" title="Print PO">
-                                                    <Eye className="w-4 h-4 text-blue-500" />
-                                                </Button>
-                                            </Link>
+                                            {po.status === "APPROVED" && (
+                                                <Link href={`/print/po/${po.id}`} target="_blank">
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Print PO">
+                                                        <Printer className="w-4 h-4 text-blue-500" />
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            {po.status === "DRAFT" && (
+                                                <Link href={`/logistik/po/${po.id}/edit`}>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8" title="Edit PO">
+                                                        <Pencil className="w-4 h-4 text-blue-600" />
+                                                    </Button>
+                                                </Link>
+                                            )}
                                             {po.status === "DRAFT" && canApprove && (
                                                 <Button
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Setujui"
