@@ -276,7 +276,7 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                                             </td>
                                             <td className="py-2 px-4">
                                                 <Input
-                                                    type="number" min="1" value={item.quantity}
+                                                    type="number" min="0.01" step="any" value={item.quantity}
                                                     onChange={e => setPoItems(poItems.map(i => i.cartId === item.cartId ? { ...i, quantity: Number(e.target.value) } : i))}
                                                     className="w-16 text-center h-8 mx-auto"
                                                 />
