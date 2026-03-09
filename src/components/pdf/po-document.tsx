@@ -288,27 +288,7 @@ export function PODocument({ po }: { po: POData }) {
 
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
-                    {/* DIBUAT OLEH (KIRI) */}
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Dibuat oleh,</Text>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pembuat}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            Admin
-                        </Text>
-                    </View>
-
-                    {/* MENGETAHUI (TENGAH) */}
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Mengetahui,</Text>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.kepala_peralatan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            {po.jabatan_kepala || "Kepala Peralatan"}
-                        </Text>
-                    </View>
-
-                    {/* MENYETUJUI (KANAN) */}
+                    {/* MENYETUJUI (KIRI) */}
                     <View style={shared.signBox}>
                         {/* Override marginBottom 40 to accommodate digital badge */}
                         <Text style={[shared.signLabel, { marginBottom: 4 }]}>Menyetujui,</Text>
@@ -331,6 +311,26 @@ export function PODocument({ po }: { po: POData }) {
                         <Text style={shared.signName}>{po.pimpinan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
                             Pemilik Perusahaan
+                        </Text>
+                    </View>
+
+                    {/* MENGETAHUI (TENGAH) */}
+                    <View style={shared.signBox}>
+                        <Text style={shared.signLabel}>Mengetahui,</Text>
+                        <View style={shared.signLine} />
+                        <Text style={shared.signName}>{po.kepala_peralatan}</Text>
+                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                            {po.jabatan_kepala || "Kepala Peralatan"}
+                        </Text>
+                    </View>
+
+                    {/* DIBUAT OLEH (KANAN) */}
+                    <View style={shared.signBox}>
+                        <Text style={shared.signLabel}>Dibuat oleh,</Text>
+                        <View style={shared.signLine} />
+                        <Text style={shared.signName}>{po.pembuat}</Text>
+                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                            Admin
                         </Text>
                     </View>
                 </View>
