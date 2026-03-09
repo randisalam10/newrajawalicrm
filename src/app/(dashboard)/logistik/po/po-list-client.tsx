@@ -16,7 +16,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
     CANCELLED: { label: "Dibatalkan", className: "bg-red-100 text-red-700" },
 }
 
-type SortKey = "po_number" | "company" | "category" | "tanggal" | "status" | "total"
+type SortKey = "po_number" | "company" | "category" | "tanggal" | "status" | "total" | "created_at"
 type SortDir = "asc" | "desc"
 
 function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
@@ -28,7 +28,7 @@ function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; s
 
 export function POListClient({ initialData, userRole }: { initialData: any[], userRole: string }) {
     const [search, setSearch] = useState("")
-    const [sortKey, setSortKey] = useState<SortKey>("po_number")
+    const [sortKey, setSortKey] = useState<SortKey>("created_at")
     const [sortDir, setSortDir] = useState<SortDir>("desc")
     const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)
 
@@ -60,6 +60,9 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                     valA = a.companyGroup?.name ?? ""; valB = b.companyGroup?.name ?? ""; break
                 case "category":
                     valA = a.category?.name ?? ""; valB = b.category?.name ?? ""; break
+                case "created_at":
+                    valA = new Date(a.createdAt).getTime()
+                    valB = new Date(b.createdAt).getTime(); break
                 case "tanggal":
                     valA = new Date(a.tanggal_terbit).getTime()
                     valB = new Date(b.tanggal_terbit).getTime(); break
@@ -110,7 +113,10 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                 Kategori <SortIcon col="category" sortKey={sortKey} sortDir={sortDir} />
                             </TableHead>
                             <TableHead className={thClass} onClick={() => handleSort("tanggal")}>
-                                Tanggal <SortIcon col="tanggal" sortKey={sortKey} sortDir={sortDir} />
+                                Tgl Cetak PO <SortIcon col="tanggal" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("created_at")}>
+                                Waktu Dibuat <SortIcon col="created_at" sortKey={sortKey} sortDir={sortDir} />
                             </TableHead>
                             <TableHead>Metode</TableHead>
                             <TableHead className={thClass} onClick={() => handleSort("status")}>
@@ -125,7 +131,7 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                     <TableBody>
                         {filtered.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={8} className="text-center text-muted-foreground h-24">
+                                <TableCell colSpan={9} className="text-center text-muted-foreground h-24">
                                     {search ? "Tidak ada PO yang cocok." : "Belum ada Purchase Order."}
                                 </TableCell>
                             </TableRow>
@@ -144,6 +150,10 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                     </TableCell>
                                     <TableCell className="text-sm text-slate-600">
                                         {new Date(po.tanggal_terbit).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    </TableCell>
+                                    <TableCell className="text-xs text-slate-500">
+                                        {new Date(po.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}<br />
+                                        {new Date(po.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                     </TableCell>
                                     <TableCell className="text-sm">{po.metode_pembayaran}</TableCell>
                                     <TableCell>
