@@ -162,7 +162,7 @@ export function DashboardClient() {
                                             innerRadius={60}
                                             outerRadius={90}
                                             paddingAngle={2}
-                                            label={({ name, percent }: any) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                                            label={({ percent }: any) => `${((percent || 0) * 100).toFixed(0)}%`}
                                             labelLine={false}
                                         >
                                             {chartByCategory.map((_: any, i: number) => <Cell key={`cell-${i}`} fill={COLORS[i % COLORS.length]} />)}

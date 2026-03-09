@@ -1,13 +1,12 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { Search, CheckCircle, XCircle, Eye } from "lucide-react"
+import { Search, CheckCircle, XCircle, Eye, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { updatePoStatus, deletePurchaseOrder } from "./actions"
 import Link from "next/link"
 
@@ -17,15 +16,68 @@ const statusConfig: Record<string, { label: string; className: string }> = {
     CANCELLED: { label: "Dibatalkan", className: "bg-red-100 text-red-700" },
 }
 
-export function POListClient({ initialData }: { initialData: any[] }) {
-    const [search, setSearch] = useState("")
+type SortKey = "po_number" | "company" | "category" | "tanggal" | "status" | "total"
+type SortDir = "asc" | "desc"
 
-    const filtered = initialData.filter(po =>
-        !search ||
-        po.po_number.toLowerCase().includes(search.toLowerCase()) ||
-        po.companyGroup?.name?.toLowerCase().includes(search.toLowerCase()) ||
-        po.category?.name?.toLowerCase().includes(search.toLowerCase())
-    )
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+    if (col !== sortKey) return <ArrowUpDown className="ml-1 w-3 h-3 inline opacity-40" />
+    return sortDir === "asc"
+        ? <ArrowUp className="ml-1 w-3 h-3 inline text-blue-600" />
+        : <ArrowDown className="ml-1 w-3 h-3 inline text-blue-600" />
+}
+
+export function POListClient({ initialData, userRole }: { initialData: any[], userRole: string }) {
+    const [search, setSearch] = useState("")
+    const [sortKey, setSortKey] = useState<SortKey>("po_number")
+    const [sortDir, setSortDir] = useState<SortDir>("desc")
+    const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)
+
+    const handleSort = (key: SortKey) => {
+        if (sortKey === key) {
+            setSortDir(d => d === "asc" ? "desc" : "asc")
+        } else {
+            setSortKey(key)
+            setSortDir("desc")
+        }
+    }
+
+    const filtered = useMemo(() => {
+        const searched = initialData.filter(po =>
+            !search ||
+            po.po_number.toLowerCase().includes(search.toLowerCase()) ||
+            po.companyGroup?.name?.toLowerCase().includes(search.toLowerCase()) ||
+            po.category?.name?.toLowerCase().includes(search.toLowerCase())
+        )
+
+        return [...searched].sort((a, b) => {
+            let valA: any, valB: any
+            const total = (po: any) => po.items?.reduce((acc: number, item: any) => acc + item.subtotal, 0) ?? 0
+
+            switch (sortKey) {
+                case "po_number":
+                    valA = a.po_number; valB = b.po_number; break
+                case "company":
+                    valA = a.companyGroup?.name ?? ""; valB = b.companyGroup?.name ?? ""; break
+                case "category":
+                    valA = a.category?.name ?? ""; valB = b.category?.name ?? ""; break
+                case "tanggal":
+                    valA = new Date(a.tanggal_terbit).getTime()
+                    valB = new Date(b.tanggal_terbit).getTime(); break
+                case "status":
+                    valA = a.status; valB = b.status; break
+                case "total":
+                    valA = total(a); valB = total(b); break
+                default:
+                    return 0
+            }
+
+            if (valA < valB) return sortDir === "asc" ? -1 : 1
+            if (valA > valB) return sortDir === "asc" ? 1 : -1
+            return 0
+        })
+    }, [initialData, search, sortKey, sortDir])
+
+    const thClass = "cursor-pointer select-none hover:bg-slate-100 transition-colors"
 
     return (
         <div className="space-y-4 p-4">
@@ -48,13 +100,25 @@ export function POListClient({ initialData }: { initialData: any[] }) {
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-slate-50/50">
-                            <TableHead>Nomor PO</TableHead>
-                            <TableHead>Perusahaan</TableHead>
-                            <TableHead>Kategori</TableHead>
-                            <TableHead>Tanggal</TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("po_number")}>
+                                Nomor PO <SortIcon col="po_number" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("company")}>
+                                Perusahaan <SortIcon col="company" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("category")}>
+                                Kategori <SortIcon col="category" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("tanggal")}>
+                                Tanggal <SortIcon col="tanggal" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
                             <TableHead>Metode</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className={thClass} onClick={() => handleSort("status")}>
+                                Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
+                            <TableHead className={`text-right ${thClass}`} onClick={() => handleSort("total")}>
+                                Total <SortIcon col="total" sortKey={sortKey} sortDir={sortDir} />
+                            </TableHead>
                             <TableHead className="w-[130px] text-center">Aksi</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -97,7 +161,7 @@ export function POListClient({ initialData }: { initialData: any[] }) {
                                                     <Eye className="w-4 h-4 text-blue-500" />
                                                 </Button>
                                             </Link>
-                                            {po.status === "DRAFT" && (
+                                            {po.status === "DRAFT" && canApprove && (
                                                 <Button
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Setujui"
                                                     onClick={async () => {
@@ -108,7 +172,7 @@ export function POListClient({ initialData }: { initialData: any[] }) {
                                                     <CheckCircle className="w-4 h-4 text-green-600" />
                                                 </Button>
                                             )}
-                                            {po.status !== "CANCELLED" && (
+                                            {po.status !== "CANCELLED" && canApprove && (
                                                 <Button
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Batalkan"
                                                     onClick={async () => {
