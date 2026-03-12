@@ -229,12 +229,6 @@ export function PODocument({ po }: { po: POData }) {
                     <View style={s.addressBox}>
                         <Text style={s.addressTitle}>Tujuan / Lokasi Pengiriman</Text>
                         <Text style={s.addressBold}>{po.proyek_nama}</Text>
-                        {(po.pic_name || po.pic_phone) && (
-                            <View style={{ marginTop: 4 }}>
-                                <Text style={[s.addressLine, { fontSize: 7, color: COLORS.muted }]}>PIC / Penanggungjawab:</Text>
-                                <Text style={s.addressLine}>{[po.pic_name, po.pic_phone].filter(Boolean).join(" - ") || "-"}</Text>
-                            </View>
-                        )}
                     </View>
                 </View>
 
@@ -287,19 +281,32 @@ export function PODocument({ po }: { po: POData }) {
                     </View>
                 </View>
 
-                {/* ── CATATAN ────────────────────────────────────────────────────── */}
-                {po.catatan && (
-                    <View style={s.noteBox}>
-                        <Text style={s.noteText}>Catatan: {po.catatan}</Text>
-                    </View>
-                )}
+                {/* ── META INFO & CATATAN ────────────────────────────────────────────────────── */}
+                <View style={{ marginBottom: 12 }}>
+                    {(po.pic_name || po.pic_phone) && (
+                        <View style={[s.noteBox, { marginBottom: po.catatan ? 6 : 0 }]}>
+                            <Text style={s.noteText}>
+                                <Text style={{ fontFamily: "Helvetica-Bold" }}>Penanggungjawab (PIC): </Text>
+                                {[po.pic_name, po.pic_phone].filter(Boolean).join(" - ")}
+                            </Text>
+                        </View>
+                    )}
+                    {po.catatan && (
+                        <View style={[s.noteBox, { marginBottom: 0 }]}>
+                            <Text style={s.noteText}>
+                                <Text style={{ fontFamily: "Helvetica-Bold" }}>Catatan: </Text>
+                                {po.catatan}
+                            </Text>
+                        </View>
+                    )}
+                </View>
 
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
                     {/* MENYETUJUI (KIRI) */}
                     <View style={shared.signBox}>
-                        {/* Override marginBottom 40 to accommodate digital badge */}
-                        <Text style={[shared.signLabel, { marginBottom: 4 }]}>Menyetujui,</Text>
+                        <Text style={[shared.signLabel, { marginBottom: 40 }]}>Menyetujui,</Text>
+                        {/* 
                         <View style={{ height: 36, justifyContent: 'center', alignItems: 'center' }}>
                             {po.status === 'APPROVED' && po.updatedAt && (
                                 <>
@@ -315,6 +322,7 @@ export function PODocument({ po }: { po: POData }) {
                                 </>
                             )}
                         </View>
+                        */}
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.pimpinan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>

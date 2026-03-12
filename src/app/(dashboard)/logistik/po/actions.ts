@@ -161,20 +161,31 @@ export async function createPurchaseOrder(data: {
     try {
         const po_number = await generatePoNumber(data.companyGroupId, data.categoryId)
 
-        const { items, jabatan_kepala, ...poData } = data
-
+        const { items, jabatan_kepala } = data
+        
         const created = await prisma.purchaseOrder.create({
             data: {
-                ...poData,
                 po_number,
-                companyProjectId: poData.companyProjectId || null,
-                locationId: poData.locationId || null,
+                tanggal_terbit: data.tanggal_terbit,
+                companyGroupId: data.companyGroupId,
+                categoryId: data.categoryId,
+                supplierId: data.supplierId,
+                pimpinan: data.pimpinan,
+                kepala_peralatan: data.kepala_peralatan,
+                pembuat_admin: data.pembuat_admin,
+                metode_pembayaran: data.metode_pembayaran,
+                companyProjectId: data.companyProjectId || null,
+                locationId: data.locationId || null,
+                km_hm_kendaraan: data.km_hm_kendaraan || null,
+                notes: data.notes || null,
+                pic_name: data.pic_name || null,
+                pic_phone: data.pic_phone || null,
                 items: {
                     create: items.map(item => ({
                         masterItemId: item.masterItemId,
                         quantity: item.quantity,
                         harga_satuan: item.harga_satuan,
-                        keterangan: item.keterangan,
+                        keterangan: item.keterangan || null,
                         subtotal: item.subtotal,
                     }))
                 }

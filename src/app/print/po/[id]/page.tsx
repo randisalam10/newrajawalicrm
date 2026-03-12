@@ -98,8 +98,10 @@ export default async function PrintPOPage({
         jabatan_kepala: jabatanKepala,
         pembuat: pembuatName,
         catatan: po.notes || undefined,
+        pic_name: po.pic_name,
+        pic_phone: po.pic_phone,
         status: po.status,
-        updatedAt: null,
+        updatedAt: po.updatedAt?.toISOString() || null,
     }
 
     return <POPrintClient po={formattedPO} />
