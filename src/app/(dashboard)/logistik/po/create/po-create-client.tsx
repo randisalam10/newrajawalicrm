@@ -33,6 +33,8 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
     const [tanggalTerbit, setTanggalTerbit] = useState("")
     const [kmHm, setKmHm] = useState("")
     const [notes, setNotes] = useState("")
+    const [picName, setPicName] = useState("")
+    const [picPhone, setPicPhone] = useState("")
 
     React.useEffect(() => {
         setTanggalTerbit(new Date().toISOString().split('T')[0])
@@ -91,6 +93,8 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                 km_hm_kendaraan: kmHm || undefined,
                 tanggal_terbit: new Date(tanggalTerbit),
                 notes: notes || undefined,
+                pic_name: picName || undefined,
+                pic_phone: picPhone || undefined,
                 pembuat_admin: pembuatAdmin,
                 items: poItems.map(item => ({
                     masterItemId: item.id,
@@ -202,22 +206,18 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                             <Input value={pembuatAdmin} disabled className="bg-slate-50 text-slate-500" />
                         </div>
                         <div className="space-y-2">
-                            <Label>Nama Kepala Peralatan / Pemesan *</Label>
-                            <Input value={kepalaPeralatan} onChange={e => setKepalaPeralatan(e.target.value)} placeholder="Diisi otomatis dari data perusahaan" required />
-                        </div>
-                        <div className="space-y-2">
-                            <Label>Jabatan Kepala Peralatan</Label>
-                            <Input value={jabatanKepala} onChange={e => setJabatanKepala(e.target.value)} placeholder="Kepala Peralatan" />
-                            <p className="text-xs text-slate-500">Tampil di TTD tengah (Mengajukan)</p>
-                        </div>
-                        <div className="space-y-2 border-t pt-4">
-                            <Label>Nama Pimpinan Perusahaan *</Label>
-                            <Input value={pimpinan} onChange={e => setPimpinan(e.target.value)} placeholder="Diisi otomatis dari data perusahaan" required />
-                            <p className="text-xs text-slate-500">Tampil di TTD kiri (Menyetujui)</p>
-                        </div>
-                        <div className="space-y-2">
                             <Label>Catatan (Opsional)</Label>
                             <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder="Catatan tambahan..." />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                            <div className="space-y-2">
+                                <Label>Nama PIC / Penanggungjawab</Label>
+                                <Input value={picName} onChange={e => setPicName(e.target.value)} placeholder="Nama PIC..." />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>No. HP PIC</Label>
+                                <Input value={picPhone} onChange={e => setPicPhone(e.target.value.replace(/\D/g, ""))} placeholder="No. HP..." />
+                            </div>
                         </div>
                     </CardContent>
                 </Card>

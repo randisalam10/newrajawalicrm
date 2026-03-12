@@ -12,6 +12,8 @@ enum Role {
   AdminBP
   OperatorBP
   AdminLogistik
+  CEO
+  FVP
 }
 
 enum Position {
@@ -19,6 +21,8 @@ enum Position {
   Operator
   Admin
   AdminLogistik
+  CEO
+  FVP
 }
 
 enum EmployeeStatus {
@@ -97,6 +101,7 @@ model User {
   role       Role
   employee   Employee   @relation(fields: [employeeId], references: [id])
   employeeId String     @unique
+  fcmToken   String?
   auditLogs  AuditLog[]
 }
 
@@ -501,8 +506,12 @@ model PurchaseOrder {
   status PurchaseOrderStatus @default(DRAFT)
   notes  String?
 
+  pic_name  String?
+  pic_phone String?
+
   items     PoItem[]
   createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 }
 
 model PoItem {

@@ -48,6 +48,8 @@ export type POData = {
     pembuat: string
     // Optional
     catatan?: string | null
+    pic_name?: string | null
+    pic_phone?: string | null
     status?: string
     updatedAt?: string | null
 }
@@ -227,6 +229,12 @@ export function PODocument({ po }: { po: POData }) {
                     <View style={s.addressBox}>
                         <Text style={s.addressTitle}>Tujuan / Lokasi Pengiriman</Text>
                         <Text style={s.addressBold}>{po.proyek_nama}</Text>
+                        {(po.pic_name || po.pic_phone) && (
+                            <View style={{ marginTop: 4 }}>
+                                <Text style={[s.addressLine, { fontSize: 7, color: COLORS.muted }]}>PIC / Penanggungjawab:</Text>
+                                <Text style={s.addressLine}>{[po.pic_name, po.pic_phone].filter(Boolean).join(" - ") || "-"}</Text>
+                            </View>
+                        )}
                     </View>
                 </View>
 

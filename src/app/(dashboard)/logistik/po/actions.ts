@@ -27,6 +27,8 @@ const poSchema = z.object({
     tanggal_terbit: z.string().transform(v => new Date(v)),
     locationId: z.string().optional(),
     notes: z.string().optional(),
+    pic_name: z.string().optional(),
+    pic_phone: z.string().optional(),
     items: z.array(poItemSchema).min(1, "Minimal 1 item barang"),
 })
 
@@ -63,20 +65,78 @@ async function generatePoNumber(companyGroupId: string, categoryId: string): Pro
     return `${seq}/${kodePerusahaan}/${kodeKategori}/${month}/${year}`
 }
 
-export async function getPurchaseOrders() {
+export async function getPurchaseOrders(params?: {
+    page?: number
+    pageSize?: number
+    search?: string
+    companyGroupId?: string
+    categoryId?: string
+    status?: string
+}) {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user?.employeeId) return { orders: [], totalCount: 0, totalPages: 0 }
 
-    return await prisma.purchaseOrder.findMany({
-        include: {
-            companyGroup: true,
-            category: true,
-            items: { include: { masterItem: { include: { supplier: true } } } },
-            location: true,
-        },
-        orderBy: { createdAt: 'desc' }
-    })
+    const {
+        page = 1,
+        pageSize = 10,
+        search,
+        companyGroupId,
+        categoryId,
+        status
+    } = params || {}
+
+    const skip = (page - 1) * pageSize
+
+    const where: any = {}
+
+    if (search) {
+        where.OR = [
+            { po_number: { contains: search, mode: 'insensitive' } },
+            { companyGroup: { name: { contains: search, mode: 'insensitive' } } },
+            { category: { name: { contains: search, mode: 'insensitive' } } },
+            { proyek_nama: { contains: search, mode: 'insensitive' } },
+        ]
+    }
+
+    if (companyGroupId) where.companyGroupId = companyGroupId
+    if (categoryId) where.categoryId = categoryId
+    if (status) where.status = status
+
+    const [orders, totalCount] = await Promise.all([
+        prisma.purchaseOrder.findMany({
+            where,
+            include: {
+                companyGroup: true,
+                category: true,
+                items: { include: { masterItem: { include: { supplier: true } } } },
+                location: true,
+            },
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: pageSize,
+        }),
+        prisma.purchaseOrder.count({ where })
+    ])
+
+    // Fetch project names
+    const projectIds = [...new Set(orders.map(o => o.companyProjectId).filter(Boolean))] as string[]
+    const projects = projectIds.length > 0
+        ? await prisma.poCompanyProject.findMany({ where: { id: { in: projectIds } } })
+        : []
+    const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
+
+    const enrichedOrders = orders.map(po => ({
+        ...po,
+        proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-"
+    }))
+
+    return {
+        orders: enrichedOrders,
+        totalCount,
+        totalPages: Math.ceil(totalCount / pageSize)
+    }
 }
+
 export async function createPurchaseOrder(data: {
     companyGroupId: string
     companyProjectId?: string
@@ -90,6 +150,8 @@ export async function createPurchaseOrder(data: {
     tanggal_terbit: Date
     locationId?: string
     notes?: string
+    pic_name?: string
+    pic_phone?: string
     items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
     pembuat_admin: string
 }) {
@@ -277,6 +339,8 @@ export async function updatePurchaseOrder(poId: string, data: {
     tanggal_terbit: Date
     locationId?: string
     notes?: string
+    pic_name?: string
+    pic_phone?: string
     items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
     pembuat_admin: string
 }) {

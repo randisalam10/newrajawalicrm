@@ -1,14 +1,24 @@
 "use client"
 
-import React, { useState, useMemo } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
-import { Search, CheckCircle, XCircle, Printer, Pencil, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
-import { updatePoStatus, deletePurchaseOrder } from "./actions"
+import { 
+    Search, CheckCircle, XCircle, Printer, Pencil, 
+    ChevronLeft, ChevronRight, FilterX 
+} from "lucide-react"
+import { updatePoStatus, getPurchaseOrders } from "./actions"
 import Link from "next/link"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 const statusConfig: Record<string, { label: string; className: string }> = {
     DRAFT: { label: "Draft", className: "bg-slate-100 text-slate-700" },
@@ -16,133 +26,152 @@ const statusConfig: Record<string, { label: string; className: string }> = {
     CANCELLED: { label: "Dibatalkan", className: "bg-red-100 text-red-700" },
 }
 
-type SortKey = "po_number" | "company" | "category" | "tanggal" | "status" | "total" | "created_at"
-type SortDir = "asc" | "desc"
-
-function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
-    if (col !== sortKey) return <ArrowUpDown className="ml-1 w-3 h-3 inline opacity-40" />
-    return sortDir === "asc"
-        ? <ArrowUp className="ml-1 w-3 h-3 inline text-blue-600" />
-        : <ArrowDown className="ml-1 w-3 h-3 inline text-blue-600" />
-}
-
-export function POListClient({ initialData, userRole }: { initialData: any[], userRole: string }) {
+export function POListClient({ 
+    initialData, 
+    totalCount: initialTotal, 
+    totalPages: initialTotalPages,
+    userRole,
+    companies,
+    categories
+}: { 
+    initialData: any[], 
+    totalCount: number,
+    totalPages: number,
+    userRole: string,
+    companies: any[],
+    categories: any[]
+}) {
+    const [orders, setOrders] = useState(initialData)
+    const [totalCount, setTotalCount] = useState(initialTotal)
+    const [totalPages, setTotalPages] = useState(initialTotalPages)
+    const [page, setPage] = useState(1)
     const [search, setSearch] = useState("")
-    const [sortKey, setSortKey] = useState<SortKey>("created_at")
-    const [sortDir, setSortDir] = useState<SortDir>("desc")
+    const [companyId, setCompanyId] = useState("ALL")
+    const [categoryId, setCategoryId] = useState("ALL")
+    const [isLoading, setIsLoading] = useState(false)
+
     const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)
 
-    const handleSort = (key: SortKey) => {
-        if (sortKey === key) {
-            setSortDir(d => d === "asc" ? "desc" : "asc")
-        } else {
-            setSortKey(key)
-            setSortDir("desc")
+    const fetchData = async (p: number, s: string, cid: string, catid: string) => {
+        setIsLoading(true)
+        try {
+            const result = await getPurchaseOrders({
+                page: p,
+                pageSize: 10,
+                search: s || undefined,
+                companyGroupId: cid === "ALL" ? undefined : cid,
+                categoryId: catid === "ALL" ? undefined : catid
+            })
+            setOrders(result.orders)
+            setTotalCount(result.totalCount)
+            setTotalPages(result.totalPages)
+        } catch (error) {
+            console.error("Fetch orders error:", error)
+        } finally {
+            setIsLoading(false)
         }
     }
 
-    const filtered = useMemo(() => {
-        const searched = initialData.filter(po =>
-            !search ||
-            po.po_number.toLowerCase().includes(search.toLowerCase()) ||
-            po.companyGroup?.name?.toLowerCase().includes(search.toLowerCase()) ||
-            po.category?.name?.toLowerCase().includes(search.toLowerCase())
-        )
+    React.useEffect(() => {
+        const timeout = setTimeout(() => {
+            fetchData(page, search, companyId, categoryId)
+        }, 500)
+        return () => clearTimeout(timeout)
+    }, [page, search, companyId, categoryId])
 
-        return [...searched].sort((a, b) => {
-            let valA: any, valB: any
-            const total = (po: any) => po.items?.reduce((acc: number, item: any) => acc + item.subtotal, 0) ?? 0
-
-            switch (sortKey) {
-                case "po_number":
-                    valA = a.po_number; valB = b.po_number; break
-                case "company":
-                    valA = a.companyGroup?.name ?? ""; valB = b.companyGroup?.name ?? ""; break
-                case "category":
-                    valA = a.category?.name ?? ""; valB = b.category?.name ?? ""; break
-                case "created_at":
-                    valA = new Date(a.createdAt).getTime()
-                    valB = new Date(b.createdAt).getTime(); break
-                case "tanggal":
-                    valA = new Date(a.tanggal_terbit).getTime()
-                    valB = new Date(b.tanggal_terbit).getTime(); break
-                case "status":
-                    valA = a.status; valB = b.status; break
-                case "total":
-                    valA = total(a); valB = total(b); break
-                default:
-                    return 0
-            }
-
-            if (valA < valB) return sortDir === "asc" ? -1 : 1
-            if (valA > valB) return sortDir === "asc" ? 1 : -1
-            return 0
-        })
-    }, [initialData, search, sortKey, sortDir])
-
-    const thClass = "cursor-pointer select-none hover:bg-slate-100 transition-colors"
+    const resetFilters = () => {
+        setSearch("")
+        setCompanyId("ALL")
+        setCategoryId("ALL")
+        setPage(1)
+    }
 
     return (
         <div className="space-y-4 p-4">
-            <div className="flex justify-between items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
                 <div className="relative w-full max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
-                        placeholder="Cari nomor PO, perusahaan, kategori..."
+                        placeholder="Cari nomor PO..."
                         className="pl-9"
                         value={search}
-                        onChange={e => setSearch(e.target.value)}
+                        onChange={e => { setSearch(e.target.value); setPage(1); }}
                     />
                 </div>
-                <Link href="/logistik/po/create">
-                    <Button>+ Buat PO Baru</Button>
-                </Link>
+
+                <Select value={companyId} onValueChange={v => { setCompanyId(v); setPage(1); }}>
+                    <SelectTrigger className="w-[200px]">
+                        <SelectValue placeholder="Semua Perusahaan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="ALL">Semua Perusahaan</SelectItem>
+                        {companies.map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                <Select value={categoryId} onValueChange={v => { setCategoryId(v); setPage(1); }}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Semua Kategori" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="ALL">Semua Kategori</SelectItem>
+                        {categories.map(c => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+
+                <Button variant="ghost" size="icon" onClick={resetFilters} title="Reset Filter">
+                    <FilterX className="w-4 h-4" />
+                </Button>
+
+                <div className="ml-auto">
+                    <Link href="/logistik/po/create">
+                        <Button>+ Buat PO Baru</Button>
+                    </Link>
+                </div>
             </div>
 
-            <div className="rounded-md border bg-white overflow-hidden">
+            <div className="rounded-md border bg-white overflow-hidden relative">
+                {isLoading && (
+                    <div className="absolute inset-0 bg-white/50 z-10 flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                )}
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-slate-50/50">
-                            <TableHead className={thClass} onClick={() => handleSort("po_number")}>
-                                Nomor PO <SortIcon col="po_number" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
-                            <TableHead className={thClass} onClick={() => handleSort("company")}>
-                                Perusahaan <SortIcon col="company" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
-                            <TableHead className={thClass} onClick={() => handleSort("category")}>
-                                Kategori <SortIcon col="category" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
-                            <TableHead className={thClass} onClick={() => handleSort("tanggal")}>
-                                Tgl Cetak PO <SortIcon col="tanggal" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
-                            <TableHead className={thClass} onClick={() => handleSort("created_at")}>
-                                Waktu Dibuat <SortIcon col="created_at" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
+                            <TableHead>Nomor PO</TableHead>
+                            <TableHead>Perusahaan</TableHead>
+                            <TableHead>Proyek</TableHead>
+                            <TableHead>Kategori</TableHead>
+                            <TableHead>Tgl Cetak</TableHead>
                             <TableHead>Metode</TableHead>
-                            <TableHead className={thClass} onClick={() => handleSort("status")}>
-                                Status <SortIcon col="status" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
-                            <TableHead className={`text-right ${thClass}`} onClick={() => handleSort("total")}>
-                                Total <SortIcon col="total" sortKey={sortKey} sortDir={sortDir} />
-                            </TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
                             <TableHead className="w-[130px] text-center">Aksi</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filtered.length === 0 && (
+                        {orders.length === 0 && !isLoading && (
                             <TableRow>
                                 <TableCell colSpan={9} className="text-center text-muted-foreground h-24">
-                                    {search ? "Tidak ada PO yang cocok." : "Belum ada Purchase Order."}
+                                    {search || companyId !== "ALL" || categoryId !== "ALL" 
+                                        ? "Tidak ada PO yang cocok." 
+                                        : "Belum ada Purchase Order."}
                                 </TableCell>
                             </TableRow>
                         )}
-                        {filtered.map((po) => {
+                        {orders.map((po) => {
                             const total = po.items?.reduce((acc: number, item: any) => acc + item.subtotal, 0) ?? 0
                             const cfg = statusConfig[po.status] ?? statusConfig.DRAFT
                             return (
                                 <TableRow key={po.id} className="hover:bg-slate-50/70">
                                     <TableCell className="font-mono font-semibold text-sm">{po.po_number}</TableCell>
                                     <TableCell className="text-sm">{po.companyGroup?.name}</TableCell>
+                                    <TableCell className="text-sm italic text-slate-500">{po.proyek_nama || "-"}</TableCell>
                                     <TableCell>
                                         <span className="inline-flex items-center rounded-md bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
                                             {po.category?.name}
@@ -150,10 +179,6 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                     </TableCell>
                                     <TableCell className="text-sm text-slate-600">
                                         {new Date(po.tanggal_terbit).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                    </TableCell>
-                                    <TableCell className="text-xs text-slate-500">
-                                        {new Date(po.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}<br />
-                                        {new Date(po.createdAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                                     </TableCell>
                                     <TableCell className="text-sm">{po.metode_pembayaran}</TableCell>
                                     <TableCell>
@@ -185,7 +210,8 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Setujui"
                                                     onClick={async () => {
                                                         if (!confirm("Setujui PO ini?")) return
-                                                        await updatePoStatus(po.id, "APPROVED")
+                                                        const res = await updatePoStatus(po.id, "APPROVED")
+                                                        if (res.success) fetchData(page, search, companyId, categoryId)
                                                     }}
                                                 >
                                                     <CheckCircle className="w-4 h-4 text-green-600" />
@@ -196,7 +222,8 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Batalkan"
                                                     onClick={async () => {
                                                         if (!confirm("Batalkan PO ini?")) return
-                                                        await updatePoStatus(po.id, "CANCELLED")
+                                                        const res = await updatePoStatus(po.id, "CANCELLED")
+                                                        if (res.success) fetchData(page, search, companyId, categoryId)
                                                     }}
                                                 >
                                                     <XCircle className="w-4 h-4 text-red-500" />
@@ -209,6 +236,35 @@ export function POListClient({ initialData, userRole }: { initialData: any[], us
                         })}
                     </TableBody>
                 </Table>
+            </div>
+
+            <div className="flex items-center justify-between px-2">
+                <div className="text-sm text-slate-500">
+                    Menampilkan <span className="font-medium text-slate-800">{orders.length}</span> dari <span className="font-medium text-slate-800">{totalCount}</span> PO
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1 || isLoading}
+                        className="gap-1"
+                    >
+                        <ChevronLeft className="w-4 h-4" /> Sebelumnya
+                    </Button>
+                    <div className="text-sm font-medium text-slate-700">
+                        Halaman {page} dari {totalPages || 1}
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                        disabled={page >= totalPages || isLoading}
+                        className="gap-1"
+                    >
+                        Selanjutnya <ChevronRight className="w-4 h-4" />
+                    </Button>
+                </div>
             </div>
         </div>
     )

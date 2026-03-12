@@ -10,8 +10,8 @@ export default async function POListPage() {
     const session = await auth()
     const userRole = session?.user?.role || ""
 
-    const [orders, formData] = await Promise.all([
-        getPurchaseOrders(),
+    const [ordersResult, formData] = await Promise.all([
+        getPurchaseOrders({ page: 1, pageSize: 10 }),
         getPoFormData(),
     ])
 
@@ -35,7 +35,14 @@ export default async function POListPage() {
                 <TabsContent value="daftar">
                     <Card>
                         <CardContent className="p-0">
-                            <POListClient initialData={orders} userRole={userRole} />
+                            <POListClient 
+                                initialData={ordersResult.orders} 
+                                totalCount={ordersResult.totalCount}
+                                totalPages={ordersResult.totalPages}
+                                userRole={userRole}
+                                companies={formData.companies}
+                                categories={formData.categories}
+                            />
                         </CardContent>
                     </Card>
                 </TabsContent>

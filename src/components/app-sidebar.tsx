@@ -74,7 +74,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ]
             }
         ] : []),
-        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" ? [
+        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" ? [
             {
                 title: "Logistik & Peralatan",
                 defaultOpen: false,
