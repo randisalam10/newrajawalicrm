@@ -101,7 +101,6 @@ model User {
   role       Role
   employee   Employee   @relation(fields: [employeeId], references: [id])
   employeeId String     @unique
-  fcmToken   String?
   auditLogs  AuditLog[]
 }
 
