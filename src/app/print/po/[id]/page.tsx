@@ -39,13 +39,13 @@ export default async function PrintPOPage({
     }) : null
 
     // Fetch new fields via raw SQL karena Prisma client belum di-regenerate
-    const rawPO = await prisma.$queryRaw<{ jabatan_kepala: string | null }[]>`
-        SELECT "jabatan_kepala" FROM "PurchaseOrder" WHERE id = ${id} LIMIT 1`
+    const rawPO = await prisma.$queryRaw<{ jabatan_kepala: string | null, updatedAt: Date | null }[]>`
+        SELECT "jabatan_kepala", "updatedAt" FROM "PurchaseOrder" WHERE id = ${id} LIMIT 1`
     const rawCompany = await prisma.$queryRaw<{ logo_url: string | null }[]>`
         SELECT "logo_url" FROM "PoCompanyGroup" WHERE id = ${po.companyGroupId} LIMIT 1`
 
     const jabatanKepala = rawPO[0]?.jabatan_kepala || "Kepala Peralatan"
-    const updatedAtRaw = null
+    const updatedAtRaw = rawPO[0]?.updatedAt || null
     let logoUrl = rawCompany[0]?.logo_url || null
     if (logoUrl && logoUrl.startsWith('/uploads/logos/')) {
         logoUrl = logoUrl.replace('/uploads/logos/', '/api/files/logo/')
@@ -102,6 +102,7 @@ export default async function PrintPOPage({
         pic_phone: po.pic_phone,
         status: po.status,
         updatedAt: po.updatedAt?.toISOString() || null,
+
     }
 
     return <POPrintClient po={formattedPO} />

@@ -58,7 +58,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 title: "Laporan & Tagihan",
                 defaultOpen: false,
                 items: [
-                    ...(user?.role === "SuperAdminBP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                    ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
                     { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
                 ]
             },
@@ -70,11 +70,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
                     { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
-                    ...(user?.role === "SuperAdminBP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
+                    ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
                 ]
             }
         ] : []),
-        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" ? [
+        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [
+
             {
                 title: "Logistik & Peralatan",
                 defaultOpen: false,
@@ -89,7 +90,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ]
             }
         ] : []),
-        ...(user?.role === "SuperAdminBP" ? [
+        ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [
             {
                 title: "Administrator & Akses",
                 defaultOpen: false,
@@ -144,6 +145,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     return (
                         <Collapsible
                             key={group.title}
+                            id={`sidebar-group-${group.title.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
                             open={isOpen}
                             onOpenChange={(open) => setOpenGroup(open ? group.title : null)}
                             className="group/collapsible"

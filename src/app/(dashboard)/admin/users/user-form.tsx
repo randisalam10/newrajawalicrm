@@ -28,7 +28,7 @@ const userSchema = z.object({
     id: z.string().optional(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().optional(),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
@@ -165,6 +165,8 @@ export function UserForm({
                                         <SelectItem value="AdminBP">Admin Cabang</SelectItem>
                                         <SelectItem value="OperatorBP">Operator / Kasir</SelectItem>
                                         <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
+                                        <SelectItem value="CEO">CEO</SelectItem>
+                                        <SelectItem value="FVP">FVP</SelectItem>
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />

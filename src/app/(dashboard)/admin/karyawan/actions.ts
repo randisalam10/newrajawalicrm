@@ -8,7 +8,7 @@ import { z } from "zod"
 const karyawanSchema = z.object({
     id: z.string().optional(),
     name: z.string().min(1, "Nama Karyawan required"),
-    position: z.enum(["Sopir", "Operator", "Admin", "AdminLogistik"]),
+    position: z.enum(["Sopir", "Operator", "Admin", "AdminLogistik", "CEO", "FVP"]),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     join_date: z.string().min(1, "Tanggal Bergabung required"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
@@ -43,7 +43,8 @@ export async function createKaryawan(formData: FormData) {
         const isSuperAdmin = session.user.role === 'SuperAdminBP'
         const finalLocationId = (isSuperAdmin && parsed.data.locationId) ? parsed.data.locationId : session.user.locationId
 
-        if (!finalLocationId && parsed.data.position !== "AdminLogistik") {
+        const isCorporateLevel = ["AdminLogistik", "CEO", "FVP"].includes(parsed.data.position)
+        if (!finalLocationId && !isCorporateLevel) {
             return { success: false, error: "Location is required for this position." }
         }
 
@@ -55,7 +56,7 @@ export async function createKaryawan(formData: FormData) {
                 position: insertData.position,
                 status: insertData.status,
                 join_date: new Date(insertData.join_date),
-                locationId: parsed.data.position === "AdminLogistik" ? null : finalLocationId
+                locationId: isCorporateLevel ? null : finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")
@@ -89,7 +90,8 @@ export async function updateKaryawan(id: string, formData: FormData) {
 
         const finalLocationId = (isSuperAdmin && parsed.data.locationId) ? parsed.data.locationId : existing?.locationId
 
-        if (!finalLocationId && parsed.data.position !== "AdminLogistik") {
+        const isCorporateLevel = ["AdminLogistik", "CEO", "FVP"].includes(parsed.data.position)
+        if (!finalLocationId && !isCorporateLevel) {
             return { success: false, error: "Location is required for this position." }
         }
 
@@ -102,7 +104,7 @@ export async function updateKaryawan(id: string, formData: FormData) {
                 position: updateData.position,
                 status: updateData.status,
                 join_date: new Date(updateData.join_date),
-                locationId: parsed.data.position === "AdminLogistik" ? null : finalLocationId
+                locationId: isCorporateLevel ? null : finalLocationId
             }
         })
         revalidatePath("/admin/karyawan")

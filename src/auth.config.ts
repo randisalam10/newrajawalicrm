@@ -50,7 +50,7 @@ export const authConfig = {
                     const target = userRole === 'AdminLogistik' ? '/logistik' : '/operator'
                     return Response.redirect(new URL(target, nextUrl))
                 }
-                if (isOperatorRoute && userRole !== 'OperatorBP') {
+                if (isOperatorRoute && !['OperatorBP', 'SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
                     const target = userRole === 'AdminLogistik' ? '/logistik' : '/admin'
                     return Response.redirect(new URL(target, nextUrl))
                 }

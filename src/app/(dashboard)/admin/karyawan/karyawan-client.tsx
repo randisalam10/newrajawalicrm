@@ -104,6 +104,8 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
                                             <SelectItem value="Operator">Operator</SelectItem>
                                             <SelectItem value="Admin">Admin</SelectItem>
                                             <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
+                                            <SelectItem value="CEO">CEO</SelectItem>
+                                            <SelectItem value="FVP">FVP</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -126,7 +128,7 @@ export function KaryawanClient({ initialData, locations, userRole }: { initialDa
                                 <Input id="join_date" name="join_date" type="date" defaultValue={editData?.join_date} required />
                             </div>
 
-                            {userRole === "SuperAdminBP" && selectedPosition !== "AdminLogistik" && (
+                            {userRole === "SuperAdminBP" && !["AdminLogistik", "CEO", "FVP"].includes(selectedPosition) && (
                                 <div className="space-y-2">
                                     <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
                                     <Select name="locationId" defaultValue={editData?.locationId || ""}>

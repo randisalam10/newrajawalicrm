@@ -9,7 +9,7 @@ import { z } from "zod"
 const userCreateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter"),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
@@ -17,7 +17,7 @@ const userUpdateSchema = z.object({
     id: z.string(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter").optional().or(z.literal("")),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik"]),
+    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
 })
 
 export async function getEligibleEmployees() {

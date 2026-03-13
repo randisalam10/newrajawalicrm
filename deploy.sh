@@ -81,6 +81,7 @@ docker run -d \
     --memory="768m" \
     --cpus="1.0" \
     -v /var/data/rajawali/uploads:/app/uploads \
+    -v /opt/rajawali/secrets:/app/secrets \
     $IMAGE_NAME:$IMAGE_TAG
 
 # Hapus dangling images lama

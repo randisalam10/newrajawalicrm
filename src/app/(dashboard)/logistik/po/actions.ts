@@ -5,6 +5,7 @@ import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { PoPaymentMethod } from "@prisma/client"
+import { pusherServer } from "@/lib/pusher"
 
 const poItemSchema = z.object({
     masterItemId: z.string(),
@@ -136,6 +137,7 @@ export async function getPurchaseOrders(params?: {
         totalPages: Math.ceil(totalCount / pageSize)
     }
 }
+import { sendPushNotification } from "@/lib/firebase/admin"
 
 export async function createPurchaseOrder(data: {
     companyGroupId: string
@@ -195,6 +197,26 @@ export async function createPurchaseOrder(data: {
         if (jabatan_kepala) {
             await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
         }
+        // --- PUSH NOTIFICATION ---
+        // Cari token fcm Pimpinan (CEO, FVP)
+        const admins = await prisma.user.findMany({
+            where: {
+                role: { in: ['CEO', 'FVP', 'SuperAdminBP'] },
+                fcmToken: { not: null }
+            },
+            select: { fcmToken: true }
+        })
+
+        const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
+        if (tokens.length > 0) {
+            await sendPushNotification(
+                tokens,
+                "PO Baru Membutuhkan Persetujuan",
+                `PO ${po_number} telah dibuat oleh Logistik.`,
+                { poId: created.id, type: "PO_APPROVAL" }
+            )
+        }
+        // -------------------------
         revalidatePath("/logistik/po")
         revalidatePath("/logistik/po/create")
         return { success: true, po_number }
@@ -214,7 +236,37 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
 
     try {
         const po = await prisma.purchaseOrder.update({ where: { id }, data: { status } })
+        try {
+            if (pusherServer) {
+                await pusherServer.trigger('logistik-channel', 'po-updated', {
+                    message: `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'}`,
+                })
+            }
+        } catch (pusherErr) {
+            console.error("Pusher Trigger Error:", pusherErr)
+        }
         revalidatePath("/logistik/po")
+
+        // --- PUSH NOTIFICATION ---
+        const admins = await prisma.user.findMany({
+            where: {
+                role: { in: ['CEO', 'FVP', 'SuperAdminBP', 'AdminLogistik'] },
+                fcmToken: { not: null }
+            },
+            select: { fcmToken: true }
+        })
+
+        const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
+        if (tokens.length > 0) {
+            await sendPushNotification(
+                tokens,
+                `PO ${status === 'APPROVED' ? 'Disetujui' : 'Dibatalkan'}`,
+                `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'} oleh ${session.user.username || 'System'}.`,
+                { poId: po.id, type: "PO_UPDATE" }
+            )
+        }
+        // -------------------------
+
         return { success: true }
     } catch (e: any) {
         return { success: false, error: e.message }
