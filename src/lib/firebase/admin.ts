@@ -58,10 +58,32 @@ export async function sendPushNotification(tokens: string[], title: string, body
 
         const response = await admin.messaging().sendEachForMulticast(message as any);
         console.log(`Successfully sent ${response.successCount} messages`);
+        
         if (response.failureCount > 0) {
-            console.log(`Failed to send ${response.failureCount} messages. Errors:`, 
-                response.responses.filter(r => !r.success).map(r => r.error)
-            );
+            const failedTokens: string[] = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    const errorCode = resp.error?.code;
+                    console.error(`Error for token ${tokens[idx]}:`, errorCode);
+                    // Jika token sudah tidak valid (uninstalled, expired, dll), kumpulkan untuk dihapus
+                    if (
+                        errorCode === 'messaging/invalid-registration-token' ||
+                        errorCode === 'messaging/registration-token-not-registered'
+                    ) {
+                        failedTokens.push(tokens[idx]);
+                    }
+                }
+            });
+
+            // Bersihkan token yang mati dari database agar tidak dikirimi lagi
+            if (failedTokens.length > 0) {
+                console.log(`Cleaning up ${failedTokens.length} dead tokens from database...`);
+                const { prisma } = await import('@/lib/prisma');
+                await prisma.user.updateMany({
+                    where: { fcmToken: { in: failedTokens } },
+                    data: { fcmToken: null }
+                });
+            }
         }
         return response;
     } catch (error) {
