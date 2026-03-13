@@ -1,11 +1,26 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { NextResponse } from "next/server"
+import { verifyMobileToken } from "@/lib/auth-mobile"
 
 export async function PATCH(req: Request) {
-    const session = await auth()
+    let userId: string | undefined
 
-    if (!session?.user?.id) {
+    // 1. Cek Autentikasi Web (NextAuth)
+    const session = await auth()
+    if (session?.user?.id) {
+        userId = session.user.id
+    }
+
+    // 2. Cek Autentikasi Mobile (JWT kustom) jika web session gagal
+    if (!userId) {
+        const { user, error } = verifyMobileToken(req)
+        if (user?.id) {
+            userId = user.id
+        }
+    }
+
+    if (!userId) {
         return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
     }
 
@@ -18,7 +33,7 @@ export async function PATCH(req: Request) {
         }
 
         await prisma.user.update({
-            where: { id: session.user.id },
+            where: { id: userId },
             data: { fcmToken }
         })
 
