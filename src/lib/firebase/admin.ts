@@ -43,7 +43,7 @@ export async function sendPushNotification(tokens: string[], title: string, body
             android: {
                 notification: {
                     sound: sound,
-                    channelId: "rajawali_approval_channel_v2" // Updated to v2 to force sound refresh
+                    channelId: "rajawali_approval_v3" // v3: forces sound refresh on reinstall
                 }
             },
             apns: {
