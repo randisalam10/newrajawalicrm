@@ -15,11 +15,18 @@ echo "================================================"
 echo " 🔨 Building Rajawali BP ERP — $IMAGE_NAME:$TAG"
 echo "================================================"
 
+# Load local .env to get Pusher keys for the client build
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 # ── 1. Build Docker image (multi-platform atau single)
 echo ""
 echo "[1/3] Building Docker image..."
 docker build \
     --platform linux/amd64 \
+    --build-arg NEXT_PUBLIC_PUSHER_APP_KEY=$NEXT_PUBLIC_PUSHER_APP_KEY \
+    --build-arg NEXT_PUBLIC_PUSHER_CLUSTER=$NEXT_PUBLIC_PUSHER_CLUSTER \
     -t "$IMAGE_NAME:$TAG" \
     -t "$IMAGE_NAME:latest" \
     -f Dockerfile \

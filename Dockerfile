@@ -30,6 +30,12 @@ ENV DATABASE_URL="postgresql://placeholder:placeholder@localhost:5432/placeholde
 ENV NEXTAUTH_SECRET="build-time-placeholder-secret"
 ENV NEXTAUTH_URL="http://localhost:3000"
 
+# Inject Pusher keys at build time (Next.js bakes these into the client bundle)
+ARG NEXT_PUBLIC_PUSHER_APP_KEY
+ARG NEXT_PUBLIC_PUSHER_CLUSTER
+ENV NEXT_PUBLIC_PUSHER_APP_KEY=$NEXT_PUBLIC_PUSHER_APP_KEY
+ENV NEXT_PUBLIC_PUSHER_CLUSTER=$NEXT_PUBLIC_PUSHER_CLUSTER
+
 RUN npm run build
 
 # Compile seed.ts → seed.js (so runner doesn't need tsx or esbuild)
