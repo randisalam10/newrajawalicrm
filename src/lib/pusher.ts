@@ -26,3 +26,8 @@ export const pusherClient = process.env.NEXT_PUBLIC_PUSHER_APP_KEY
 if (!pusherClient) {
     console.warn('Pusher Client not initialized. Check NEXT_PUBLIC_PUSHER_APP_KEY.');
 }
+
+export const getChannelName = (name: string) => {
+    const env = process.env.NEXT_PUBLIC_APP_ENV || 'production'
+    return env === 'production' ? name : `${env}-${name}`
+}

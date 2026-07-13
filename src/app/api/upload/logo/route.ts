@@ -25,8 +25,9 @@ export async function POST(req: NextRequest) {
 
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "png"
     const filename = `logo_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-    // Store in public/ so react-pdf can access it via URL
-    const uploadDir = join(process.cwd(), "public", "uploads", "logos")
+    
+    // Use persistent directory if configured, otherwise fallback to public/ (legacy)
+    const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), "public", "uploads", "logos")
 
     await mkdir(uploadDir, { recursive: true })
     await writeFile(join(uploadDir, filename), buffer)

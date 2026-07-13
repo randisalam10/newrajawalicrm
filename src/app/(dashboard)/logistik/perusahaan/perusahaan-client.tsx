@@ -13,11 +13,18 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, FolderOpen, Upload, X } from "lucide-react"
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import {
     createPoCompany, updatePoCompany, deletePoCompany,
     createPoCompanyProject, updatePoCompanyProject, deletePoCompanyProject
 } from "./actions"
 
-export function PerusahaanClient({ initialData }: { initialData: any[] }) {
+export function PerusahaanClient({ initialData, signers }: { initialData: any[], signers: any[] }) {
     const [expandedCompany, setExpandedCompany] = useState<string | null>(null)
     const [dialogMode, setDialogMode] = useState<"companyNew" | "companyEdit" | "projectNew" | "projectEdit" | null>(null)
     const [editData, setEditData] = useState<any>(null)
@@ -119,7 +126,7 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                                         <Badge variant="outline" className="font-mono">{company.kode_cabang}</Badge>
                                     </TableCell>
                                     <TableCell className="text-sm">{company.kota}</TableCell>
-                                    <TableCell className="text-sm">{company.pimpinan_default || "-"}</TableCell>
+                                    <TableCell className="text-sm">{(company as any).defaultCeo?.employee?.name || (company as any).defaultCeo?.username || "-"}</TableCell>
                                     <TableCell>
                                         <Badge variant="secondary">{company.projects?.length ?? 0} proyek</Badge>
                                     </TableCell>
@@ -263,6 +270,34 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                                 <Input name="name" defaultValue={editData?.name} placeholder="PT. Rajawali Puncak Jayawijaya" required />
                             </div>
                             <div className="space-y-2">
+                                <Label>Default CEO Signer</Label>
+                                <Select name="defaultCeoId" defaultValue={editData?.defaultCeoId || "none"}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih CEO (Opsional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">-- Kosongkan --</SelectItem>
+                                        {signers.filter(s => s.role === 'CEO').map(s => (
+                                            <SelectItem key={s.id} value={s.id}>{s.employee?.name || s.username}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Default FVP Signer</Label>
+                                <Select name="defaultFvpId" defaultValue={editData?.defaultFvpId || "none"}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pilih FVP (Opsional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">-- Kosongkan --</SelectItem>
+                                        {signers.filter(s => s.role === 'FVP').map(s => (
+                                            <SelectItem key={s.id} value={s.id}>{s.employee?.name || s.username}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
                                 <Label>Kode Cabang (Singkatan) *</Label>
                                 <Input name="kode_cabang" defaultValue={editData?.kode_cabang} placeholder="RPJ" maxLength={10} required />
                                 <p className="text-[10px] text-slate-500">Format Nomor PO: id/KODE/Kat/bln/thn</p>
@@ -278,19 +313,6 @@ export function PerusahaanClient({ initialData }: { initialData: any[] }) {
                             <div className="space-y-2 col-span-2">
                                 <Label>Email KOP Surat</Label>
                                 <Input type="email" name="email" defaultValue={editData?.email} />
-                            </div>
-                            <div className="space-y-2 col-span-2">
-                                <Label>Nama Pimpinan (Default)</Label>
-                                <Input name="pimpinan_default" defaultValue={editData?.pimpinan_default} placeholder="JEFFRY FERDY S.T." />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Nama Kepala Peralatan (Default)</Label>
-                                <Input name="kepala_peralatan_default" defaultValue={editData?.kepala_peralatan_default} placeholder="RUSLAN" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Jabatan Kepala (Default)</Label>
-                                <Input name="jabatan_kepala_default" defaultValue={editData?.jabatan_kepala_default} placeholder="Kepala Peralatan" />
-                                <p className="text-[10px] text-slate-500">Misal: Kepala Peralatan, Kepala Teknik</p>
                             </div>
                         </div>
                         <Button type="submit" className="w-full mt-4">Simpan</Button>

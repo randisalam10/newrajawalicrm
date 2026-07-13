@@ -30,13 +30,14 @@ const poSchema = z.object({
     notes: z.string().optional(),
     pic_name: z.string().optional(),
     pic_phone: z.string().optional(),
+    ceoId: z.string().optional().nullable(),
+    fvpId: z.string().optional().nullable(),
     items: z.array(poItemSchema).min(1, "Minimal 1 item barang"),
 })
 
-async function generatePoNumber(companyGroupId: string, categoryId: string): Promise<string> {
-    const now = new Date()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const year = String(now.getFullYear())
+async function generatePoNumber(companyGroupId: string, categoryId: string, tanggalTerbit: Date): Promise<string> {
+    const month = String(tanggalTerbit.getUTCMonth() + 1).padStart(2, '0')
+    const year = String(tanggalTerbit.getUTCFullYear())
 
     const [company, category] = await Promise.all([
         prisma.poCompanyGroup.findUnique({ where: { id: companyGroupId } }),
@@ -46,23 +47,37 @@ async function generatePoNumber(companyGroupId: string, categoryId: string): Pro
     const kodePerusahaan = company?.kode_cabang ?? 'XX'
     const kodeKategori = category?.kode_kategori ?? 'XX'
 
-    // Count existing POs this year for this company
-    // Mengambil hitungan data dari awal TAHUN agar reset tiap tahun, bukan tiap bulan.
-    const startOfYear = new Date(now.getFullYear(), 0, 1)
-    const count = await prisma.purchaseOrder.count({
+    // Fetch existing POs for this company whose PO number ends with the same year
+    // This is more robust than counting by tanggal_terbit because it detects actual used formats
+    const existingPos = await prisma.purchaseOrder.findMany({
         where: {
             companyGroupId,
-            tanggal_terbit: { gte: startOfYear }
+            po_number: {
+                endsWith: `/${year}`
+            }
+        },
+        select: {
+            po_number: true
         }
     })
 
+    // Find the highest sequence number currently used
+    let maxSeq = 0
+    
     // Offset khusus tahun 2026 karena data sebelumnya belum dimigrasi (ada 91 PO tertinggal)
-    let finalCount = count
-    if (now.getFullYear() === 2026) {
-        finalCount += 91
+    if (tanggalTerbit.getUTCFullYear() === 2026) {
+        maxSeq = 91
     }
 
-    const seq = String(finalCount + 1).padStart(3, '0')
+    for (const po of existingPos) {
+        const parts = po.po_number.split('/')
+        const seqNum = parseInt(parts[0], 10)
+        if (!isNaN(seqNum) && seqNum > maxSeq) {
+            maxSeq = seqNum
+        }
+    }
+
+    const seq = String(maxSeq + 1).padStart(3, '0')
     return `${seq}/${kodePerusahaan}/${kodeKategori}/${month}/${year}`
 }
 
@@ -154,75 +169,109 @@ export async function createPurchaseOrder(data: {
     notes?: string
     pic_name?: string
     pic_phone?: string
+    ceoId?: string | null
+    fvpId?: string | null
     items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
     pembuat_admin: string
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
-    try {
-        const po_number = await generatePoNumber(data.companyGroupId, data.categoryId)
+    const { items, jabatan_kepala } = data
 
-        const { items, jabatan_kepala } = data
-        
-        const created = await prisma.purchaseOrder.create({
-            data: {
-                po_number,
-                tanggal_terbit: data.tanggal_terbit,
-                companyGroupId: data.companyGroupId,
-                categoryId: data.categoryId,
-                supplierId: data.supplierId,
-                pimpinan: data.pimpinan,
-                kepala_peralatan: data.kepala_peralatan,
-                pembuat_admin: data.pembuat_admin,
-                metode_pembayaran: data.metode_pembayaran,
-                companyProjectId: data.companyProjectId || null,
-                locationId: data.locationId || null,
-                km_hm_kendaraan: data.km_hm_kendaraan || null,
-                notes: data.notes || null,
-                pic_name: data.pic_name || null,
-                pic_phone: data.pic_phone || null,
-                items: {
-                    create: items.map(item => ({
-                        masterItemId: item.masterItemId,
-                        quantity: item.quantity,
-                        harga_satuan: item.harga_satuan,
-                        keterangan: item.keterangan || null,
-                        subtotal: item.subtotal,
-                    }))
+    let retries = 5
+    let attempt = 0
+    let lastError: any = null
+
+    while (attempt < retries) {
+        try {
+            const po_number = await generatePoNumber(data.companyGroupId, data.categoryId, data.tanggal_terbit)
+            
+            const created = await prisma.purchaseOrder.create({
+                data: {
+                    po_number,
+                    tanggal_terbit: data.tanggal_terbit,
+                    companyGroupId: data.companyGroupId,
+                    categoryId: data.categoryId,
+                    supplierId: data.supplierId,
+                    pimpinan: data.pimpinan,
+                    kepala_peralatan: data.kepala_peralatan,
+                    pembuat_admin: data.pembuat_admin,
+                    metode_pembayaran: data.metode_pembayaran,
+                    companyProjectId: data.companyProjectId || null,
+                    locationId: data.locationId || null,
+                    km_hm_kendaraan: data.km_hm_kendaraan || null,
+                    notes: data.notes || null,
+                    pic_name: data.pic_name || null,
+                    pic_phone: data.pic_phone || null,
+                    ceoId: data.ceoId || null,
+                    fvpId: data.fvpId || null,
+                    items: {
+                        create: items.map(item => ({
+                            masterItemId: item.masterItemId,
+                            quantity: item.quantity,
+                            harga_satuan: item.harga_satuan,
+                            keterangan: item.keterangan || null,
+                            subtotal: item.subtotal,
+                        }))
+                    }
                 }
+            })
+
+            if (jabatan_kepala) {
+                await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
             }
-        })
+            // --- PUSH NOTIFICATION ---
+            // Cari token fcm Pimpinan (Hanya yang dipilih: ceoId, fvpId), dan SuperAdminBP
+            const targetedIds = [data.ceoId, data.fvpId].filter(Boolean) as string[]
+            
+            const admins = await prisma.user.findMany({
+                where: {
+                    OR: [
+                        { id: { in: targetedIds } },
+                        { role: 'SuperAdminBP' }
+                    ],
+                    fcmToken: { not: null }
+                },
+                select: { fcmToken: true }
+            })
 
-        if (jabatan_kepala) {
-            await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
+            const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
+            if (tokens.length > 0) {
+                await sendPushNotification(
+                    tokens,
+                    "PO Baru Membutuhkan Persetujuan",
+                    `PO ${po_number} telah dibuat oleh Logistik.`,
+                    { poId: created.id, type: "PO_APPROVAL" }
+                )
+            }
+            // -------------------------
+            revalidatePath("/logistik/po")
+            revalidatePath("/logistik/po/create")
+            return { success: true, po_number }
+        } catch (e: any) {
+            lastError = e
+            // Check for Prisma unique constraint violation (code P2002) specifically on po_number
+            const isUniqueConstraintPoNumber = 
+                e.code === 'P2002' && 
+                (
+                    (e.meta?.target && Array.isArray(e.meta.target) && e.meta.target.includes('po_number')) ||
+                    e.message?.includes('po_number')
+                )
+            
+            if (isUniqueConstraintPoNumber) {
+                attempt++
+                // Wait a tiny bit (exponential backoff or randomized) before retrying to let other transaction finish
+                await new Promise(resolve => setTimeout(resolve, 50 * attempt + Math.random() * 50))
+                continue
+            }
+            
+            // If it's a different error, fail immediately
+            return { success: false, error: e.message }
         }
-        // --- PUSH NOTIFICATION ---
-        // Cari token fcm Pimpinan (CEO, FVP)
-        const admins = await prisma.user.findMany({
-            where: {
-                role: { in: ['CEO', 'FVP', 'SuperAdminBP'] },
-                fcmToken: { not: null }
-            },
-            select: { fcmToken: true }
-        })
-
-        const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
-        if (tokens.length > 0) {
-            await sendPushNotification(
-                tokens,
-                "PO Baru Membutuhkan Persetujuan",
-                `PO ${po_number} telah dibuat oleh Logistik.`,
-                { poId: created.id, type: "PO_APPROVAL" }
-            )
-        }
-        // -------------------------
-        revalidatePath("/logistik/po")
-        revalidatePath("/logistik/po/create")
-        return { success: true, po_number }
-    } catch (e: any) {
-        return { success: false, error: e.message }
     }
+
+    return { success: false, error: `Gagal menyimpan PO setelah ${retries} kali percobaan karena nomor PO duplikat: ${lastError?.message || 'Unique constraint failed'}` }
 }
 
 export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED") {
@@ -235,11 +284,40 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
     }
 
     try {
-        const po = await prisma.purchaseOrder.update({ where: { id }, data: { status } })
+        const existingPo = await prisma.purchaseOrder.findUnique({ where: { id } })
+        if (!existingPo) return { success: false, error: "PO tidak ditemukan" }
+
+        let newStatus = existingPo.status
+        let updateData: any = {}
+        const now = new Date()
+
+        if (status === 'CANCELLED') {
+            newStatus = 'CANCELLED'
+            updateData = { status: 'CANCELLED', fvpApprovedAt: null, ceoApprovedAt: null }
+        } else if (status === 'APPROVED') {
+            if (userRole === 'FVP') {
+                updateData.fvpApprovedAt = now
+                if (existingPo.ceoApprovedAt) newStatus = 'APPROVED'
+            } else if (userRole === 'CEO') {
+                updateData.ceoApprovedAt = now
+                if (existingPo.fvpApprovedAt) newStatus = 'APPROVED'
+            } else if (userRole === 'SuperAdminBP' || userRole === 'AdminLogistik') {
+                updateData.fvpApprovedAt = now
+                updateData.ceoApprovedAt = now
+                newStatus = 'APPROVED'
+            }
+
+            if (newStatus === 'APPROVED') {
+                updateData.status = 'APPROVED'
+            }
+        }
+
+        const po = await prisma.purchaseOrder.update({ where: { id }, data: updateData })
+        
         try {
             if (pusherServer) {
                 await pusherServer.trigger('logistik-channel', 'po-updated', {
-                    message: `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'}`,
+                    message: `PO ${po.po_number} telah di-${newStatus === 'APPROVED' ? 'setujui' : (status === 'CANCELLED' ? 'batalkan' : 'proses')}`,
                 })
             }
         } catch (pusherErr) {
@@ -248,9 +326,13 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
         revalidatePath("/logistik/po")
 
         // --- PUSH NOTIFICATION ---
+        const targetedIds = [po.ceoId, po.fvpId].filter(Boolean) as string[]
         const admins = await prisma.user.findMany({
             where: {
-                role: { in: ['CEO', 'FVP', 'SuperAdminBP', 'AdminLogistik'] },
+                OR: [
+                    { id: { in: targetedIds } },
+                    { role: 'SuperAdminBP' }
+                ],
                 fcmToken: { not: null }
             },
             select: { fcmToken: true }
@@ -258,12 +340,21 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
 
         const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
         if (tokens.length > 0) {
-            await sendPushNotification(
-                tokens,
-                `PO ${status === 'APPROVED' ? 'Disetujui' : 'Dibatalkan'}`,
-                `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'} oleh ${session.user.username || 'System'}.`,
-                { poId: po.id, type: "PO_UPDATE" }
-            )
+            let notifTitle = "Info PO"
+            let notifBody = ""
+
+            if (status === 'CANCELLED') {
+                notifTitle = "PO Dibatalkan"
+                notifBody = `PO ${po.po_number} telah dibatalkan oleh ${session.user.username || 'System'}.`
+            } else if (newStatus === 'APPROVED') {
+                notifTitle = "PO Disetujui Penuh"
+                notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
+            } else {
+                notifTitle = "PO Disetujui Parsial"
+                notifBody = `PO ${po.po_number} telah disetujui oleh ${session.user.username || 'System'}. Menunggu persetujuan selanjutnya.`
+            }
+
+            await sendPushNotification(tokens, notifTitle, notifBody, { poId: po.id, type: "PO_UPDATE" })
         }
         // -------------------------
 
@@ -288,13 +379,23 @@ export async function deletePurchaseOrder(id: string) {
 
 // For PO Create form: load master data
 export async function getPoFormData() {
-    const [companies, categories, suppliers, items] = await Promise.all([
+    const [companies, categories, suppliers, items, signers] = await Promise.all([
         prisma.poCompanyGroup.findMany({ include: { projects: true }, orderBy: { name: 'asc' } }),
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
         prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
         prisma.masterItem.findMany({ include: { supplier: true }, orderBy: { name: 'asc' } }),
+        prisma.user.findMany({ 
+            where: { role: { in: ['CEO', 'FVP'] } }, 
+            select: { 
+                id: true, 
+                username: true, 
+                role: true,
+                employee: { select: { name: true } }
+            }, 
+            orderBy: { username: 'asc' } 
+        }),
     ])
-    return { companies, categories, suppliers, items }
+    return { companies, categories, suppliers, items, signers }
 }
 
 // For PO Report tab: get filtered & grouped PO data
@@ -404,6 +505,8 @@ export async function updatePurchaseOrder(poId: string, data: {
     notes?: string
     pic_name?: string
     pic_phone?: string
+    ceoId?: string
+    fvpId?: string
     items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
     pembuat_admin: string
 }) {
@@ -430,6 +533,8 @@ export async function updatePurchaseOrder(poId: string, data: {
                     ...poData,
                     companyProjectId: poData.companyProjectId || null,
                     locationId: poData.locationId || null,
+                    ceoId: poData.ceoId || null,
+                    fvpId: poData.fvpId || null,
                     items: {
                         create: items.map(item => ({
                             masterItemId: item.masterItemId,

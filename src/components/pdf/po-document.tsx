@@ -336,7 +336,7 @@ export function PODocument({ po }: { po: POData }) {
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.kepala_peralatan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
-                            {po.jabatan_kepala || "Kepala Peralatan"}
+                            {po.jabatan_kepala || "Yang Mengajukan"}
                         </Text>
                     </View>
 

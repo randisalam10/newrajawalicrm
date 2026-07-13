@@ -166,7 +166,33 @@ export function POListClient({
                         )}
                         {orders.map((po) => {
                             const total = po.items?.reduce((acc: number, item: any) => acc + item.subtotal, 0) ?? 0
-                            const cfg = statusConfig[po.status] ?? statusConfig.DRAFT
+                            let cfg = statusConfig[po.status] ?? statusConfig.DRAFT
+                            
+                            if (po.status === 'DRAFT') {
+                                let required = 0
+                                let approved = 0
+                                if (po.ceoId) required++
+                                if (po.fvpId) required++
+                                if (po.ceoApprovedAt) approved++
+                                if (po.fvpApprovedAt) approved++
+
+                                if (required > 0) {
+                                    const pending = required - approved
+                                    if (pending > 0) {
+                                        cfg = { 
+                                            label: `Menunggu ${pending} Persetujuan`, 
+                                            className: pending === 2 ? "bg-orange-100 text-orange-700 border border-orange-200" : "bg-blue-100 text-blue-700 border border-blue-200" 
+                                        }
+                                    } else {
+                                        cfg = { label: "Selesai Disetujui", className: "bg-green-100 text-green-700" }
+                                    }
+                                } else {
+                                    cfg = { label: "Menunggu Persetujuan", className: "bg-orange-100 text-orange-700" }
+                                }
+                            } else if (po.status === 'APPROVED') {
+                                cfg = { label: "Selesai Disetujui", className: "bg-green-100 text-green-700" }
+                            }
+
                             return (
                                 <TableRow key={po.id} className="hover:bg-slate-50/70">
                                     <TableCell className="font-mono font-semibold text-sm">{po.po_number}</TableCell>
@@ -209,9 +235,10 @@ export function POListClient({
                                                 <Button
                                                     variant="ghost" size="icon" className="h-8 w-8" title="Setujui"
                                                     onClick={async () => {
-                                                        if (!confirm("Setujui PO ini?")) return
+                                                        if (!confirm("Setujui PO ini (sesuai role Anda)?")) return
                                                         const res = await updatePoStatus(po.id, "APPROVED")
                                                         if (res.success) fetchData(page, search, companyId, categoryId)
+                                                        else alert(`Gagal: ${res.error}`)
                                                     }}
                                                 >
                                                     <CheckCircle className="w-4 h-4 text-green-600" />

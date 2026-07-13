@@ -1,9 +1,10 @@
-import { getPoCompanies } from "./actions"
+import { getPoCompanies, getUsersForSigners } from "./actions"
 import { PerusahaanClient } from "./perusahaan-client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 export default async function PerusahaanPage() {
     const companies = await getPoCompanies()
+    const signers = await getUsersForSigners()
 
     return (
         <div className="space-y-4">
@@ -13,7 +14,7 @@ export default async function PerusahaanPage() {
             </div>
             <Card>
                 <CardContent className="p-0">
-                    <PerusahaanClient initialData={companies} />
+                    <PerusahaanClient initialData={companies} signers={signers} />
                 </CardContent>
             </Card>
         </div>

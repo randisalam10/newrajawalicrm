@@ -68,7 +68,8 @@ export async function sendPushNotification(tokens: string[], title: string, body
                     // Jika token sudah tidak valid (uninstalled, expired, dll), kumpulkan untuk dihapus
                     if (
                         errorCode === 'messaging/invalid-registration-token' ||
-                        errorCode === 'messaging/registration-token-not-registered'
+                        errorCode === 'messaging/registration-token-not-registered' ||
+                        errorCode === 'messaging/mismatched-credential'
                     ) {
                         failedTokens.push(tokens[idx]);
                     }

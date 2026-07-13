@@ -14,6 +14,8 @@ const companySchema = z.object({
     kepala_peralatan_default: z.string().optional(),
     jabatan_kepala_default: z.string().optional(),
     logo_url: z.string().optional(),
+    defaultCeoId: z.string().optional().nullable(),
+    defaultFvpId: z.string().optional().nullable(),
 })
 
 const projectSchema = z.object({
@@ -24,8 +26,25 @@ const projectSchema = z.object({
 
 export async function getPoCompanies() {
     return await prisma.poCompanyGroup.findMany({
-        include: { projects: { orderBy: { name: 'asc' } } },
+        include: { 
+            projects: { orderBy: { name: 'asc' } },
+            defaultCeo: { select: { id: true, username: true } },
+            defaultFvp: { select: { id: true, username: true } },
+        },
         orderBy: { name: 'asc' }
+    })
+}
+
+export async function getUsersForSigners() {
+    return await prisma.user.findMany({
+        where: { role: { in: ['CEO', 'FVP'] } },
+        select: { 
+            id: true, 
+            username: true, 
+            role: true,
+            employee: { select: { name: true } }
+        },
+        orderBy: { username: 'asc' }
     })
 }
 
@@ -35,13 +54,15 @@ export async function createPoCompany(formData: FormData) {
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
     try {
-        const { kepala_peralatan_default, jabatan_kepala_default, logo_url, ...prismaData } = parsed.data
+        const { kepala_peralatan_default, jabatan_kepala_default, logo_url, defaultCeoId, defaultFvpId, ...prismaData } = parsed.data
         const created = await prisma.poCompanyGroup.create({ data: prismaData })
         // Simpan field baru via raw SQL karena Prisma client belum di-regenerate
         await prisma.$executeRaw`UPDATE "PoCompanyGroup" SET
             "kepala_peralatan_default" = ${kepala_peralatan_default ?? null},
             "jabatan_kepala_default" = ${jabatan_kepala_default ?? null},
-            "logo_url" = ${logo_url ?? null}
+            "logo_url" = ${logo_url ?? null},
+            "defaultCeoId" = ${defaultCeoId ?? null},
+            "defaultFvpId" = ${defaultFvpId ?? null}
             WHERE id = ${created.id}`
         revalidatePath("/logistik/perusahaan")
         return { success: true }
@@ -56,13 +77,15 @@ export async function updatePoCompany(id: string, formData: FormData) {
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
     try {
-        const { kepala_peralatan_default, jabatan_kepala_default, logo_url, ...prismaData } = parsed.data
+        const { kepala_peralatan_default, jabatan_kepala_default, logo_url, defaultCeoId, defaultFvpId, ...prismaData } = parsed.data
         await prisma.poCompanyGroup.update({ where: { id }, data: prismaData })
         // Simpan field baru via raw SQL karena Prisma client belum di-regenerate
         await prisma.$executeRaw`UPDATE "PoCompanyGroup" SET
             "kepala_peralatan_default" = ${kepala_peralatan_default ?? null},
             "jabatan_kepala_default" = ${jabatan_kepala_default ?? null},
-            "logo_url" = ${logo_url ?? null}
+            "logo_url" = ${logo_url ?? null},
+            "defaultCeoId" = ${defaultCeoId ?? null},
+            "defaultFvpId" = ${defaultFvpId ?? null}
             WHERE id = ${id}`
         revalidatePath("/logistik/perusahaan")
         return { success: true }

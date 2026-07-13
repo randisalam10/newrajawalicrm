@@ -39,12 +39,12 @@ export default async function PrintPOPage({
     }) : null
 
     // Fetch new fields via raw SQL karena Prisma client belum di-regenerate
-    const rawPO = await prisma.$queryRaw<{ jabatan_kepala: string | null, updatedAt: Date | null }[]>`
-        SELECT "jabatan_kepala", "updatedAt" FROM "PurchaseOrder" WHERE id = ${id} LIMIT 1`
+    const rawPO = await prisma.$queryRaw<{ jabatan_kepala: string | null, updatedAt: Date | null, ceoId: string | null, fvpId: string | null }[]>`
+        SELECT "jabatan_kepala", "updatedAt", "ceoId", "fvpId" FROM "PurchaseOrder" WHERE id = ${id} LIMIT 1`
     const rawCompany = await prisma.$queryRaw<{ logo_url: string | null }[]>`
         SELECT "logo_url" FROM "PoCompanyGroup" WHERE id = ${po.companyGroupId} LIMIT 1`
 
-    const jabatanKepala = rawPO[0]?.jabatan_kepala || "Kepala Peralatan"
+    const jabatanKepala = rawPO[0]?.jabatan_kepala || "Yang Mengajukan"
     const updatedAtRaw = rawPO[0]?.updatedAt || null
     let logoUrl = rawCompany[0]?.logo_url || null
     if (logoUrl && logoUrl.startsWith('/uploads/logos/')) {
@@ -58,16 +58,34 @@ export default async function PrintPOPage({
     const dynamicBaseUrl = `${protocol}://${host}`
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || dynamicBaseUrl
 
+    // Fetch real names for CEO & FVP if IDs exist
+    let ceoName = po.pimpinan || "PIMPINAN"
+    let fvpName = po.kepala_peralatan || "YANG MENGAJUKAN"
+
+    if (rawPO[0]?.ceoId) {
+        const ceo = await prisma.user.findUnique({
+            where: { id: rawPO[0].ceoId },
+            include: { employee: true }
+        })
+        if (ceo?.employee?.name) ceoName = ceo.employee.name
+    }
+
+    if (rawPO[0]?.fvpId) {
+        const fvp = await prisma.user.findUnique({
+            where: { id: rawPO[0].fvpId },
+            include: { employee: true }
+        })
+        if (fvp?.employee?.name) fvpName = fvp.employee.name
+    }
+
     // Fetch Employee name based on pembuat_admin (username)
-    let pembuatName = po.pembuat_admin || "ADMIN" // Default fallback
+    let pembuatName = po.pembuat_admin || "ADMIN"
     if (po.pembuat_admin) {
         const adminUser = await prisma.user.findUnique({
             where: { username: po.pembuat_admin },
             include: { employee: true }
         })
-        if (adminUser?.employee?.name) {
-            pembuatName = adminUser.employee.name
-        }
+        if (adminUser?.employee?.name) pembuatName = adminUser.employee.name
     }
 
     const formattedPO = {
@@ -93,8 +111,8 @@ export default async function PrintPOPage({
             harga: item.harga_satuan,
             keterangan: item.keterangan || undefined,
         })),
-        pimpinan: po.pimpinan || "PIMPINAN",
-        kepala_peralatan: po.kepala_peralatan || "KEPALA PERALATAN",
+        pimpinan: ceoName,
+        kepala_peralatan: fvpName,
         jabatan_kepala: jabatanKepala,
         pembuat: pembuatName,
         catatan: po.notes || undefined,

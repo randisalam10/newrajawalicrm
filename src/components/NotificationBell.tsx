@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Bell, Check, Trash2, CheckCircle2 } from "lucide-react"
-import { pusherClient } from "@/lib/pusher"
+import { pusherClient, getChannelName } from "@/lib/pusher"
 import {
     Popover,
     PopoverContent,
@@ -22,8 +22,13 @@ type NotificationItem = {
 }
 
 export function NotificationBell() {
+    const [mounted, setMounted] = useState(false)
     const [notifications, setNotifications] = useState<NotificationItem[]>([])
     const [open, setOpen] = useState(false)
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     // Load from local storage initially
     useEffect(() => {
@@ -46,7 +51,8 @@ export function NotificationBell() {
     useEffect(() => {
         if (!pusherClient) return
 
-        const channel = pusherClient.subscribe('logistik-channel')
+        const channelName = getChannelName('logistik-channel')
+        const channel = pusherClient.subscribe(channelName)
 
         channel.bind('po-updated', (data: { message: string }) => {
             const isApprove = data.message.includes("setujui")
@@ -75,6 +81,12 @@ export function NotificationBell() {
     const clearAll = () => {
         setNotifications([])
     }
+
+    if (!mounted) return (
+        <Button variant="ghost" size="icon" className="relative h-10 w-10 rounded-full">
+            <Bell className="h-5 w-5 text-slate-600" />
+        </Button>
+    )
 
     return (
         <Popover open={open} onOpenChange={setOpen}>

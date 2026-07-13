@@ -103,6 +103,12 @@ model User {
   employee   Employee   @relation(fields: [employeeId], references: [id])
   employeeId String     @unique
   auditLogs  AuditLog[]
+
+  // Multi-Level Approval Relations
+  defaultCeos PoCompanyGroup[] @relation("CompanyCeo")
+  defaultFvps PoCompanyGroup[] @relation("CompanyFvp")
+  poCeos      PurchaseOrder[]  @relation("PoCeo")
+  poFvps      PurchaseOrder[]  @relation("PoFvp")
 }
 
 model Employee {
@@ -427,6 +433,12 @@ model PoCompanyGroup {
   kepala_peralatan_default String? // Nama kepala peralatan default
   jabatan_kepala_default   String? // Jabatan kepala peralatan, misal: "Kepala Peralatan"
   logo_url                 String? // Path logo perusahaan untuk KOP surat
+  
+  defaultCeoId             String? // default CEO signer
+  defaultFvpId             String? // default FVP signer
+  defaultCeo               User?   @relation("CompanyCeo", fields: [defaultCeoId], references: [id])
+  defaultFvp               User?   @relation("CompanyFvp", fields: [defaultFvpId], references: [id])
+
   projects                 PoCompanyProject[]
   purchaseOrders           PurchaseOrder[]
   createdAt                DateTime           @default(now())
@@ -505,6 +517,14 @@ model PurchaseOrder {
 
   status PurchaseOrderStatus @default(DRAFT)
   notes  String?
+
+  // Multi-Level Approval Tracker
+  ceoId         String?
+  fvpId         String?
+  ceoApprovedAt DateTime?
+  fvpApprovedAt DateTime?
+  ceo           User? @relation("PoCeo", fields: [ceoId], references: [id])
+  fvp           User? @relation("PoFvp", fields: [fvpId], references: [id])
 
   pic_name  String?
   pic_phone String?

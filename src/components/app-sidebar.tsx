@@ -30,7 +30,12 @@ type AppSidebarProps = {
 
 export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
+    const [mounted, setMounted] = useState(false)
     const [openGroup, setOpenGroup] = useState<string | null>("Operasional & Transaksi")
+
+    useEffect(() => {
+        setMounted(true)
+    }, [])
 
     const navGroups = [
         ...(user?.role !== "AdminLogistik" ? [
@@ -126,6 +131,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pathname])
+
+    if (!mounted) {
+        return <Sidebar variant="inset" />
+    }
 
     return (
         <Sidebar variant="inset">

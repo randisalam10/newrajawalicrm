@@ -8,13 +8,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Trash2, Plus, Info, CheckCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Combobox } from "@/components/ui/combobox"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 import { createPurchaseOrder } from "../actions"
 import { useRouter } from "next/navigation"
 
 type PoPaymentMethod = "CASH" | "CREDIT"
 
-export function POCreateClient({ companies, categories, suppliers, items, pembuatAdmin }: {
-    companies: any[], categories: any[], suppliers: any[], items: any[], pembuatAdmin: string
+export function POCreateClient({ companies, categories, suppliers, items, signers, pembuatAdmin }: {
+    companies: any[], categories: any[], suppliers: any[], items: any[], signers: any[], pembuatAdmin: string
 }) {
     const router = useRouter()
     const [saving, setSaving] = useState(false)
@@ -27,6 +34,8 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
     const [pimpinan, setPimpinan] = useState("")
     const [kepalaPeralatan, setKepalaPeralatan] = useState("")
     const [jabatanKepala, setJabatanKepala] = useState("")
+    const [selectedCeoId, setSelectedCeoId] = useState<string>("none")
+    const [selectedFvpId, setSelectedFvpId] = useState<string>("none")
     const [poItems, setPoItems] = useState<any[]>([])
     const [selectedItemId, setSelectedItemId] = useState("")
     const [metodePembayaran, setMetodePembayaran] = useState<PoPaymentMethod>("CREDIT")
@@ -50,9 +59,14 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
         setSelectedProjectId("")
         const comp = companies.find((c: any) => c.id === val)
         if (comp) {
-            setPimpinan(comp.pimpinan_default || "")
-            setKepalaPeralatan(comp.kepala_peralatan_default || "")
-            setJabatanKepala(comp.jabatan_kepala_default || "Kepala Peralatan")
+            const ceoSigner = signers.find(s => s.id === comp.defaultCeoId)
+            const fvpSigner = signers.find(s => s.id === comp.defaultFvpId)
+            
+            setPimpinan(ceoSigner?.employee?.name || ceoSigner?.username || "")
+            setKepalaPeralatan(fvpSigner?.employee?.name || fvpSigner?.username || "")
+            setJabatanKepala("Yang Mengajukan")
+            setSelectedCeoId(comp.defaultCeoId || "none")
+            setSelectedFvpId(comp.defaultFvpId || "none")
         }
     }
 
@@ -95,6 +109,8 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                 notes: notes || undefined,
                 pic_name: picName || undefined,
                 pic_phone: picPhone || undefined,
+                ceoId: selectedCeoId !== "none" ? selectedCeoId : undefined,
+                fvpId: selectedFvpId !== "none" ? selectedFvpId : undefined,
                 pembuat_admin: pembuatAdmin,
                 items: poItems.map(item => ({
                     masterItemId: item.id,
@@ -200,6 +216,47 @@ export function POCreateClient({ companies, categories, suppliers, items, pembua
                         <div className="space-y-2">
                             <Label>Tanggal Terbit PO</Label>
                             <Input type="date" value={tanggalTerbit} onChange={e => setTanggalTerbit(e.target.value)} required />
+                        </div>
+                        <div className="space-y-2 border-t pt-4">
+                            <Label>Pilih Penandatangan (Approval)</Label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-slate-500">CEO Signer</Label>
+                                    <Select value={selectedCeoId} onValueChange={(val) => {
+                                        setSelectedCeoId(val)
+                                        const s = signers.find(u => u.id === val)
+                                        setPimpinan(s?.employee?.name || s?.username || "")
+                                    }}>
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Pilih CEO" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">-- Kosongkan --</SelectItem>
+                                            {signers.filter(s => s.role === 'CEO').map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{(s as any).employee?.name || s.username}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs text-slate-500">FVP Signer</Label>
+                                    <Select value={selectedFvpId} onValueChange={(val) => {
+                                        setSelectedFvpId(val)
+                                        const s = signers.find(u => u.id === val)
+                                        setKepalaPeralatan(s?.employee?.name || s?.username || "")
+                                    }}>
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Pilih FVP" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none">-- Kosongkan --</SelectItem>
+                                            {signers.filter(s => s.role === 'FVP').map(s => (
+                                                <SelectItem key={s.id} value={s.id}>{(s as any).employee?.name || s.username}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
                         </div>
                         <div className="space-y-2 border-t pt-4">
                             <Label>Pembuat PO (Sistem)</Label>

@@ -4,7 +4,7 @@ import { auth } from "@/auth"
 
 export default async function POCreatePage() {
     const session = await auth()
-    const { companies, categories, suppliers, items } = await getPoFormData()
+    const { companies, categories, suppliers, items, signers } = await getPoFormData()
 
     return (
         <div className="space-y-4">
@@ -17,6 +17,7 @@ export default async function POCreatePage() {
                 categories={categories}
                 suppliers={suppliers}
                 items={items}
+                signers={signers}
                 pembuatAdmin={session?.user?.username || "Admin"}
             />
         </div>

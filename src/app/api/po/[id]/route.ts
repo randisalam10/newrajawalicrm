@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyMobileToken } from '@/lib/auth-mobile'
 import { revalidatePath } from 'next/cache'
-import { pusherServer } from '@/lib/pusher'
+import { pusherServer, getChannelName } from '@/lib/pusher'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
     const authResult = verifyMobileToken(req)
@@ -76,16 +76,46 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     try {
         const body = await req.json()
-        const { status } = body
+        const { status, notes } = body
 
         if (!['APPROVED', 'CANCELLED'].includes(status)) {
             return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
         }
 
         const { id } = await params
+        const existingPo = await prisma.purchaseOrder.findUnique({ where: { id } })
+        if (!existingPo) return NextResponse.json({ error: 'Purchase Order not found' }, { status: 404 })
+
+        let newStatus = existingPo.status
+        let updateData: any = {}
+        const now = new Date()
+
+        if (status === 'CANCELLED') {
+            newStatus = 'CANCELLED'
+            updateData = { status: 'CANCELLED', fvpApprovedAt: null, ceoApprovedAt: null }
+            if (notes) updateData.notes = notes
+        } else if (status === 'APPROVED') {
+            if (user.role === 'FVP') {
+                updateData.fvpApprovedAt = now
+                if (existingPo.ceoApprovedAt) newStatus = 'APPROVED'
+            } else if (user.role === 'CEO') {
+                updateData.ceoApprovedAt = now
+                if (existingPo.fvpApprovedAt) newStatus = 'APPROVED'
+            } else if (user.role === 'SuperAdminBP' || user.role === 'AdminLogistik') {
+                updateData.fvpApprovedAt = now
+                updateData.ceoApprovedAt = now
+                newStatus = 'APPROVED'
+            }
+
+            if (newStatus === 'APPROVED') {
+                updateData.status = 'APPROVED'
+            }
+            if (notes) updateData.notes = notes
+        }
+
         const po = await prisma.purchaseOrder.update({
             where: { id },
-            data: { status }
+            data: updateData
         })
 
         // Revalidate web pages so the dashboard updates
@@ -94,8 +124,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
         try {
             if (pusherServer) {
-                await pusherServer.trigger('logistik-channel', 'po-updated', {
-                    message: `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'}`,
+                await pusherServer.trigger(getChannelName('logistik-channel'), 'po-updated', {
+                    message: `PO ${po.po_number} telah di-${newStatus === 'APPROVED' ? 'setujui' : (status === 'CANCELLED' ? 'batalkan' : 'proses')}`,
                 })
             }
         } catch (pusherErr) {
@@ -105,9 +135,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         // --- PUSH NOTIFICATION ---
         try {
             const { sendPushNotification } = await import('@/lib/firebase/admin')
+            const targetedIds = [po.ceoId, po.fvpId].filter(Boolean) as string[]
             const admins = await prisma.user.findMany({
                 where: {
-                    role: { in: ['CEO', 'FVP', 'SuperAdminBP', 'AdminLogistik'] },
+                    OR: [
+                        { id: { in: targetedIds } },
+                        { role: 'SuperAdminBP' }
+                    ],
                     fcmToken: { not: null }
                 },
                 select: { fcmToken: true }
@@ -115,12 +149,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
             const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
             if (tokens.length > 0) {
-                await sendPushNotification(
-                    tokens,
-                    `PO ${status === 'APPROVED' ? 'Disetujui' : 'Dibatalkan'} (Mobile)`,
-                    `PO ${po.po_number} telah di-${status === 'APPROVED' ? 'setujui' : 'batalkan'} oleh ${user.username || 'Admin'}.`,
-                    { poId: po.id, type: "PO_UPDATE" }
-                )
+                let notifTitle = "Info PO"
+                let notifBody = ""
+
+                if (status === 'CANCELLED') {
+                    notifTitle = "PO Dibatalkan (Mobile)"
+                    notifBody = `PO ${po.po_number} telah dibatalkan oleh ${user.username || 'System'}.`
+                } else if (newStatus === 'APPROVED') {
+                    notifTitle = "PO Disetujui Penuh"
+                    notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
+                } else {
+                    notifTitle = "PO Disetujui Parsial"
+                    notifBody = `PO ${po.po_number} telah disetujui oleh ${user.username || 'System'}. Menunggu persetujuan selanjutnya.`
+                }
+
+                await sendPushNotification(tokens, notifTitle, notifBody, { poId: po.id, type: "PO_UPDATE" })
             }
         } catch (fcmErr) {
             console.error("FCM Status Update Error:", fcmErr)

@@ -38,7 +38,8 @@ export async function GET(req: Request) {
             tanggal_terbit: {
                 gte: startDate,
                 lte: endDate
-            }
+            },
+            status: { not: 'CANCELLED' }
         }
 
         if (companyGroupId && companyGroupId !== 'all') {
@@ -67,8 +68,9 @@ export async function GET(req: Request) {
         let poApprovedCount = 0
         let poCancelledCount = 0
 
-        const pengeluaranPerPerusahaan: Record<string, number> = {}
-        const pengeluaranPerKategori: Record<string, number> = {}
+        const breakdownPerPerusahaan: Record<string, { id: string, name: string, total: number }> = {}
+        const breakdownPerKategori: Record<string, { id: string, name: string, total: number }> = {}
+        const breakdownPerProyek: Record<string, { id: string, name: string, total: number }> = {}
 
         pos.forEach((po: any) => {
             const poTotal = po.items.reduce((acc: number, item: any) => acc + item.subtotal, 0)
@@ -76,30 +78,46 @@ export async function GET(req: Request) {
 
             if (po.status === 'DRAFT') poDraftCount++
             else if (po.status === 'APPROVED') poApprovedCount++
-            else if (po.status === 'CANCELLED') poCancelledCount++
 
             // By Company Tracking
+            const companyId = po.companyGroupId
             const companyName = po.companyGroup?.name || 'Lainnya'
-            if (!pengeluaranPerPerusahaan[companyName]) {
-                pengeluaranPerPerusahaan[companyName] = 0
+            if (!breakdownPerPerusahaan[companyId]) {
+                breakdownPerPerusahaan[companyId] = { id: companyId, name: companyName, total: 0 }
             }
-            pengeluaranPerPerusahaan[companyName] += poTotal
+            breakdownPerPerusahaan[companyId].total += poTotal
 
             // By Category Tracking
+            const categoryId = po.categoryId
             const categoryName = po.category?.name || 'Lainnya'
-            if (!pengeluaranPerKategori[categoryName]) {
-                pengeluaranPerKategori[categoryName] = 0
+            if (!breakdownPerKategori[categoryId]) {
+                breakdownPerKategori[categoryId] = { id: categoryId, name: categoryName, total: 0 }
             }
-            pengeluaranPerKategori[categoryName] += poTotal
+            breakdownPerKategori[categoryId].total += poTotal
         })
 
-        const companyBreakdown = Object.entries(pengeluaranPerPerusahaan)
-            .map(([name, total]) => ({ name, total: total as number }))
-            .sort((a, b) => b.total - a.total)
+        // Fetch project names to map companyProjectId to actual names
+        const projects = await prisma.poCompanyProject.findMany({
+            select: { id: true, name: true }
+        })
+        const projectMap = new Map(projects.map(p => [p.id, p.name]))
 
-        const categoryBreakdown = Object.entries(pengeluaranPerKategori)
-            .map(([name, total]) => ({ name, total: total as number }))
-            .sort((a, b) => b.total - a.total)
+        pos.forEach((po: any) => {
+            if (po.companyProjectId) {
+                const projectId = po.companyProjectId
+                const projectName = projectMap.get(projectId) || 'Proyek Tidak Terdeteksi'
+                const poTotal = po.items.reduce((acc: number, item: any) => acc + item.subtotal, 0)
+                
+                if (!breakdownPerProyek[projectId]) {
+                    breakdownPerProyek[projectId] = { id: projectId, name: projectName, total: 0 }
+                }
+                breakdownPerProyek[projectId].total += poTotal
+            }
+        })
+
+        const companyBreakdown = Object.values(breakdownPerPerusahaan).sort((a, b) => b.total - a.total)
+        const categoryBreakdown = Object.values(breakdownPerKategori).sort((a, b) => b.total - a.total)
+        const projectBreakdown = Object.values(breakdownPerProyek).sort((a, b) => b.total - a.total)
 
         return NextResponse.json({
             success: true,
@@ -111,7 +129,8 @@ export async function GET(req: Request) {
                     poApprovedCount,
                     poCancelledCount,
                     companyBreakdown,
-                    categoryBreakdown
+                    categoryBreakdown,
+                    projectBreakdown
                 },
                 filterOptions: {
                     companies,

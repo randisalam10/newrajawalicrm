@@ -11,7 +11,8 @@ export async function GET(
     if (!filename) return new NextResponse("Not Found", { status: 404 })
 
     try {
-        const filePath = join(process.cwd(), "public", "uploads", "logos", filename)
+        const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), "public", "uploads", "logos")
+        const filePath = join(uploadDir, filename)
         const fileBuffer = await readFile(filePath)
 
         const ext = filename.split(".").pop()?.toLowerCase() || ""

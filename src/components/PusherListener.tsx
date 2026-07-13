@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { pusherClient } from "@/lib/pusher"
+import { pusherClient, getChannelName } from "@/lib/pusher"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -12,8 +12,9 @@ export function PusherListener() {
         if (!pusherClient) return
 
         // Subscribe to logistik-channel
-        console.log('Pusher: Subscribing to logistik-channel...')
-        const channel = pusherClient.subscribe('logistik-channel')
+        const channelName = getChannelName('logistik-channel')
+        console.log(`Pusher: Subscribing to ${channelName}...`)
+        const channel = pusherClient.subscribe(channelName)
 
         channel.bind('pusher:subscription_succeeded', () => {
             console.log('Pusher: Successfully subscribed to logistik-channel')
