@@ -65,8 +65,8 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
             setPimpinan(ceoSigner?.employee?.name || ceoSigner?.username || "")
             setKepalaPeralatan(fvpSigner?.employee?.name || fvpSigner?.username || "")
             setJabatanKepala("Yang Mengajukan")
-            setSelectedCeoId(comp.defaultCeoId || "none")
-            setSelectedFvpId(comp.defaultFvpId || "none")
+            setSelectedCeoId(ceoSigner ? comp.defaultCeoId : "none")
+            setSelectedFvpId(fvpSigner ? comp.defaultFvpId : "none")
         }
     }
 

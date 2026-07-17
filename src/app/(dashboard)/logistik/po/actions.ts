@@ -89,8 +89,14 @@ async function generatePoNumber(companyGroupId: string, categoryId: string, tang
         const seqStr = String(currentSeq).padStart(3, '0')
         candidatePoNumber = `${seqStr}/${kodePerusahaan}/${kodeKategori}/${month}/${year}`
         
-        const existing = await prisma.purchaseOrder.findUnique({
-            where: { po_number: candidatePoNumber },
+        // Check if exact candidate OR any PO starting with sequence/company code exists
+        const existing = await prisma.purchaseOrder.findFirst({
+            where: {
+                OR: [
+                    { po_number: { equals: candidatePoNumber, mode: 'insensitive' } },
+                    { po_number: { startsWith: `${seqStr}/${kodePerusahaan}/` } }
+                ]
+            },
             select: { id: true }
         })
 
@@ -201,6 +207,24 @@ export async function createPurchaseOrder(data: {
 
     const { items, jabatan_kepala } = data
 
+    // Validate foreign keys to prevent P2003 FK errors
+    let ceoId = data.ceoId || null
+    let fvpId = data.fvpId || null
+    let companyProjectId = data.companyProjectId || null
+
+    if (ceoId) {
+        const userExists = await prisma.user.findUnique({ where: { id: ceoId } })
+        if (!userExists) ceoId = null
+    }
+    if (fvpId) {
+        const userExists = await prisma.user.findUnique({ where: { id: fvpId } })
+        if (!userExists) fvpId = null
+    }
+    if (companyProjectId) {
+        const projectExists = await prisma.poCompanyProject.findUnique({ where: { id: companyProjectId } })
+        if (!projectExists) companyProjectId = null
+    }
+
     let retries = 5
     let attempt = 0
     let lastError: any = null
@@ -220,14 +244,14 @@ export async function createPurchaseOrder(data: {
                     kepala_peralatan: data.kepala_peralatan,
                     pembuat_admin: data.pembuat_admin,
                     metode_pembayaran: data.metode_pembayaran,
-                    companyProjectId: data.companyProjectId || null,
+                    companyProjectId,
                     locationId: data.locationId || null,
                     km_hm_kendaraan: data.km_hm_kendaraan || null,
                     notes: data.notes || null,
                     pic_name: data.pic_name || null,
                     pic_phone: data.pic_phone || null,
-                    ceoId: data.ceoId || null,
-                    fvpId: data.fvpId || null,
+                    ceoId,
+                    fvpId,
                     items: {
                         create: items.map(item => ({
                             masterItemId: item.masterItemId,
