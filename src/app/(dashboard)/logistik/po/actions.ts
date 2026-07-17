@@ -47,11 +47,13 @@ async function generatePoNumber(companyGroupId: string, categoryId: string, tang
     const kodePerusahaan = company?.kode_cabang ?? 'XX'
     const kodeKategori = category?.kode_kategori ?? 'XX'
 
-    // Fetch existing POs for this company whose PO number ends with the same year
-    // This is more robust than counting by tanggal_terbit because it detects actual used formats
+    // Fetch existing POs for this company group OR matching company code, ending with /year
     const existingPos = await prisma.purchaseOrder.findMany({
         where: {
-            companyGroupId,
+            OR: [
+                { companyGroupId },
+                { po_number: { contains: `/${kodePerusahaan}/` } }
+            ],
             po_number: {
                 endsWith: `/${year}`
             }
@@ -65,20 +67,40 @@ async function generatePoNumber(companyGroupId: string, categoryId: string, tang
     let maxSeq = 0
     
     // Offset khusus tahun 2026 karena data sebelumnya belum dimigrasi (ada 91 PO tertinggal)
-    if (tanggalTerbit.getUTCFullYear() === 2026) {
+    if (tanggalTerbit.getUTCFullYear() === 2026 || tanggalTerbit.getFullYear() === 2026) {
         maxSeq = 91
     }
 
     for (const po of existingPos) {
-        const parts = po.po_number.split('/')
-        const seqNum = parseInt(parts[0], 10)
-        if (!isNaN(seqNum) && seqNum > maxSeq) {
-            maxSeq = seqNum
+        const match = po.po_number.trim().match(/^(\d+)/)
+        if (match) {
+            const seqNum = parseInt(match[1], 10)
+            if (!isNaN(seqNum) && seqNum > maxSeq) {
+                maxSeq = seqNum
+            }
         }
     }
 
-    const seq = String(maxSeq + 1).padStart(3, '0')
-    return `${seq}/${kodePerusahaan}/${kodeKategori}/${month}/${year}`
+    let currentSeq = maxSeq + 1
+    let candidatePoNumber = ""
+
+    // Collision check loop against DB to guarantee uniqueness before returning
+    while (true) {
+        const seqStr = String(currentSeq).padStart(3, '0')
+        candidatePoNumber = `${seqStr}/${kodePerusahaan}/${kodeKategori}/${month}/${year}`
+        
+        const existing = await prisma.purchaseOrder.findUnique({
+            where: { po_number: candidatePoNumber },
+            select: { id: true }
+        })
+
+        if (!existing) {
+            break
+        }
+        currentSeq++
+    }
+
+    return candidatePoNumber
 }
 
 export async function getPurchaseOrders(params?: {
