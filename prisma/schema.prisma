@@ -315,6 +315,11 @@ model AggregateIncoming {
   createdAt      DateTime            @default(now())
 }
 
+enum RetaseCalcMode {
+  DISTANCE_ONLY
+  DISTANCE_AND_VOLUME
+}
+
 model Retase {
   id                  String                @id @default(uuid())
   transaction         ProductionTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
@@ -325,14 +330,17 @@ model Retase {
   volume              Float
   price_per_cubic_km  Float
   income_amount       Float
+  calculation_mode    RetaseCalcMode?       @default(DISTANCE_ONLY)
 }
 
 model RetaseSetting {
-  id                 String   @id @default(uuid())
-  price_per_cubic_km Float // Harga dasar retase per kubik per kilometer
-  location           Location @relation(fields: [locationId], references: [id])
-  locationId         String   @unique // One setting per branch
-  updatedAt          DateTime @updatedAt
+  id                 String          @id @default(uuid())
+  price_per_cubic_km Float           // Harga dasar retase (Rp/KM atau Rp/M3/KM)
+  calculation_mode   RetaseCalcMode  @default(DISTANCE_ONLY)
+  effective_from     DateTime        @default(now())
+  location           Location        @relation(fields: [locationId], references: [id])
+  locationId         String          @unique // One setting per branch
+  updatedAt          DateTime        @updatedAt
 }
 
 model AuditLog {

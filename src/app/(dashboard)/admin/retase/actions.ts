@@ -28,7 +28,10 @@ export async function getRetaseSettings() {
 
 const updateSettingSchema = z.object({
     locationId: z.string().min(1, "Location required"),
-    price_per_cubic_km: z.coerce.number().min(0, "Price cannot be negative")
+    price_per_cubic_km: z.coerce.number().min(0, "Price cannot be negative"),
+    calculation_mode: z.enum(["DISTANCE_ONLY", "DISTANCE_AND_VOLUME"]).default("DISTANCE_ONLY"),
+    apply_mode: z.enum(["FUTURE", "BACKDATE"]).default("FUTURE"),
+    effective_date: z.string().optional()
 })
 
 export async function upsertRetaseSetting(formData: FormData) {
@@ -44,14 +47,145 @@ export async function upsertRetaseSetting(formData: FormData) {
             return { error: "Permission Denied: Cannot change settings for another branch." }
         }
 
-        await (prisma as any).retaseSetting.upsert({
+        // Fetch existing setting to know old values for audit log
+        const oldSetting = await (prisma as any).retaseSetting.findUnique({
             where: { locationId: parsed.locationId },
-            update: { price_per_cubic_km: parsed.price_per_cubic_km },
-            create: { locationId: parsed.locationId, price_per_cubic_km: parsed.price_per_cubic_km }
+            include: { location: true }
         })
 
+        const effectiveFrom = parsed.apply_mode === 'BACKDATE' && parsed.effective_date
+            ? new Date(parsed.effective_date)
+            : new Date()
+
+        // 1. Upsert RetaseSetting
+        const newSetting = await (prisma as any).retaseSetting.upsert({
+            where: { locationId: parsed.locationId },
+            update: {
+                price_per_cubic_km: parsed.price_per_cubic_km,
+                calculation_mode: parsed.calculation_mode,
+                effective_from: effectiveFrom,
+            },
+            create: {
+                locationId: parsed.locationId,
+                price_per_cubic_km: parsed.price_per_cubic_km,
+                calculation_mode: parsed.calculation_mode,
+                effective_from: effectiveFrom,
+            }
+        })
+
+        let revisedCount = 0
+
+        // 2. If BACKDATE: recalculate past confirmed transactions from effective_date
+        if (parsed.apply_mode === 'BACKDATE' && parsed.effective_date) {
+            const startOfEffectiveDate = new Date(`${parsed.effective_date}T00:00:00.000Z`)
+
+            // Find all confirmed transactions for this branch on or after startOfEffectiveDate that have retase
+            const pastTransactions = await (prisma as any).productionTransaction.findMany({
+                where: {
+                    locationId: parsed.locationId,
+                    date: { gte: startOfEffectiveDate },
+                    retase: { isNot: null }
+                },
+                include: { retase: true }
+            })
+
+            if (pastTransactions.length > 0) {
+                const updateOps: any[] = []
+                const recalculationLogs: any[] = []
+
+                for (const tx of pastTransactions) {
+                    if (!tx.retase) continue
+                    const oldRetase = tx.retase
+                    const distance = oldRetase.calculated_distance
+                    const volume = tx.volume_cubic ?? oldRetase.volume
+
+                    const newIncome = parsed.calculation_mode === "DISTANCE_ONLY"
+                        ? distance * parsed.price_per_cubic_km
+                        : distance * volume * parsed.price_per_cubic_km
+
+                    updateOps.push(
+                        (prisma as any).retase.update({
+                            where: { id: oldRetase.id },
+                            data: {
+                                price_per_cubic_km: parsed.price_per_cubic_km,
+                                calculation_mode: parsed.calculation_mode,
+                                income_amount: newIncome
+                            }
+                        })
+                    )
+
+                    recalculationLogs.push({
+                        transactionId: tx.id,
+                        retaseId: oldRetase.id,
+                        distance,
+                        volume,
+                        oldIncome: oldRetase.income_amount,
+                        newIncome,
+                        oldPrice: oldRetase.price_per_cubic_km,
+                        newPrice: parsed.price_per_cubic_km,
+                        oldMode: oldRetase.calculation_mode,
+                        newMode: parsed.calculation_mode
+                    })
+                }
+
+                if (updateOps.length > 0) {
+                    await prisma.$transaction(updateOps)
+                    revisedCount = updateOps.length
+                }
+
+                // Record audit log for backdate revision
+                await (prisma as any).auditLog.create({
+                    data: {
+                        action: "REVISE_RETROACTIVE",
+                        entity: "RetaseSetting",
+                        recordId: newSetting.id,
+                        old_values: JSON.stringify({
+                            oldSetting,
+                            recalculatedItems: recalculationLogs.map(i => ({
+                                transactionId: i.transactionId,
+                                oldIncome: i.oldIncome,
+                                oldMode: i.oldMode,
+                                oldPrice: i.oldPrice
+                            }))
+                        }),
+                        new_values: JSON.stringify({
+                            newSetting,
+                            effectiveDate: parsed.effective_date,
+                            revisedTransactionsCount: revisedCount,
+                            recalculatedItems: recalculationLogs.map(i => ({
+                                transactionId: i.transactionId,
+                                newIncome: i.newIncome,
+                                newMode: i.newMode,
+                                newPrice: i.newPrice
+                            }))
+                        }),
+                        userId: session.user.id
+                    }
+                })
+            }
+        } else {
+            // Normal update: log setting change
+            await (prisma as any).auditLog.create({
+                data: {
+                    action: "EDIT",
+                    entity: "RetaseSetting",
+                    recordId: newSetting.id,
+                    old_values: oldSetting ? JSON.stringify(oldSetting) : null,
+                    new_values: JSON.stringify(newSetting),
+                    userId: session.user.id
+                }
+            })
+        }
+
         revalidatePath("/admin/retase")
-        return { success: true }
+        revalidatePath("/admin/reports/retase")
+        return {
+            success: true,
+            revisedCount,
+            message: revisedCount > 0
+                ? `Pengaturan disimpan dan ${revisedCount} transaksi sebelumnya telah dihitung ulang.`
+                : "Pengaturan harga retase berhasil disimpan."
+        }
     } catch (e: any) {
         return { error: e.message || "Something went wrong" }
     }
@@ -105,10 +239,14 @@ export async function confirmTransaction(transactionId: string, distance: number
             return { error: "Belum ada pengaturan Harga Retase untuk cabang pesanan ini! Harap atur di tab Pengaturan terlebih dahulu." }
         }
 
+        const calcMode = setting.calculation_mode || "DISTANCE_ONLY"
         const price_per_cubic_km = setting.price_per_cubic_km
         const volume = transaction.volume_cubic
         const calcDistance = Number(distance)
-        const income_amount = calcDistance * volume * price_per_cubic_km
+
+        const income_amount = calcMode === "DISTANCE_ONLY"
+            ? calcDistance * price_per_cubic_km
+            : calcDistance * volume * price_per_cubic_km
 
         await prisma.$transaction([
             (prisma as any).retase.create({
@@ -118,7 +256,8 @@ export async function confirmTransaction(transactionId: string, distance: number
                     calculated_distance: calcDistance,
                     volume: volume,
                     price_per_cubic_km: price_per_cubic_km,
-                    income_amount: income_amount
+                    income_amount: income_amount,
+                    calculation_mode: calcMode
                 }
             }),
             prisma.productionTransaction.update({
