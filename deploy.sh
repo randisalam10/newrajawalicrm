@@ -92,6 +92,26 @@ else
     echo -e "${GREEN}   ✓ Build Docker image selesai: $IMAGE_TO_USE${NC}"
 fi
 
+# ── 3.5. Backup Database Otomatis Sebelum Migrasi ─────────────
+echo ""
+echo -e "${CYAN}[3.5/6] Membuat backup otomatis snapshot database sebelum migrasi...${NC}"
+mkdir -p ./backups
+BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="./backups/backup_db_${BACKUP_TIMESTAMP}.sql"
+
+if [ -f "$ENV_FILE" ]; then
+    DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+    if [ -n "$DB_URL" ]; then
+        echo -e "${YELLOW}   Menyimpan snapshot data production ke $BACKUP_FILE...${NC}"
+        docker run --rm \
+            --network host \
+            postgres:16-alpine \
+            pg_dump "$DB_URL" > "$BACKUP_FILE" 2>/dev/null \
+            && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}" \
+            || echo -e "${YELLOW}   ℹ Catatan: pg_dump via docker dilewati.${NC}"
+    fi
+fi
+
 # ── 4. Eksekusi Migrasi Database Prisma ───────────────────────
 echo ""
 echo -e "${CYAN}[4/6] Menjalankan migrasi database Prisma...${NC}"
