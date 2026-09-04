@@ -43,13 +43,13 @@ echo "   ✓ Push selesai"
 
 # ── 3. Update versi di deploy.sh
 echo ""
-echo "[3/3] Update IMAGE_TAG di deploy.sh → $TAG"
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/^IMAGE_TAG=.*/IMAGE_TAG=\"$TAG\"/" deploy.sh
-else
-    sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=\"$TAG\"/" deploy.sh
+if [ -f deploy.sh ]; then
+    sed -i "s/^DEFAULT_IMAGE_TAG=.*/DEFAULT_IMAGE_TAG=\"$TAG\"/" deploy.sh 2>/dev/null || true
 fi
-echo "   ✓ deploy.sh IMAGE_TAG diperbarui"
+if [ -f scripts/deploy.sh ]; then
+    sed -i "s/^DEFAULT_IMAGE_TAG=.*/DEFAULT_IMAGE_TAG=\"$TAG\"/" scripts/deploy.sh 2>/dev/null || true
+fi
+echo "   ✓ deploy.sh DEFAULT_IMAGE_TAG diperbarui"
 
 echo ""
 echo "================================================"
