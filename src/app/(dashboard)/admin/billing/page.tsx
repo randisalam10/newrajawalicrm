@@ -3,17 +3,26 @@ import { BillingClient } from "./billing-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import { hasPermission } from "@/lib/rbac"
 
 export default async function BillingPage() {
     const session = await auth()
     if (!session?.user) redirect("/login")
-    if (session.user.role !== "SuperAdminBP")
-        redirect("/admin")
 
-    const [data, locations] = await Promise.all([
+    const canView = hasPermission(session.user, "BILLING", "VIEW") || ["AdminBP", "CEO", "FVP"].includes(session.user.role ?? "")
+    if (!canView) {
+        redirect("/admin")
+    }
+
+    const [data, allLocations] = await Promise.all([
         getBillingPageData(),
         getLocations(),
     ])
+
+    const isFullScope = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
+    const locations = isFullScope
+        ? allLocations
+        : allLocations.filter(loc => loc.id === session.user.locationId)
 
     return (
         <div className="space-y-6">

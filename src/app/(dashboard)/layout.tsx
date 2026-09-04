@@ -21,20 +21,21 @@ export default async function DashboardLayout({
     return (
         <SidebarProvider>
             <AppSidebar user={session.user} />
-            <main className="flex-1 w-full bg-slate-50 relative overflow-x-hidden min-h-screen">
-                <div className="absolute top-4 left-4 z-50 md:hidden bg-background/50 rounded-md p-1 backdrop-blur-sm">
-                    <SidebarTrigger />
-                </div>
+            <div className="flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen overflow-x-hidden">
+                {/* Modern Sticky Top Header Bar */}
+                <header className="h-14 border-b border-slate-200/80 bg-white/80 backdrop-blur-md sticky top-0 z-30 px-4 md:px-6 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-3">
+                        <SidebarTrigger className="text-slate-600 hover:text-slate-900" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <NotificationBell />
+                    </div>
+                </header>
 
-                {/* Notification Bell Top Header */}
-                <div className="absolute top-4 right-4 md:top-6 md:right-8 z-50 flex items-center gap-4 border border-slate-200/60 bg-white/80 backdrop-blur-md px-2 py-1.5 rounded-full shadow-sm">
-                    <NotificationBell />
-                </div>
-
-                <div className="p-4 md:p-8 pt-20 md:pt-8 max-w-[1400px] mx-auto w-full h-full">
+                <main className="flex-1 p-4 md:p-6 lg:p-8 w-full">
                     {children}
-                </div>
-            </main>
+                </main>
+            </div>
             <Toaster />
             <SonnerToaster position="top-right" richColors />
             <PusherListener />

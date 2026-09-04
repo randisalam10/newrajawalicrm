@@ -28,6 +28,8 @@ import { UserForm } from "./user-form"
 import { deleteUser } from "./actions"
 import { useToast } from "@/hooks/use-toast"
 
+import { getRoleBadge } from "./data-table"
+
 export type UserRow = {
     id: string
     username: string
@@ -55,11 +57,7 @@ export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
         header: "Sistem Role",
         cell: ({ row }) => {
             const role = row.getValue("role") as string
-            return (
-                <Badge variant={role === "AdminBP" ? "default" : "secondary"} className="text-[11px] font-medium tracking-wide">
-                    {role === "AdminBP" ? "Admin Cabang" : "Operator / Kasir"}
-                </Badge>
-            )
+            return getRoleBadge(role)
         },
     },
     {

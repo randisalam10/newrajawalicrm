@@ -23,16 +23,31 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
                     const { username, password } = parsedCredentials.data
                     const user = await prisma.user.findUnique({
                         where: { username },
-                        include: { employee: true }
+                        include: {
+                            employee: true,
+                            roleRef: {
+                                include: {
+                                    permissions: {
+                                        include: { permission: true }
+                                    }
+                                }
+                            }
+                        }
                     })
                     if (!user) return null
 
                     const passwordsMatch = await bcrypt.compare(password, user.password)
                     if (passwordsMatch) {
+                        const permissions = user.roleRef?.permissions.map(rp => rp.permission.code) || []
+                        const roleScope = user.roleRef?.scope || (user.role === 'SuperAdminBP' ? 'ALL_BRANCHES' : 'OWN_BRANCH')
                         return {
                             id: user.id,
                             username: user.username,
                             role: user.role,
+                            roleId: user.roleId || null,
+                            roleLabel: user.roleRef?.label || user.role,
+                            roleScope,
+                            permissions,
                             employeeId: user.employeeId,
                             locationId: user.employee?.locationId || null
                         }

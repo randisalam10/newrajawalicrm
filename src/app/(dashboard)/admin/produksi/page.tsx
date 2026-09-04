@@ -24,12 +24,12 @@ export default async function ProduksiPage() {
                 <p className="text-slate-500">Mencatat pengiriman beton dan mengirim Notifikasi Surat Jalan ke Telegram.</p>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-8 2xl:col-span-9">
                     <ProduksiClient masters={masters} userRole={userRole} locations={locations} />
                 </div>
 
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-4 2xl:col-span-3">
                     <Card className="h-full">
                         <CardHeader>
                             <CardTitle>Riwayat Transaksi Terbaru</CardTitle>

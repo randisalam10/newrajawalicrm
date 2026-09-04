@@ -28,18 +28,20 @@ const userSchema = z.object({
     id: z.string().optional(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().optional(),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
+    role: z.string().min(1, "Role required"),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
 export function UserForm({
     initialData,
     eligibleEmployees = [],
+    roles = [],
     onSuccess,
     onCancel
 }: {
     initialData?: any
     eligibleEmployees?: any[]
+    roles?: Array<{ id: string; name: string; label: string; scope: string; description?: string | null }>
     onSuccess: () => void
     onCancel: () => void
 }) {
@@ -156,17 +158,29 @@ export function UserForm({
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        <SelectItem value="SuperAdminBP">
-                                            <span className="flex items-center gap-2">
-                                                <span className="text-xs bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-semibold">HO</span>
-                                                Super Admin (Head Office)
-                                            </span>
-                                        </SelectItem>
-                                        <SelectItem value="AdminBP">Admin Cabang</SelectItem>
-                                        <SelectItem value="OperatorBP">Operator / Kasir</SelectItem>
-                                        <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
-                                        <SelectItem value="CEO">CEO</SelectItem>
-                                        <SelectItem value="FVP">FVP</SelectItem>
+                                        {roles.length > 0 ? (
+                                            roles.map((r) => (
+                                                <SelectItem key={r.id} value={r.name}>
+                                                    <span className="flex items-center gap-2">
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                                            r.scope === 'ALL_BRANCHES' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+                                                        }`}>
+                                                            {r.scope === 'ALL_BRANCHES' ? 'ALL' : 'CABANG'}
+                                                        </span>
+                                                        <span>{r.label || r.name}</span>
+                                                    </span>
+                                                </SelectItem>
+                                            ))
+                                        ) : (
+                                            <>
+                                                <SelectItem value="SuperAdminBP">Super Admin (Head Office)</SelectItem>
+                                                <SelectItem value="AdminBP">Admin Cabang</SelectItem>
+                                                <SelectItem value="OperatorBP">Operator / Kasir</SelectItem>
+                                                <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
+                                                <SelectItem value="CEO">CEO</SelectItem>
+                                                <SelectItem value="FVP">FVP</SelectItem>
+                                            </>
+                                        )}
                                     </SelectContent>
                                 </Select>
                                 <FormMessage />

@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getEligibleEmployees, getUsers } from "./actions"
+import { getEligibleEmployees, getUsers, getRolesList } from "./actions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { UserPlus, ShieldAlert } from "lucide-react"
@@ -25,9 +25,10 @@ export default async function UsersPage() {
         )
     }
 
-    const [users, eligibleEmployees] = await Promise.all([
+    const [users, eligibleEmployees, roles] = await Promise.all([
         getUsers(),
-        getEligibleEmployees()
+        getEligibleEmployees(),
+        getRolesList(),
     ])
 
     const serializedEligibleEmployees = eligibleEmployees.map((emp: any) => ({
@@ -41,6 +42,8 @@ export default async function UsersPage() {
         id: user.id,
         username: user.username,
         role: user.role,
+        roleId: user.roleId || "",
+        roleLabel: user.roleRef?.label || user.role,
         employeeId: user.employeeId || "",
         name: user.employee?.name || "-",
         position: user.employee?.position || "-",
@@ -69,7 +72,7 @@ export default async function UsersPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                    <DataTable data={formattedUsers} eligibleEmployees={serializedEligibleEmployees} />
+                    <DataTable data={formattedUsers} eligibleEmployees={serializedEligibleEmployees} roles={roles} />
                 </CardContent>
             </Card>
         </div>

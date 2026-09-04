@@ -7,13 +7,43 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum Role {
-  SuperAdminBP
-  AdminBP
-  OperatorBP
-  AdminLogistik
-  CEO
-  FVP
+enum RoleScope {
+  ALL_BRANCHES
+  OWN_BRANCH
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  label       String
+  description String?
+  isSystem    Boolean          @default(false)
+  scope       RoleScope        @default(OWN_BRANCH)
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  module      String
+  action      String
+  name        String
+  description String?
+  roles       RolePermission[]
+
+  @@index([module])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
 }
 
 enum Position {
@@ -98,7 +128,9 @@ model User {
   id         String     @id @default(uuid())
   username   String     @unique
   password   String
-  role       Role
+  role       String
+  roleId     String?
+  roleRef    Role?      @relation(fields: [roleId], references: [id])
   fcmToken   String?    // Added for Mobile Push Notifications
   employee   Employee   @relation(fields: [employeeId], references: [id])
   employeeId String     @unique
@@ -109,6 +141,12 @@ model User {
   defaultFvps PoCompanyGroup[] @relation("CompanyFvp")
   poCeos      PurchaseOrder[]  @relation("PoCeo")
   poFvps      PurchaseOrder[]  @relation("PoFvp")
+
+  // RBL Relations
+  rblBudgetsCreated   RblBudget[]     @relation("RblBudgetCreatedBy")
+  rblBudgetsClosed    RblBudget[]     @relation("RblBudgetClosedBy")
+  rblExpensesCreated  RblExpense[]    @relation("RblExpenseCreatedBy")
+  rblAttachments      RblAttachment[] @relation("RblAttachmentUploadedBy")
 }
 
 model Employee {
@@ -142,6 +180,7 @@ model Location {
   sharedCustomers    Customer[]              @relation("CustomerSharedLocations") // Added
   sharedProjects     Project[]               @relation("ProjectSharedLocations") // Added
   purchaseOrders     PurchaseOrder[]
+  rblBudgets         RblBudget[]
 }
 
 model Vehicle {
@@ -544,4 +583,83 @@ model PoItem {
   harga_satuan    Float // Snapshot harga saat PO dibuat
   keterangan      String? // e.g. "Plat DT 8258 RI"
   subtotal        Float
+}
+
+enum RblStatus {
+  OPEN
+  CLOSED
+}
+
+model RblBudget {
+  id           String          @id @default(uuid())
+  code         String          @unique // e.g. "RBL-SRG-2026-03"
+  periodMonth  Int             // 1 - 12
+  periodYear   Int             // e.g. 2026
+  receivedDate DateTime        // Tanggal penerimaan budget
+  amount       Float           // Nominal budget dari HO
+  notes        String?         // Catatan sumber dana / rekening
+  status       RblStatus       @default(OPEN)
+
+  closedAt     DateTime?
+  closedById   String?
+  closedBy     User?           @relation("RblBudgetClosedBy", fields: [closedById], references: [id])
+  closeNotes   String?
+
+  location     Location        @relation(fields: [locationId], references: [id])
+  locationId   String
+
+  createdById  String
+  createdBy    User            @relation("RblBudgetCreatedBy", fields: [createdById], references: [id])
+
+  expenses     RblExpense[]
+  attachments  RblAttachment[]
+
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([locationId, status])
+  @@index([periodYear, periodMonth])
+}
+
+model RblExpense {
+  id              String    @id @default(uuid())
+  budgetId        String
+  budget          RblBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  date            DateTime
+  itemDescription String
+  category        String?
+  quantity        Float     @default(1)
+  unit            String    @default("Pcs")
+  unitPrice       Float     @default(0)
+  amount          Float     // Total = quantity * unitPrice
+  receiptNo       String?
+  notes           String?
+
+  createdById     String
+  createdBy       User      @relation("RblExpenseCreatedBy", fields: [createdById], references: [id])
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([budgetId, date])
+}
+
+model RblAttachment {
+  id           String    @id @default(uuid())
+  budgetId     String
+  budget       RblBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  date         DateTime?
+  fileUrl      String
+  fileName     String
+  fileSize     Int?
+  caption      String?
+
+  uploadedById String
+  uploadedBy   User      @relation("RblAttachmentUploadedBy", fields: [uploadedById], references: [id])
+
+  createdAt    DateTime  @default(now())
+
+  @@index([budgetId])
 }

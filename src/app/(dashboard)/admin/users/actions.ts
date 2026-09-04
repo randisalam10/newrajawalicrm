@@ -9,7 +9,7 @@ import { z } from "zod"
 const userCreateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter"),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
+    role: z.string().min(1, "Role required"),
     employeeId: z.string().min(1, "Pegawai required"),
 })
 
@@ -17,8 +17,24 @@ const userUpdateSchema = z.object({
     id: z.string(),
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(5, "Password minimal 5 karakter").optional().or(z.literal("")),
-    role: z.enum(["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP"]),
+    role: z.string().min(1, "Role required"),
 })
+
+export async function getRolesList() {
+    const session = await auth()
+    if (session?.user?.role !== "SuperAdminBP") return []
+
+    return await prisma.role.findMany({
+        orderBy: { name: 'asc' },
+        select: {
+            id: true,
+            name: true,
+            label: true,
+            scope: true,
+            description: true,
+        }
+    })
+}
 
 export async function getEligibleEmployees() {
     const session = await auth()
@@ -38,7 +54,8 @@ export async function getUsers() {
 
     return await prisma.user.findMany({
         include: {
-            employee: { include: { location: true } }
+            employee: { include: { location: true } },
+            roleRef: true
         },
         orderBy: [
             { role: 'asc' },
@@ -61,11 +78,22 @@ export async function createUser(formData: FormData) {
     try {
         const hashedPassword = await bcrypt.hash(parsed.data.password, 10)
 
+        // Find role in DB
+        const roleRecord = await prisma.role.findFirst({
+            where: {
+                OR: [
+                    { id: parsed.data.role },
+                    { name: parsed.data.role }
+                ]
+            }
+        })
+
         await prisma.user.create({
             data: {
                 username: parsed.data.username,
                 password: hashedPassword,
-                role: parsed.data.role,
+                role: roleRecord?.name || parsed.data.role,
+                roleId: roleRecord?.id || null,
                 employeeId: parsed.data.employeeId
             }
         })
@@ -90,9 +118,20 @@ export async function updateUser(id: string, formData: FormData) {
     }
 
     try {
+        // Find role in DB
+        const roleRecord = await prisma.role.findFirst({
+            where: {
+                OR: [
+                    { id: parsed.data.role },
+                    { name: parsed.data.role }
+                ]
+            }
+        })
+
         const updateData: any = {
             username: parsed.data.username,
-            role: parsed.data.role,
+            role: roleRecord?.name || parsed.data.role,
+            roleId: roleRecord?.id || null,
         }
 
         if (parsed.data.password) {

@@ -66,7 +66,11 @@ export const authConfig = {
             if (user) {
                 token.id = user.id
                 token.username = user.username
-                token.role = user.role as "AdminBP" | "OperatorBP" | "SuperAdminBP" | "AdminLogistik" | "CEO" | "FVP"
+                token.role = user.role
+                token.roleId = user.roleId
+                token.roleLabel = user.roleLabel
+                token.roleScope = user.roleScope
+                token.permissions = user.permissions || []
                 token.employeeId = user.employeeId
                 token.locationId = user.locationId
             }
@@ -76,7 +80,11 @@ export const authConfig = {
             if (session.user && token) {
                 session.user.id = token.id
                 session.user.username = token.username as string
-                session.user.role = token.role as "AdminBP" | "OperatorBP" | "SuperAdminBP" | "AdminLogistik" | "CEO" | "FVP"
+                session.user.role = token.role as string
+                session.user.roleId = (token.roleId as string) || null
+                session.user.roleLabel = token.roleLabel as string
+                session.user.roleScope = (token.roleScope as "ALL_BRANCHES" | "OWN_BRANCH") || "OWN_BRANCH"
+                session.user.permissions = (token.permissions as string[]) || []
                 session.user.employeeId = token.employeeId as string
                 session.user.locationId = token.locationId as string | null
             }

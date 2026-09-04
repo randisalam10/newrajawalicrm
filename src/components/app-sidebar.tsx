@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -25,6 +25,8 @@ type AppSidebarProps = {
     user: {
         username?: string | null
         role?: "AdminBP" | "OperatorBP" | string
+        permissions?: string[]
+        roleScope?: string
     }
 }
 
@@ -36,6 +38,24 @@ export function AppSidebar({ user }: AppSidebarProps) {
     useEffect(() => {
         setMounted(true)
     }, [])
+
+    const hasBillingAccess = user?.role === "SuperAdminBP" || 
+        user?.role === "AdminBP" || 
+        user?.role === "CEO" || 
+        user?.role === "FVP" || 
+        user?.permissions?.includes("BILLING_VIEW")
+
+    const hasRblAccess = user?.role === "SuperAdminBP" || 
+        user?.role === "AdminBP" || 
+        user?.role === "CEO" || 
+        user?.role === "FVP" || 
+        user?.permissions?.includes("RBL_VIEW")
+
+    const hasAdminAccess = user?.role === "SuperAdminBP" || 
+        user?.role === "CEO" || 
+        user?.role === "FVP" || 
+        user?.permissions?.includes("USER_VIEW") || 
+        user?.permissions?.includes("ROLE_VIEW")
 
     const navGroups = [
         ...(user?.role !== "AdminLogistik" ? [
@@ -63,7 +83,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 title: "Laporan & Tagihan",
                 defaultOpen: false,
                 items: [
-                    ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                    ...(hasBillingAccess ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                    ...(hasRblAccess ? [{ title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards }] : []),
                     { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
                 ]
             },
@@ -95,12 +116,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ]
             }
         ] : []),
-        ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [
+        ...(hasAdminAccess ? [
             {
                 title: "Administrator & Akses",
                 defaultOpen: false,
                 items: [
-                    { title: "Manajemen User", url: "/admin/users", icon: ShieldCheck },
+                    { title: "Manajemen User", url: "/admin/users", icon: Users },
+                    ...(user?.role === "SuperAdminBP" || user?.permissions?.includes("ROLE_VIEW") ? [
+                        { title: "Role & Hak Akses", url: "/admin/roles", icon: ShieldCheck }
+                    ] : [])
                 ]
             }
         ] : []),
