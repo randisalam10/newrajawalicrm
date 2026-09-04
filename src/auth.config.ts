@@ -54,9 +54,14 @@ export const authConfig = {
                     const target = userRole === 'AdminLogistik' ? '/logistik' : '/admin'
                     return Response.redirect(new URL(target, nextUrl))
                 }
-                if (isLogistikRoute && !['AdminBP', 'SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP'].includes(userRole as string)) {
-                    const target = userRole === 'OperatorBP' ? '/operator' : '/admin'
-                    return Response.redirect(new URL(target, nextUrl))
+                if (isLogistikRoute) {
+                    const permissions = (auth.user as any)?.permissions as string[] | undefined
+                    const hasAccess = ['SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP'].includes(userRole as string) ||
+                        (permissions && (permissions.includes('LOGISTIK_VIEW') || permissions.includes('LOGISTIK_CREATE')))
+                    if (!hasAccess) {
+                        const target = userRole === 'OperatorBP' ? '/operator' : '/admin'
+                        return Response.redirect(new URL(target, nextUrl))
+                    }
                 }
             }
 

@@ -39,96 +39,91 @@ export function AppSidebar({ user }: AppSidebarProps) {
         setMounted(true)
     }, [])
 
-    const hasBillingAccess = user?.role === "SuperAdminBP" || 
-        user?.role === "AdminBP" || 
-        user?.role === "CEO" || 
-        user?.role === "FVP" || 
-        user?.permissions?.includes("BILLING_VIEW")
+    const isSuperAdmin = user?.role === "SuperAdminBP"
 
-    const hasRblAccess = user?.role === "SuperAdminBP" || 
-        user?.role === "AdminBP" || 
-        user?.role === "CEO" || 
-        user?.role === "FVP" || 
-        user?.permissions?.includes("RBL_VIEW")
+    const hasPerm = (code: string) => {
+        if (isSuperAdmin) return true
+        return user?.permissions?.includes(code) ?? false
+    }
 
-    const hasAdminAccess = user?.role === "SuperAdminBP" || 
-        user?.role === "CEO" || 
-        user?.role === "FVP" || 
-        user?.permissions?.includes("USER_VIEW") || 
-        user?.permissions?.includes("ROLE_VIEW")
+    const hasAnyPerm = (...codes: string[]) => {
+        if (isSuperAdmin) return true
+        return codes.some(code => user?.permissions?.includes(code))
+    }
 
-    const navGroups = [
-        ...(user?.role !== "AdminLogistik" ? [
-            {
-                title: "Monitoring",
-                defaultOpen: true,
-                items: [
-                    { title: "Dashboard", url: "/admin", icon: LayoutDashboard },
-                    { title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock },
-                ]
-            },
-            {
-                title: "Operasional & Transaksi",
-                defaultOpen: true,
-                items: [
-                    { title: "Input Produksi", url: "/admin/produksi", icon: Factory },
-                    { title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck },
-                    { title: "Data Customer", url: "/admin/customer", icon: HardHat },
-                    { title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText },
-                    { title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers },
-                    { title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory },
-                ]
-            },
-            {
-                title: "Laporan & Tagihan",
-                defaultOpen: false,
-                items: [
-                    ...(hasBillingAccess ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
-                    ...(hasRblAccess ? [{ title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards }] : []),
-                    { title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 },
-                ]
-            },
-            {
-                title: "Data Master",
-                defaultOpen: false,
-                items: [
+    const rawNavGroups = [
+        {
+            title: "Monitoring",
+            defaultOpen: true,
+            items: [
+                ...(hasPerm("DASHBOARD_VIEW") ? [{
+                    title: "Dashboard",
+                    url: user?.role === "OperatorBP" ? "/operator" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin"),
+                    icon: LayoutDashboard
+                }] : []),
+                ...(hasPerm("PLANNING_VIEW") ? [{ title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock }] : []),
+            ]
+        },
+        {
+            title: "Operasional & Transaksi",
+            defaultOpen: true,
+            items: [
+                ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory }] : []),
+                ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck }] : []),
+                ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat }] : []),
+                ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText }] : []),
+                ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers }] : []),
+                ...(hasPerm("MATERIAL_USAGE_VIEW") ? [{ title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory }] : []),
+            ]
+        },
+        {
+            title: "Laporan & Tagihan",
+            defaultOpen: false,
+            items: [
+                ...(hasPerm("BILLING_VIEW") ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                ...(hasPerm("RBL_VIEW") ? [{ title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 }] : []),
+            ]
+        },
+        {
+            title: "Data Master",
+            defaultOpen: false,
+            items: [
+                ...(hasPerm("MASTER_DATA_VIEW") ? [
                     { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
                     { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
                     { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
-                    ...(user?.role === "SuperAdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
-                ]
-            }
-        ] : []),
-        ...(user?.role === "SuperAdminBP" || user?.role === "AdminLogistik" || user?.role === "AdminBP" || user?.role === "CEO" || user?.role === "FVP" ? [
-
-            {
-                title: "Logistik & Peralatan",
-                defaultOpen: false,
-                items: [
-                    { title: "Dashboard", url: "/logistik", icon: LayoutDashboard },
-                    { title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart },
+                ] : []),
+                ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
+            ]
+        },
+        {
+            title: "Logistik & Peralatan",
+            defaultOpen: false,
+            items: [
+                ...(hasPerm("LOGISTIK_VIEW") ? [{ title: "Dashboard", url: "/logistik", icon: LayoutDashboard }] : []),
+                ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart }] : []),
+                ...(hasPerm("LOGISTIK_VIEW") ? [
                     { title: "Daftar PO", url: "/logistik/po", icon: FileText },
                     { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
                     { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
                     { title: "Master Supplier", url: "/logistik/supplier", icon: Store },
                     { title: "Master Barang", url: "/logistik/master-barang", icon: Box },
-                ]
-            }
-        ] : []),
-        ...(hasAdminAccess ? [
-            {
-                title: "Administrator & Akses",
-                defaultOpen: false,
-                items: [
-                    { title: "Manajemen User", url: "/admin/users", icon: Users },
-                    ...(user?.role === "SuperAdminBP" || user?.permissions?.includes("ROLE_VIEW") ? [
-                        { title: "Role & Hak Akses", url: "/admin/roles", icon: ShieldCheck }
-                    ] : [])
-                ]
-            }
-        ] : []),
+                ] : [])
+            ]
+        },
+        {
+            title: "Administrator & Akses",
+            defaultOpen: false,
+            items: [
+                ...(hasAnyPerm("USER_MGMT_VIEW", "USER_VIEW") ? [{ title: "Manajemen User", url: "/admin/users", icon: Users }] : []),
+                ...(hasAnyPerm("RBAC_MGMT_VIEW", "ROLE_VIEW") ? [{ title: "Role & Hak Akses", url: "/admin/roles", icon: ShieldCheck }] : [])
+            ]
+        }
     ]
+
+    const navGroups = rawNavGroups.filter(group => group.items.length > 0)
 
     let bestMatchUrl = ""
     for (const group of navGroups) {
