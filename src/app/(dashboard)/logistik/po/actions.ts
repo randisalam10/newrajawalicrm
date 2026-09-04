@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { PoPaymentMethod } from "@prisma/client"
 import { pusherServer } from "@/lib/pusher"
+import { sendPushNotification } from "@/lib/firebase/admin"
 
 const poItemSchema = z.object({
     masterItemId: z.string(),
@@ -116,9 +117,12 @@ export async function getPurchaseOrders(params?: {
     companyGroupId?: string
     categoryId?: string
     status?: string
+    paymentMethod?: string
+    startDate?: string
+    endDate?: string
 }) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { orders: [], totalCount: 0, totalPages: 0 }
+    if (!session?.user) return { orders: [], totalCount: 0, totalPages: 0 }
 
     const {
         page = 1,
@@ -126,25 +130,103 @@ export async function getPurchaseOrders(params?: {
         search,
         companyGroupId,
         categoryId,
-        status
+        status,
+        paymentMethod,
+        startDate,
+        endDate
     } = params || {}
 
     const skip = (page - 1) * pageSize
 
     const where: any = {}
 
-    if (search) {
-        where.OR = [
-            { po_number: { contains: search, mode: 'insensitive' } },
-            { companyGroup: { name: { contains: search, mode: 'insensitive' } } },
-            { category: { name: { contains: search, mode: 'insensitive' } } },
-            { proyek_nama: { contains: search, mode: 'insensitive' } },
-        ]
+    // Date Filter (Tanggal Terbit PO)
+    if (startDate && endDate) {
+        const start = new Date(startDate)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(endDate)
+        end.setHours(23, 59, 59, 999)
+        where.tanggal_terbit = {
+            gte: start,
+            lte: end
+        }
+    } else if (startDate) {
+        const start = new Date(startDate)
+        start.setHours(0, 0, 0, 0)
+        const end = new Date(startDate)
+        end.setHours(23, 59, 59, 999)
+        where.tanggal_terbit = {
+            gte: start,
+            lte: end
+        }
     }
 
-    if (companyGroupId) where.companyGroupId = companyGroupId
-    if (categoryId) where.categoryId = categoryId
-    if (status) where.status = status
+    // Payment Method Filter (CASH / CREDIT)
+    if (paymentMethod && paymentMethod !== "ALL") {
+        where.metode_pembayaran = paymentMethod
+    }
+
+    // Status Filter (APPROVED / DRAFT / CANCELLED)
+    if (status && status !== "ALL") {
+        where.status = status
+    }
+
+    if (search && search.trim()) {
+        const term = search.trim()
+
+        // 1. Lookup matching suppliers
+        const matchingSuppliers = await prisma.supplier.findMany({
+            where: { name: { contains: term, mode: 'insensitive' } },
+            select: { id: true }
+        })
+        const matchingSupplierIds = matchingSuppliers.map(s => s.id)
+
+        // 2. Lookup matching company projects
+        const matchingProjects = await prisma.poCompanyProject.findMany({
+            where: { name: { contains: term, mode: 'insensitive' } },
+            select: { id: true }
+        })
+        const matchingProjectIds = matchingProjects.map(p => p.id)
+
+        where.OR = [
+            // Nomor PO
+            { po_number: { contains: term, mode: 'insensitive' } },
+            // Nama Perusahaan
+            { companyGroup: { name: { contains: term, mode: 'insensitive' } } },
+            // Kategori
+            { category: { name: { contains: term, mode: 'insensitive' } } },
+            // Nama / Rincian Barang Pesanan
+            {
+                items: {
+                    some: {
+                        OR: [
+                            { masterItem: { name: { contains: term, mode: 'insensitive' } } },
+                            { masterItem: { kode_barang: { contains: term, mode: 'insensitive' } } },
+                            { masterItem: { part_number: { contains: term, mode: 'insensitive' } } },
+                            { masterItem: { merk: { contains: term, mode: 'insensitive' } } },
+                            { keterangan: { contains: term, mode: 'insensitive' } }
+                        ]
+                    }
+                }
+            },
+            // Catatan / Personel
+            { notes: { contains: term, mode: 'insensitive' } },
+            { pimpinan: { contains: term, mode: 'insensitive' } },
+            { kepala_peralatan: { contains: term, mode: 'insensitive' } },
+            { km_hm_kendaraan: { contains: term, mode: 'insensitive' } },
+        ]
+
+        if (matchingSupplierIds.length > 0) {
+            where.OR.push({ supplierId: { in: matchingSupplierIds } })
+        }
+
+        if (matchingProjectIds.length > 0) {
+            where.OR.push({ companyProjectId: { in: matchingProjectIds } })
+        }
+    }
+
+    if (companyGroupId && companyGroupId !== "ALL") where.companyGroupId = companyGroupId
+    if (categoryId && categoryId !== "ALL") where.categoryId = categoryId
 
     const [orders, totalCount] = await Promise.all([
         prisma.purchaseOrder.findMany({
@@ -169,9 +251,17 @@ export async function getPurchaseOrders(params?: {
         : []
     const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
 
+    // Fetch supplier names
+    const supplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean))] as string[]
+    const suppliers = supplierIds.length > 0
+        ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+        : []
+    const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
+
     const enrichedOrders = orders.map(po => ({
         ...po,
-        proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-"
+        proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
+        supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
     }))
 
     return {
@@ -180,7 +270,58 @@ export async function getPurchaseOrders(params?: {
         totalPages: Math.ceil(totalCount / pageSize)
     }
 }
-import { sendPushNotification } from "@/lib/firebase/admin"
+
+export async function getPurchaseOrderById(id: string) {
+    try {
+        const session = await auth()
+        if (!session?.user) return { success: false, error: "Unauthorized" }
+
+        const po = await prisma.purchaseOrder.findUnique({
+            where: { id },
+            include: {
+                companyGroup: true,
+                category: true,
+                location: true,
+                ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                items: {
+                    include: {
+                        masterItem: {
+                            include: {
+                                supplier: true,
+                                category: true,
+                            }
+                        }
+                    }
+                }
+            }
+        })
+
+        if (!po) return { success: false, error: "Purchase Order tidak ditemukan" }
+
+        let supplier = null
+        if (po.supplierId) {
+            supplier = await prisma.supplier.findUnique({ where: { id: po.supplierId } })
+        }
+
+        let project = null
+        if (po.companyProjectId) {
+            project = await prisma.poCompanyProject.findUnique({ where: { id: po.companyProjectId } })
+        }
+
+        return {
+            success: true,
+            data: {
+                ...po,
+                supplier,
+                project
+            }
+        }
+    } catch (err: any) {
+        console.error("getPurchaseOrderById error:", err)
+        return { success: false, error: err?.message || "Gagal mengambil rincian Purchase Order" }
+    }
+}
 
 export async function createPurchaseOrder(data: {
     companyGroupId: string

@@ -36,7 +36,11 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
         whereClause.status = filter.status
     }
 
-    const [pos, companies, categories] = await Promise.all([
+    // Previous month for MoM comparison
+    const prevMonthStart = new Date(targetYear, targetMonth - 2, 1)
+    const prevMonthEnd = new Date(targetYear, targetMonth - 1, 0, 23, 59, 59, 999)
+
+    const [pos, companies, categories, prevMonthPos] = await Promise.all([
         prisma.purchaseOrder.findMany({
             where: whereClause,
             include: {
@@ -47,17 +51,36 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
             orderBy: { tanggal_terbit: 'desc' }
         }),
         prisma.poCompanyGroup.findMany({ orderBy: { name: 'asc' } }),
-        prisma.poCategory.findMany({ orderBy: { name: 'asc' } })
+        prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
+        prisma.purchaseOrder.findMany({
+            where: {
+                tanggal_terbit: { gte: prevMonthStart, lte: prevMonthEnd },
+                ...(filter.companyGroupId && filter.companyGroupId !== 'all' ? { companyGroupId: filter.companyGroupId } : {}),
+                ...(filter.status && filter.status !== 'ALL' ? { status: filter.status } : {})
+            },
+            include: { items: true }
+        })
     ])
+
+    // Fetch suppliers separately using supplierIds
+    const supplierIds = [...new Set(pos.map((p: any) => p.supplierId).filter(Boolean))] as string[]
+    const suppliers = supplierIds.length > 0
+        ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+        : []
+    const supplierMapObj = Object.fromEntries(suppliers.map(s => [s.id, s]))
 
     let totalPengeluaran = 0
     let totalItems = 0
     let poDraftCount = 0
     let poApprovedCount = 0
     let poCancelledCount = 0
+    let maxPoValue = 0
 
     // Agregasi per kategori
     const expenseByCategory: Record<string, { name: string, total: number }> = {}
+
+    // Agregasi per supplier
+    const supplierMap: Record<string, { id: string, name: string, total: number, count: number }> = {}
 
     // Agregasi per perusahaan -> kategori
     const expenseByCompany: Record<string, {
@@ -72,6 +95,7 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
         const poTotal = po.items.reduce((acc, item) => acc + item.subtotal, 0)
         totalPengeluaran += poTotal
         totalItems += po.items.length
+        if (poTotal > maxPoValue) maxPoValue = poTotal
 
         if (po.status === 'DRAFT') poDraftCount++
         else if (po.status === 'APPROVED') poApprovedCount++
@@ -82,6 +106,17 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
             const catId = po.categoryId
             if (!expenseByCategory[catId]) expenseByCategory[catId] = { name: po.category.name, total: 0 }
             expenseByCategory[catId].total += poTotal
+        }
+
+        // Masukin ke agregasi Supplier
+        if (po.supplierId && supplierMapObj[po.supplierId]) {
+            const sId = po.supplierId
+            const sName = supplierMapObj[sId].name
+            if (!supplierMap[sId]) {
+                supplierMap[sId] = { id: sId, name: sName, total: 0, count: 0 }
+            }
+            supplierMap[sId].total += poTotal
+            supplierMap[sId].count++
         }
 
         // Masukin ke agregasi Perusahaan
@@ -108,11 +143,24 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
         }
     })
 
+    const prevMonthTotal = prevMonthPos.reduce((sum, po) => sum + po.items.reduce((acc, i) => acc + i.subtotal, 0), 0)
+    const monthOverMonthChange = prevMonthTotal > 0
+        ? Math.round(((totalPengeluaran - prevMonthTotal) / prevMonthTotal) * 100)
+        : null
+
+    const avgPoValue = pos.length > 0 ? Math.round(totalPengeluaran / pos.length) : 0
+    const topSuppliers = Object.values(supplierMap).sort((a, b) => b.total - a.total).slice(0, 5)
+
     const chartByCategory = Object.values(expenseByCategory).sort((a, b) => b.total - a.total)
     const companyStats = Object.values(expenseByCompany).map(comp => ({
         ...comp,
         categoriesList: Object.values(comp.categories).sort((a, b) => b.total - a.total)
     })).sort((a, b) => b.total - a.total)
+
+    const enrichedRecentPos = pos.slice(0, 10).map(po => ({
+        ...po,
+        supplier: po.supplierId ? supplierMapObj[po.supplierId] || null : null
+    }))
 
     return {
         success: true,
@@ -123,11 +171,16 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
                 totalItems,
                 poDraftCount,
                 poApprovedCount,
-                poCancelledCount
+                poCancelledCount,
+                avgPoValue,
+                maxPoValue,
+                monthOverMonthChange,
+                prevMonthTotal
             },
+            topSuppliers,
             chartByCategory,
             companyStats,
-            recentPos: pos.slice(0, 10), // Ambil 10 terbaru
+            recentPos: enrichedRecentPos,
             filterOptions: {
                 companies,
                 categories

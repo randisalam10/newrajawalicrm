@@ -38,18 +38,35 @@ export async function getDashboardData() {
     const todayConfirmed = todayTransactions.filter(t => t.status === 'Confirmed').length
 
     // ============================================
-    // 2. PRODUKSI BULAN INI
+    // 2. PRODUKSI BULAN INI & ESTIMASI OMSET
     // ============================================
     const monthTransactions = await prisma.productionTransaction.findMany({
         where: {
             ...locationFilter,
             date: { gte: monthStart, lte: monthEnd }
         },
-        include: { concreteQuality: true, project: { include: { customer: true } }, location: true }
+        include: {
+            concreteQuality: true,
+            project: {
+                include: { customer: true, prices: true }
+            },
+            location: true
+        }
     })
 
     const monthVolumeTotal = monthTransactions.reduce((s, t) => s + t.volume_cubic, 0)
     const monthTrips = monthTransactions.length
+
+    // Estimasi Nilai Omset Produksi Bulan Ini (Volume x Harga Mutu Proyek)
+    let estimatedOmsetBulanIni = 0
+    monthTransactions.forEach(t => {
+        const matchedPrice = t.project?.prices?.find((p: any) => p.qualityId === t.qualityId)?.price || 0
+        estimatedOmsetBulanIni += (t.volume_cubic * matchedPrice)
+    })
+
+    // Armada & Sopir Aktif Hari Ini
+    const todayActiveVehicles = new Set(todayTransactions.map(t => t.vehicleId)).size
+    const todayActiveDrivers = new Set(todayTransactions.map(t => t.driverId)).size
 
     // ============================================
     // 3. PENDING KONFIRMASI (semua waktu)
@@ -59,7 +76,7 @@ export async function getDashboardData() {
     })
 
     // ============================================
-    // 4. ESTIMASI STOK SEMEN
+    // 4. ESTIMASI STOK SEMEN & COVERAGE
     // ============================================
     // Stok = Total Semen Masuk - Pemakaian dari transaksi confirmed
     const [semenMasukAgg, confirmedTransactionsForStock] = await Promise.all([
@@ -77,18 +94,41 @@ export async function getDashboardData() {
         return s + (t.volume_cubic * (t.concreteQuality.composition_cement || 0))
     }, 0)
     const estimasiStokSemen = totalSemenMasuk - totalSemenKeluar
+    const stokSemenTon = estimasiStokSemen > 0 ? estimasiStokSemen / 1000 : 0
+    const stokStatus: 'SAFE' | 'WARNING' | 'CRITICAL' = stokSemenTon >= 50
+        ? 'SAFE'
+        : stokSemenTon >= 20
+            ? 'WARNING'
+            : 'CRITICAL'
 
     // ============================================
-    // 5. TREND 7 HARI (production daily)
+    // 5. TREND 7 HARI & PERBANDINGAN MINGGU LALU
     // ============================================
     const sevenDaysAgo = startOfDay(subDays(now, 6))
-    const lastSevenDaysTx = await prisma.productionTransaction.findMany({
-        where: {
-            ...locationFilter,
-            date: { gte: sevenDaysAgo, lte: todayEnd }
-        },
-        select: { date: true, volume_cubic: true, status: true }
-    })
+    const fourteenDaysAgo = startOfDay(subDays(now, 13))
+
+    const [lastSevenDaysTx, prevSevenDaysTx] = await Promise.all([
+        prisma.productionTransaction.findMany({
+            where: {
+                ...locationFilter,
+                date: { gte: sevenDaysAgo, lte: todayEnd }
+            },
+            select: { date: true, volume_cubic: true, status: true }
+        }),
+        prisma.productionTransaction.findMany({
+            where: {
+                ...locationFilter,
+                date: { gte: fourteenDaysAgo, lt: sevenDaysAgo }
+            },
+            select: { volume_cubic: true }
+        })
+    ])
+
+    const current7DaysVolume = lastSevenDaysTx.reduce((s, t) => s + t.volume_cubic, 0)
+    const prev7DaysVolume = prevSevenDaysTx.reduce((s, t) => s + t.volume_cubic, 0)
+    const weekGrowthRate = prev7DaysVolume > 0
+        ? Math.round(((current7DaysVolume - prev7DaysVolume) / prev7DaysVolume) * 100)
+        : null
 
     const trendMap: Record<string, { date: string, volume: number, confirmed: number }> = {}
     for (let i = 6; i >= 0; i--) {
@@ -208,13 +248,18 @@ export async function getDashboardData() {
         todayTrips,
         todayPending,
         todayConfirmed,
+        todayActiveVehicles,
+        todayActiveDrivers,
         // Month
         monthVolumeTotal,
         monthTrips,
+        estimatedOmsetBulanIni,
         // Stock
         estimasiStokSemen,
-        // Charts
+        stokStatus,
+        // Charts & Comparisons
         trendData,
+        weekGrowthRate,
         mutuDistribution,
         // Tables
         topCustomers,

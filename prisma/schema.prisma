@@ -533,6 +533,10 @@ model MasterItem {
   categoryId  String
   poItems     PoItem[]
   createdAt   DateTime   @default(now())
+
+  @@index([name])
+  @@index([categoryId])
+  @@index([supplierId])
 }
 
 model PurchaseOrder {
@@ -579,6 +583,13 @@ model PurchaseOrder {
   items     PoItem[]
   createdAt DateTime @default(now())
   updatedAt DateTime? @updatedAt
+
+  @@index([tanggal_terbit])
+  @@index([companyGroupId])
+  @@index([categoryId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model PoItem {
@@ -591,6 +602,9 @@ model PoItem {
   harga_satuan    Float // Snapshot harga saat PO dibuat
   keterangan      String? // e.g. "Plat DT 8258 RI"
   subtotal        Float
+
+  @@index([purchaseOrderId])
+  @@index([masterItemId])
 }
 
 enum RblStatus {
