@@ -5,6 +5,13 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
+function isUserSuperAdmin(session: any): boolean {
+    if (!session?.user) return false
+    const role = session.user.role || ""
+    const scope = session.user.roleScope || ""
+    return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP"].includes(role)
+}
+
 const projectSchema = z.object({
     customerId: z.string().min(1, "Customer required"),
     name: z.string().min(1, "Nama Proyek required"),
@@ -24,22 +31,33 @@ const customerSchema = z.object({
 })
 
 export async function getCustomers() {
-    const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    try {
+        const session = await auth()
+        if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : {
-        OR: [
-            { locationId: session.user.locationId! },
-            { sharedLocations: { some: { id: session.user.locationId! } } }
-        ]
+        const isSuperAdmin = isUserSuperAdmin(session)
+        const userLocId = session.user.locationId
+
+        const filter = isSuperAdmin
+            ? {}
+            : userLocId
+                ? {
+                    OR: [
+                        { locationId: userLocId },
+                        { sharedLocations: { some: { id: userLocId } } }
+                    ]
+                }
+                : {}
+
+        return await prisma.customer.findMany({
+            where: filter,
+            include: { location: true, sharedLocations: true },
+            orderBy: { customer_name: 'asc' }
+        })
+    } catch (err: any) {
+        console.error("Error in getCustomers:", err)
+        return []
     }
-
-    return await prisma.customer.findMany({
-        where: filter,
-        include: { location: true, sharedLocations: true },
-        orderBy: { customer_name: 'asc' }
-    })
 }
 
 export async function createCustomer(formData: FormData) {
@@ -57,16 +75,19 @@ export async function createCustomer(formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isSuperAdmin = isUserSuperAdmin(session)
         const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId) {
+            return { success: false, error: "Cabang (Lokasi) wajib dipilih." }
+        }
 
         // Exclude locationId and sharedLocationIds from the actual insert data
         const { locationId, sharedLocationIds, ...insertData } = parsed.data
 
-        const sharedLocationsQuery = sharedLocationIds && sharedLocationIds.length > 0
-            ? { connect: sharedLocationIds.map(id => ({ id })) }
+        const validSharedIds = (sharedLocationIds || []).filter(id => Boolean(id) && id.trim().length > 0)
+        const sharedLocationsQuery = validSharedIds.length > 0
+            ? { connect: validSharedIds.map(id => ({ id })) }
             : undefined
 
         await prisma.customer.create({
@@ -79,7 +100,8 @@ export async function createCustomer(formData: FormData) {
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("createCustomer error:", e)
+        return { success: false, error: e.message || "Gagal membuat data customer." }
     }
 }
 
@@ -98,7 +120,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isSuperAdmin = isUserSuperAdmin(session)
         const existing = await prisma.customer.findUnique({ where: { id } })
 
         // Verify ownership if not SuperAdmin
@@ -108,26 +130,30 @@ export async function updateCustomer(id: string, formData: FormData) {
 
         const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId) {
+            return { success: false, error: "Cabang (Lokasi) wajib dipilih." }
+        }
 
         const { locationId, sharedLocationIds, ...updateData } = parsed.data
 
-        const sharedLocationsQuery = sharedLocationIds
-            ? { set: sharedLocationIds.map(id => ({ id })) }
-            : undefined
+        const validSharedIds = (sharedLocationIds || []).filter(id => Boolean(id) && id.trim().length > 0)
+        const sharedLocationsQuery = {
+            set: validSharedIds.map(id => ({ id }))
+        }
 
         await prisma.customer.update({
             where: { id },
             data: {
                 ...updateData,
                 locationId: finalLocationId,
-                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
+                sharedLocations: sharedLocationsQuery
             }
         })
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("updateCustomer error:", e)
+        return { success: false, error: e.message || "Gagal memperbarui data customer." }
     }
 }
 
@@ -136,7 +162,7 @@ export async function deleteCustomer(id: string) {
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isSuperAdmin = isUserSuperAdmin(session)
         const existing = await prisma.customer.findUnique({ where: { id } })
 
         // Verify ownership if not SuperAdmin
@@ -150,37 +176,49 @@ export async function deleteCustomer(id: string) {
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: "Failed to delete customer" }
+        console.error("deleteCustomer error:", e)
+        return { success: false, error: "Gagal menghapus customer. Pastikan tidak ada transaksi yang terikat." }
     }
 }
 
 export async function getCustomersWithProjects() {
-    const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    try {
+        const session = await auth()
+        if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : {
-        OR: [
-            { locationId: session.user.locationId! },
-            { sharedLocations: { some: { id: session.user.locationId! } } }
-        ]
+        const isSuperAdmin = isUserSuperAdmin(session)
+        const userLocId = session.user.locationId
+
+        const filter = isSuperAdmin
+            ? {}
+            : userLocId
+                ? {
+                    OR: [
+                        { locationId: userLocId },
+                        { sharedLocations: { some: { id: userLocId } } }
+                    ]
+                }
+                : {}
+
+        return await prisma.customer.findMany({
+            where: filter,
+            include: {
+                location: true,
+                sharedLocations: true,
+                projects: {
+                    include: {
+                        prices: { include: { concreteQuality: true } },
+                        sharedLocations: true
+                    },
+                    orderBy: { name: 'asc' }
+                }
+            },
+            orderBy: { customer_name: 'asc' }
+        })
+    } catch (err: any) {
+        console.error("Error in getCustomersWithProjects:", err)
+        return []
     }
-
-    return await prisma.customer.findMany({
-        where: filter,
-        include: {
-            location: true,
-            sharedLocations: true,
-            projects: {
-                include: {
-                    prices: { include: { concreteQuality: true } },
-                    sharedLocations: true
-                },
-                orderBy: { name: 'asc' }
-            }
-        },
-        orderBy: { customer_name: 'asc' }
-    })
 }
 
 export async function createProject(formData: FormData) {
@@ -199,8 +237,9 @@ export async function createProject(formData: FormData) {
 
     try {
         const { sharedLocationIds, ...projectData } = parsed.data
-        const sharedLocationsQuery = sharedLocationIds && sharedLocationIds.length > 0
-            ? { connect: sharedLocationIds.map(id => ({ id })) }
+        const validSharedIds = (sharedLocationIds || []).filter(id => Boolean(id) && id.trim().length > 0)
+        const sharedLocationsQuery = validSharedIds.length > 0
+            ? { connect: validSharedIds.map(id => ({ id })) }
             : undefined
 
         await prisma.project.create({
@@ -212,7 +251,8 @@ export async function createProject(formData: FormData) {
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("createProject error:", e)
+        return { success: false, error: e.message || "Gagal membuat proyek." }
     }
 }
 
@@ -232,21 +272,23 @@ export async function updateProject(id: string, formData: FormData) {
 
     try {
         const { sharedLocationIds, ...projectData } = parsed.data
-        const sharedLocationsQuery = sharedLocationIds
-            ? { set: sharedLocationIds.map(id => ({ id })) }
-            : undefined
+        const validSharedIds = (sharedLocationIds || []).filter(id => Boolean(id) && id.trim().length > 0)
+        const sharedLocationsQuery = {
+            set: validSharedIds.map(id => ({ id }))
+        }
 
         await prisma.project.update({
             where: { id },
             data: {
                 ...projectData,
-                ...(sharedLocationsQuery && { sharedLocations: sharedLocationsQuery })
+                sharedLocations: sharedLocationsQuery
             }
         })
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("updateProject error:", e)
+        return { success: false, error: e.message || "Gagal memperbarui proyek." }
     }
 }
 
@@ -259,6 +301,7 @@ export async function deleteProject(id: string) {
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
+        console.error("deleteProject error:", e)
         return { success: false, error: "Gagal menghapus proyek. Pastikan tidak ada transaksi aktif." }
     }
 }
@@ -275,7 +318,8 @@ export async function upsertProjectPrice(projectId: string, qualityId: string, p
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("upsertProjectPrice error:", e)
+        return { success: false, error: e.message || "Gagal menyimpan harga mutu proyek." }
     }
 }
 
@@ -289,14 +333,28 @@ export async function deleteProjectPrice(projectId: string, qualityId: string) {
         revalidatePath("/admin/customer")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("deleteProjectPrice error:", e)
+        return { success: false, error: e.message || "Gagal menghapus harga mutu proyek." }
     }
 }
 
 export async function getConcreteQualitiesForLocation() {
-    const session = await auth()
-    if (!session?.user?.employeeId) return []
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
-    return prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } })
+    try {
+        const session = await auth()
+        if (!session?.user?.employeeId) return []
+
+        const isSuperAdmin = isUserSuperAdmin(session)
+        const userLocId = session.user.locationId
+
+        const filter = isSuperAdmin
+            ? {}
+            : userLocId
+                ? { locationId: userLocId }
+                : {}
+
+        return await prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } })
+    } catch (err: any) {
+        console.error("Error in getConcreteQualitiesForLocation:", err)
+        return []
+    }
 }

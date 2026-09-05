@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/auth"
+import { verifyMobileToken } from "@/lib/auth-mobile"
 import { readFile } from "fs/promises"
 import { join } from "path"
 import { existsSync } from "fs"
@@ -19,9 +20,18 @@ export async function GET(
     req: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
-    // ── 1. Auth check — must be logged in ──
+    // ── 1. Auth check — support NextAuth session & Mobile Bearer token ──
     const session = await auth()
-    if (!session?.user) {
+    let isAuthenticated = !!session?.user
+
+    if (!isAuthenticated) {
+        const mobileAuth = verifyMobileToken(req)
+        if (!mobileAuth.error) {
+            isAuthenticated = true
+        }
+    }
+
+    if (!isAuthenticated) {
         return new NextResponse("Unauthorized", { status: 401 })
     }
 

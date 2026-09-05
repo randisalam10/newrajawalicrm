@@ -3,14 +3,18 @@ import { CustomerClient } from "./customer-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
 
+export const dynamic = "force-dynamic"
+
 export default async function CustomerPage() {
     const session = await auth()
+    const isSuperAdmin = session?.user?.role === "SuperAdminBP" || session?.user?.roleScope === "ALL_BRANCHES" || ["CEO", "FVP"].includes(session?.user?.role || "")
+    const userRole = isSuperAdmin ? "SuperAdminBP" : (session?.user?.role || "OperatorBP")
+
     const [data, locations, qualities] = await Promise.all([
         getCustomersWithProjects(),
         getLocations(),
         getConcreteQualitiesForLocation(),
     ])
-    const userRole = session?.user?.role || "OperatorBP"
 
     return (
         <div className="space-y-6">

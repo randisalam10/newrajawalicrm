@@ -15,11 +15,6 @@ export async function GET(req: Request) {
     try {
         const url = new URL(req.url)
         const status = url.searchParams.get('status')
-        const limit = parseInt(url.searchParams.get('limit') || '15')
-        const page = parseInt(url.searchParams.get('page') || '1')
-        const offset = (page - 1) * limit
-
-        // New Filters
         const search = url.searchParams.get('search')
         const companyId = url.searchParams.get('companyId')
         const projectId = url.searchParams.get('projectId')
@@ -40,7 +35,7 @@ export async function GET(req: Request) {
             }
         }
 
-        // Search Logic (PO Number or Company Name)
+        // Search Logic
         if (search) {
             whereClause.OR = [
                 { po_number: { contains: search, mode: 'insensitive' } },
@@ -53,7 +48,7 @@ export async function GET(req: Request) {
         if (projectId && projectId !== 'null') whereClause.companyProjectId = projectId
         if (categoryId && categoryId !== 'null') whereClause.categoryId = categoryId
 
-        // Date Filtering (Month/Year OR Start/End Date)
+        // Date Filtering
         if (startDateParam && endDateParam) {
             whereClause.tanggal_terbit = {
                 gte: new Date(startDateParam),
@@ -75,60 +70,26 @@ export async function GET(req: Request) {
             }
         }
 
-        const [pos, totalCount, totalAmountAgg, projects] = await Promise.all([
-            prisma.purchaseOrder.findMany({
-                where: whereClause,
-                include: {
-                    companyGroup: { select: { name: true } },
-                    category: { select: { name: true } },
-                    items: { select: { subtotal: true } }
-                },
-                orderBy: { createdAt: 'desc' },
-                take: limit,
-                skip: offset
-            }),
+        const [totalCount, totalAmountAgg] = await Promise.all([
             prisma.purchaseOrder.count({ where: whereClause }),
             prisma.poItem.aggregate({
                 where: { purchaseOrder: whereClause },
                 _sum: { subtotal: true }
-            }),
-            prisma.poCompanyProject.findMany({
-                select: { id: true, name: true }
             })
         ])
-
-        const projectMap = new Map(projects.map(p => [p.id, p.name]))
-
-        const mappedPos = pos.map(po => ({
-            id: po.id,
-            po_number: po.po_number,
-            tanggal_terbit: po.tanggal_terbit,
-            company: po.companyGroup.name,
-            projectName: po.companyProjectId ? projectMap.get(po.companyProjectId) : null,
-            category: po.category.name,
-            status: po.status,
-            total: po.items.reduce((acc, item) => acc + item.subtotal, 0)
-        }))
 
         const totalAmount = totalAmountAgg._sum.subtotal || 0
 
         return NextResponse.json({
             success: true,
-            data: mappedPos,
             summary: {
                 total_records: totalCount,
                 total_amount: totalAmount
-            },
-            meta: {
-                totalCount,
-                limit,
-                page,
-                totalPages: Math.ceil(totalCount / limit)
             }
         })
 
     } catch (error: any) {
-        console.error("Mobile PO List Error:", error)
+        console.error("PO Summary Aggregate API Error:", error)
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
     }
 }

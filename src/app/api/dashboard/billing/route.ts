@@ -42,6 +42,12 @@ export async function GET(req: Request) {
         let totalTagihan = 0
         let totalDibayar = 0
 
+        // Aging summary tracking (Umur Piutang)
+        let currentAging = 0
+        let overdue30to60 = 0
+        let overdue60plus = 0
+        const now = new Date()
+
         // Group by customer
         const customerMap = new Map<string, {
             customerId: string,
@@ -59,6 +65,33 @@ export async function GET(req: Request) {
                 .reduce((s, p) => s + p.amount, 0)
 
             totalDibayar += activePaid
+
+            const sisaInvoice = Math.max(0, inv.total_amount - activePaid)
+
+            // Hitung Umur Piutang (Aging Schedule)
+            if (sisaInvoice > 0) {
+                let daysOverdue = 0
+                if (inv.due_date) {
+                    const dueDate = new Date(inv.due_date)
+                    if (now > dueDate) {
+                        daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+                    } else {
+                        daysOverdue = 0
+                    }
+                } else {
+                    const issueDate = new Date(inv.issue_date || inv.createdAt)
+                    const daysSinceIssue = Math.floor((now.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24))
+                    daysOverdue = Math.max(0, daysSinceIssue - 30)
+                }
+
+                if (daysOverdue < 30) {
+                    currentAging += sisaInvoice
+                } else if (daysOverdue <= 60) {
+                    overdue30to60 += sisaInvoice
+                } else {
+                    overdue60plus += sisaInvoice
+                }
+            }
 
             // Per Customer Tracking
             const cust = inv.project.customer
@@ -93,6 +126,12 @@ export async function GET(req: Request) {
             .filter(c => c.sisaTagihan > 0) // Only show customers who still owe money
             .sort((a, b) => b.sisaTagihan - a.sisaTagihan)
 
+        const aging_summary = {
+            current: Math.round(currentAging),
+            overdue_30_60: Math.round(overdue30to60),
+            overdue_60_plus: Math.round(overdue60plus)
+        }
+
         return NextResponse.json({
             success: true,
             data: {
@@ -100,8 +139,10 @@ export async function GET(req: Request) {
                     totalTagihan,
                     totalDibayar,
                     totalSisaTagihan,
-                    unbilledCount
+                    unbilledCount,
+                    aging_summary
                 },
+                aging_summary,
                 customerBreakdown
             }
         })

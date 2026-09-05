@@ -131,36 +131,62 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
 
     // ── Customer Handlers ──────────────────────────────────────────
     async function handleCustomerSubmit(formData: FormData) {
-        selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
+        try {
+            selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
 
-        const result = dialogMode === "customerEdit"
-            ? await updateCustomer(editData.id, formData)
-            : await createCustomer(formData)
-        if (result.success) { setDialogMode(null); setEditData(null) }
-        else alert("Error: " + JSON.stringify(result.error))
+            const result = dialogMode === "customerEdit"
+                ? await updateCustomer(editData.id, formData)
+                : await createCustomer(formData)
+            if (result.success) {
+                setDialogMode(null)
+                setEditData(null)
+            } else {
+                alert("Gagal: " + (typeof result.error === "string" ? result.error : JSON.stringify(result.error)))
+            }
+        } catch (err: any) {
+            console.error("handleCustomerSubmit error:", err)
+            alert("Terjadi kesalahan sistem: " + (err?.message || "Gagal menyimpan data customer."))
+        }
     }
 
     async function handleCustomerDelete(id: string) {
         if (!confirm("Hapus customer ini? Semua proyek di bawahnya juga akan terhapus.")) return
-        const result = await deleteCustomer(id)
-        if (!result.success) alert(result.error)
+        try {
+            const result = await deleteCustomer(id)
+            if (!result.success) alert(result.error)
+        } catch (err: any) {
+            alert("Gagal menghapus customer: " + err?.message)
+        }
     }
 
     // ── Project Handlers ───────────────────────────────────────────
     async function handleProjectSubmit(formData: FormData) {
-        selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
+        try {
+            selectedSharedLocs.forEach(id => formData.append("sharedLocationIds", id))
 
-        const result = dialogMode === "projectEdit"
-            ? await updateProject(editData.id, formData)
-            : await createProject(formData)
-        if (result.success) { setDialogMode(null); setEditData(null) }
-        else alert("Error: " + JSON.stringify(result.error))
+            const result = dialogMode === "projectEdit"
+                ? await updateProject(editData.id, formData)
+                : await createProject(formData)
+            if (result.success) {
+                setDialogMode(null)
+                setEditData(null)
+            } else {
+                alert("Gagal: " + (typeof result.error === "string" ? result.error : JSON.stringify(result.error)))
+            }
+        } catch (err: any) {
+            console.error("handleProjectSubmit error:", err)
+            alert("Terjadi kesalahan sistem: " + (err?.message || "Gagal menyimpan proyek."))
+        }
     }
 
     async function handleProjectDelete(id: string) {
         if (!confirm("Hapus proyek ini?")) return
-        const result = await deleteProject(id)
-        if (!result.success) alert(result.error)
+        try {
+            const result = await deleteProject(id)
+            if (!result.success) alert(result.error)
+        } catch (err: any) {
+            alert("Gagal menghapus proyek: " + err?.message)
+        }
     }
 
     const isCustomerDialog = dialogMode === "customerNew" || dialogMode === "customerEdit"
@@ -502,7 +528,7 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                         {userRole === "SuperAdminBP" && (
                             <div className="space-y-2">
                                 <Label>Cabang (Lokasi) *</Label>
-                                <Select name="locationId" defaultValue={editData?.locationId || ""}>
+                                <Select name="locationId" defaultValue={editData?.locationId || undefined}>
                                     <SelectTrigger><SelectValue placeholder="Pilih Cabang" /></SelectTrigger>
                                     <SelectContent>
                                         {locations.map((loc) => (
