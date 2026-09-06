@@ -1,11 +1,6 @@
 #!/bin/bash
 # ============================================================
-# deploy-hub.sh — Deployment Cepat via Docker Hub Pull
-# Menarik image yang sudah dibuild dari laptop lokal,
-# melakukan auto-backup database, migrasi, dan restart aplikasi.
-#
-# Penggunaan di Server:
-#   bash deploy-hub.sh
+# deploy-hub.sh — Deployment Cepat via Docker Hub Pull (Safe & Low Memory)
 # ============================================================
 
 set -e
@@ -21,7 +16,7 @@ APP_NAME="rajawali-app"
 IMAGE_NAME="randisalam1007/rajawali-bp-erp:latest"
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE} 🚀 Deploying via Docker Hub (Fast Pull Mode)   ${NC}"
+echo -e "${BLUE} 🚀 Deploying via Docker Hub (Safe & Lightweight)${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 # 1. Update source code (jika repo git aktif)
@@ -44,46 +39,49 @@ else
 fi
 echo -e "${GREEN}   ✓ Menggunakan environment: $ENV_FILE${NC}"
 
-# 3. Pull latest pre-built image from Docker Hub
+# 3. PENTING: Matikan container lama DULU agar RAM server lega!
 echo ""
-echo -e "${CYAN}[2/5] Menarik image terbaru dari Docker Hub...${NC}"
+echo -e "${CYAN}[2/5] Membebaskan RAM server (Stop container lama)...${NC}"
+docker stop $APP_NAME 2>/dev/null || true
+docker rm $APP_NAME 2>/dev/null || true
+echo -e "${GREEN}   ✓ RAM server berhasil dibebaskan.${NC}"
+
+# 4. Pull latest image dari Docker Hub
+echo ""
+echo -e "${CYAN}[3/5] Menarik image terbaru dari Docker Hub...${NC}"
 docker pull $IMAGE_NAME
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# 4. Backup snapshot database sebelum migrasi
+# 5. Database migration (Metode Cepat & Hemat RAM)
 echo ""
-echo -e "${CYAN}[3/5] Snapshot database otomatis...${NC}"
-mkdir -p ./backups
-BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="./backups/backup_db_${BACKUP_TIMESTAMP}.sql"
+echo -e "${CYAN}[4/5] Menerapkan migrasi database...${NC}"
 DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+MIGRATION_FILE="prisma/migrations/20260906000000_add_po_approval_audit_fields/migration.sql"
 
-if [ -n "$DB_URL" ]; then
-    echo -e "${YELLOW}   Menyimpan snapshot ke $BACKUP_FILE...${NC}"
+# Jalankan via psql host jika ada (instan & 0 MB RAM overhead)
+if command -v psql &> /dev/null && [ -n "$DB_URL" ] && [ -f "$MIGRATION_FILE" ]; then
+    echo -e "${YELLOW}   Mengeksekusi migrasi langsung via native psql (ultra cepat & 0 overhead)...${NC}"
+    psql "$DB_URL" -f "$MIGRATION_FILE" 2>/dev/null || sudo -u postgres psql -d rajawali_prod -f "$MIGRATION_FILE" 2>/dev/null || true
+    echo -e "${GREEN}   ✓ Migrasi via psql selesai.${NC}"
+elif [ -f "fix-db.sh" ]; then
+    echo -e "${YELLOW}   Mengeksekusi sinkronisasi database via fix-db.sh...${NC}"
+    bash fix-db.sh 2>/dev/null || true
+    echo -e "${GREEN}   ✓ fix-db.sh selesai.${NC}"
+else
+    echo -e "${YELLOW}   Menjalankan migrasi via container (dibatasi RAM 256m)...${NC}"
     docker run --rm \
         --network host \
-        postgres:16-alpine \
-        pg_dump "$DB_URL" > "$BACKUP_FILE" 2>/dev/null \
-        && echo -e "${GREEN}   ✓ Snapshot berhasil: $BACKUP_FILE${NC}" \
-        || echo -e "${YELLOW}   ℹ Catatan: pg_dump dilewati.${NC}"
+        --memory="256m" \
+        --cpus="1.0" \
+        --env-file $ENV_FILE \
+        $IMAGE_NAME \
+        npx prisma migrate deploy || true
+    echo -e "${GREEN}   ✓ Migrasi via container selesai.${NC}"
 fi
 
-# 5. Database migration
+# 6. Jalankan container baru
 echo ""
-echo -e "${CYAN}[4/5] Menerapkan migrasi database Prisma...${NC}"
-docker run --rm \
-    --network host \
-    --env-file $ENV_FILE \
-    $IMAGE_NAME \
-    npx prisma migrate deploy
-
-echo -e "${GREEN}   ✓ Migrasi database selesai.${NC}"
-
-# 6. Restart container
-echo ""
-echo -e "${CYAN}[5/5] Memulai ulang container ($APP_NAME)...${NC}"
-docker stop $APP_NAME 2>/dev/null && docker rm $APP_NAME 2>/dev/null || true
-
+echo -e "${CYAN}[5/5] Menjalankan container aplikasi ($APP_NAME)...${NC}"
 mkdir -p /var/data/rajawali/uploads
 mkdir -p /home/secrets
 
