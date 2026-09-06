@@ -163,9 +163,14 @@ echo ""
 echo -e "${CYAN}[6/6] Memulai ulang container aplikasi ($APP_NAME)...${NC}"
 docker stop $APP_NAME 2>/dev/null && docker rm $APP_NAME 2>/dev/null || true
 
-# Pastikan direktori uploads dan secrets ada di host
-mkdir -p /var/data/rajawali/uploads
+# Pastikan direktori uploads dan subdirektorinya ada di host
+mkdir -p /var/data/rajawali/uploads/logos
+mkdir -p /var/data/rajawali/uploads/signatures
+mkdir -p /var/data/rajawali/uploads/payments
 mkdir -p /home/secrets
+
+# Buat symlink di folder proyek agar 'ls' di folder app langsung menampilkan uploads
+ln -sfn /var/data/rajawali/uploads ./uploads
 
 docker run -d \
     --network host \

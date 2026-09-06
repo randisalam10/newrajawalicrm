@@ -11,8 +11,18 @@ export async function GET(
     if (!filename) return new NextResponse("Not Found", { status: 404 })
 
     try {
-        const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), "public", "uploads", "logos")
-        const filePath = join(uploadDir, filename)
+        const uploadDir = process.env.UPLOAD_DIR || join(process.cwd(), "uploads", "logos")
+        let filePath = join(uploadDir, filename)
+
+        // Fallback: check legacy public/uploads/logos if not found in persistent dir
+        const { existsSync } = await import("fs")
+        if (!existsSync(filePath)) {
+            const legacyPath = join(process.cwd(), "public", "uploads", "logos", filename)
+            if (existsSync(legacyPath)) {
+                filePath = legacyPath
+            }
+        }
+
         const fileBuffer = await readFile(filePath)
 
         const ext = filename.split(".").pop()?.toLowerCase() || ""

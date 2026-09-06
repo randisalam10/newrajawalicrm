@@ -91,8 +91,13 @@ fi
 # 6. Jalankan container baru
 echo ""
 echo -e "${CYAN}[5/5] Menjalankan container aplikasi ($APP_NAME)...${NC}"
-mkdir -p /var/data/rajawali/uploads
+mkdir -p /var/data/rajawali/uploads/logos
+mkdir -p /var/data/rajawali/uploads/signatures
+mkdir -p /var/data/rajawali/uploads/payments
 mkdir -p /home/secrets
+
+# Buat symlink di folder proyek agar 'ls' di folder app langsung menampilkan uploads
+ln -sfn /var/data/rajawali/uploads ./uploads
 
 docker run -d \
     --network host \
