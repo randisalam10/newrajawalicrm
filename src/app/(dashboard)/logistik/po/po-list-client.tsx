@@ -15,7 +15,7 @@ import {
     ChevronLeft, ChevronRight, FilterX, Eye, Loader2,
     Building2, Store, Calendar, FileText, CheckCircle2,
     Clock, ShieldCheck, AlertCircle, ExternalLink, X,
-    MapPin, CreditCard
+    MapPin, CreditCard, ShieldAlert, Smartphone
 } from "lucide-react"
 import { updatePoStatus, getPurchaseOrders, getPurchaseOrderById } from "./actions"
 import Link from "next/link"
@@ -446,10 +446,21 @@ export function POListClient({
                                         {/* 5. Tgl Approve */}
                                         <TableCell className="py-2 px-3 whitespace-nowrap text-[11px]">
                                             {approvedDate ? (
-                                                <span className="text-emerald-700 font-medium inline-flex items-center gap-1" title={`Disetujui: ${new Date(approvedDate).toLocaleString('id-ID')}`}>
-                                                    <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                                                    {new Date(approvedDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                                </span>
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-emerald-700 font-medium inline-flex items-center gap-1" title={`Disetujui: ${new Date(approvedDate).toLocaleString('id-ID')}`}>
+                                                        <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                                                        {new Date(approvedDate).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    </span>
+                                                    {po.isBypassed ? (
+                                                        <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 rounded px-1 py-0.2 w-fit inline-flex items-center gap-0.5" title={`Bypass Admin: ${po.approvedBy?.employee?.name || po.approvedBy?.username || 'Admin'}`}>
+                                                            <ShieldAlert className="w-2.5 h-2.5 text-amber-600" /> Bypass Admin
+                                                        </span>
+                                                    ) : po.approvalChannel === 'MOBILE' ? (
+                                                        <span className="text-[9px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded px-1 py-0.2 w-fit inline-flex items-center gap-0.5" title="Disetujui via Mobile Pimpinan">
+                                                            <Smartphone className="w-2.5 h-2.5 text-emerald-600" /> Mobile
+                                                        </span>
+                                                    ) : null}
+                                                </div>
                                             ) : (
                                                 <span className="text-slate-400 font-mono text-[11px]">-</span>
                                             )}
@@ -780,28 +791,84 @@ export function POListClient({
                                                 <span className="text-slate-500 text-[11px]">Pimpinan:</span>
                                                 <span className="font-medium text-slate-800">{detailPo.pimpinan}</span>
                                             </div>
-                                            {(detailPo.ceoApprovedAt || detailPo.fvpApprovedAt) && (
-                                                <div className="pt-1.5 border-t border-slate-200/60 space-y-1">
-                                                    {detailPo.ceoApprovedAt && (
-                                                        <div className="flex items-center justify-between text-[11px] text-emerald-700 font-medium">
-                                                            <span className="flex items-center gap-1">
-                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                CEO:
+                                            {/* Status Approval Section */}
+                                            {detailPo.status === 'APPROVED' ? (
+                                                detailPo.isBypassed ? (
+                                                    <div className="mt-2 p-2 rounded-lg bg-amber-50/90 border border-amber-200 text-[11px] space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-semibold text-amber-900 flex items-center gap-1">
+                                                                <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                                Bypass Admin ({detailPo.approvalChannel || 'WEB'})
                                                             </span>
-                                                            <span className="truncate max-w-[120px]">{detailPo.ceo?.employee?.name || detailPo.ceo?.username || "Disetujui"}</span>
+                                                            <span className="text-[10px] text-amber-700 font-medium bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                                                                Bypass
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-slate-700 text-[10.5px]">
+                                                            Disetujui oleh: <span className="font-semibold text-slate-900">{detailPo.approvedBy?.employee?.name || detailPo.approvedBy?.username || "Admin"}</span>
+                                                            {detailPo.approvedBy?.role && <span className="text-slate-500"> ({detailPo.approvedBy.role})</span>}
+                                                        </div>
+                                                        {(detailPo.ceoApprovedAt || detailPo.fvpApprovedAt) && (
+                                                            <div className="text-[10px] text-slate-500">
+                                                                Waktu: {new Date((detailPo.ceoApprovedAt || detailPo.fvpApprovedAt)!).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="mt-2 p-2 rounded-lg bg-emerald-50/90 border border-emerald-200 text-[11px] space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-semibold text-emerald-900 flex items-center gap-1">
+                                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                                Persetujuan Pimpinan
+                                                            </span>
+                                                            <span className="text-[10px] text-emerald-700 font-medium bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-300">
+                                                                {detailPo.approvalChannel === 'MOBILE' ? 'Mobile App' : detailPo.approvalChannel || 'Mobile'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="space-y-1 pt-0.5 text-[10.5px]">
+                                                            {detailPo.ceoApprovedAt && (
+                                                                <div className="flex items-center justify-between text-slate-700">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                                                                        CEO ({detailPo.ceoApprovedBy?.employee?.name || detailPo.ceo?.employee?.name || detailPo.ceo?.username || detailPo.pimpinan || "Pimpinan"}):
+                                                                    </span>
+                                                                    <span className="font-medium text-emerald-700">
+                                                                        {new Date(detailPo.ceoApprovedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {detailPo.fvpApprovedAt && (
+                                                                <div className="flex items-center justify-between text-slate-700">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                                                                        FVP ({detailPo.fvpApprovedBy?.employee?.name || detailPo.fvp?.employee?.name || detailPo.fvp?.username || "FVP"}):
+                                                                    </span>
+                                                                    <span className="font-medium text-emerald-700">
+                                                                        {new Date(detailPo.fvpApprovedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )
+                                            ) : (detailPo.ceoApprovedAt || detailPo.fvpApprovedAt) ? (
+                                                <div className="mt-2 p-2 rounded-lg bg-blue-50/90 border border-blue-200 text-[11px] space-y-1">
+                                                    <span className="font-semibold text-blue-900 flex items-center gap-1">
+                                                        <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                                        Disetujui Sebagian (Pending)
+                                                    </span>
+                                                    {detailPo.ceoApprovedAt && (
+                                                        <div className="text-[10.5px] text-slate-700">
+                                                            CEO: Disetujui ({detailPo.ceoApprovedBy?.employee?.name || detailPo.ceo?.employee?.name || detailPo.pimpinan})
                                                         </div>
                                                     )}
                                                     {detailPo.fvpApprovedAt && (
-                                                        <div className="flex items-center justify-between text-[11px] text-emerald-700 font-medium">
-                                                            <span className="flex items-center gap-1">
-                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                                                FVP:
-                                                            </span>
-                                                            <span className="truncate max-w-[120px]">{detailPo.fvp?.employee?.name || detailPo.fvp?.username || "Disetujui"}</span>
+                                                        <div className="text-[10.5px] text-slate-700">
+                                                            FVP: Disetujui ({detailPo.fvpApprovedBy?.employee?.name || detailPo.fvp?.employee?.name || "FVP"})
                                                         </div>
                                                     )}
                                                 </div>
-                                            )}
+                                            ) : null}
                                         </div>
                                     </div>
                                 </div>

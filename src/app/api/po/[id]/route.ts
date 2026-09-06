@@ -15,6 +15,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             include: {
                 companyGroup: true,
                 category: true,
+                approvedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
+                ceoApprovedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
+                fvpApprovedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
                 items: {
                     include: {
                         masterItem: {
@@ -42,6 +45,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             notes: po.notes,
             company: po.companyGroup.name,
             category: po.category.name,
+            isBypassed: po.isBypassed,
+            approvalChannel: po.approvalChannel,
+            approvedBy: po.approvedBy ? {
+                id: po.approvedBy.id,
+                name: po.approvedBy.employee?.name || po.approvedBy.username,
+                role: po.approvedBy.role
+            } : null,
+            ceoApprovedBy: po.ceoApprovedBy ? {
+                id: po.ceoApprovedBy.id,
+                name: po.ceoApprovedBy.employee?.name || po.ceoApprovedBy.username,
+                channel: po.ceoApprovalChannel
+            } : null,
+            fvpApprovedBy: po.fvpApprovedBy ? {
+                id: po.fvpApprovedBy.id,
+                name: po.fvpApprovedBy.employee?.name || po.fvpApprovedBy.username,
+                channel: po.fvpApprovalChannel
+            } : null,
             items: po.items.map(item => ({
                 id: item.id,
                 name: item.masterItem.name,
@@ -92,23 +112,60 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
         if (status === 'CANCELLED') {
             newStatus = 'CANCELLED'
-            updateData = { status: 'CANCELLED', fvpApprovedAt: null, ceoApprovedAt: null }
+            updateData = { 
+                status: 'CANCELLED', 
+                fvpApprovedAt: null, 
+                ceoApprovedAt: null,
+                approvedById: null,
+                approvalChannel: null,
+                ceoApprovedById: null,
+                ceoApprovalChannel: null,
+                fvpApprovedById: null,
+                fvpApprovalChannel: null,
+                isBypassed: false
+            }
             if (notes) updateData.notes = notes
         } else if (status === 'APPROVED') {
             if (user.role === 'FVP') {
                 updateData.fvpApprovedAt = now
-                if (existingPo.ceoApprovedAt) newStatus = 'APPROVED'
+                updateData.fvpApprovedById = user.id
+                updateData.fvpApprovalChannel = 'MOBILE'
+                if (existingPo.ceoApprovedAt || !existingPo.ceoId) {
+                    newStatus = 'APPROVED'
+                    updateData.approvedById = user.id
+                    updateData.approvalChannel = 'MOBILE'
+                    updateData.isBypassed = false
+                }
             } else if (user.role === 'CEO') {
                 updateData.ceoApprovedAt = now
-                if (existingPo.fvpApprovedAt) newStatus = 'APPROVED'
+                updateData.ceoApprovedById = user.id
+                updateData.ceoApprovalChannel = 'MOBILE'
+                if (existingPo.fvpApprovedAt || !existingPo.fvpId) {
+                    newStatus = 'APPROVED'
+                    updateData.approvedById = user.id
+                    updateData.approvalChannel = 'MOBILE'
+                    updateData.isBypassed = false
+                }
             } else if (user.role === 'SuperAdminBP' || user.role === 'AdminLogistik') {
                 updateData.fvpApprovedAt = now
                 updateData.ceoApprovedAt = now
+                updateData.ceoApprovedById = user.id
+                updateData.fvpApprovedById = user.id
+                updateData.ceoApprovalChannel = 'MOBILE'
+                updateData.fvpApprovalChannel = 'MOBILE'
+                updateData.approvedById = user.id
+                updateData.approvalChannel = 'MOBILE'
+                updateData.isBypassed = true
                 newStatus = 'APPROVED'
             }
 
             if (newStatus === 'APPROVED') {
                 updateData.status = 'APPROVED'
+                if (!updateData.approvedById) {
+                    updateData.approvedById = user.id
+                    updateData.approvalChannel = 'MOBILE'
+                    updateData.isBypassed = false
+                }
             }
             if (notes) updateData.notes = notes
         }

@@ -7,7 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import {
     ArrowLeft, Printer, Pencil, Building2, Store, Calendar,
-    FileText, User, CheckCircle2, Clock, XCircle, ShieldCheck
+    FileText, User, CheckCircle2, Clock, XCircle, ShieldCheck,
+    ShieldAlert, Smartphone
 } from "lucide-react"
 
 export default async function PoDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -170,36 +171,109 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
                             <span className="text-slate-400 block text-[11px]">Pimpinan:</span>
                             <span className="font-medium text-slate-800">{po.pimpinan}</span>
                         </div>
-                        <div className="pt-2 border-t border-slate-100 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Persetujuan CEO:</span>
-                                {po.ceoApprovedAt ? (
-                                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Disetujui ({new Date(po.ceoApprovedAt).toLocaleDateString('id-ID')})
-                                    </span>
-                                ) : po.ceoId ? (
-                                    <span className="text-amber-600 flex items-center gap-1">
-                                        <Clock className="w-3 h-3" /> Menunggu
-                                    </span>
-                                ) : (
-                                    <span className="text-slate-400">-</span>
-                                )}
+                        {/* Status Approval / Bypass */}
+                        {po.status === 'APPROVED' ? (
+                            po.isBypassed ? (
+                                <div className="mt-2.5 p-2.5 rounded-lg bg-amber-50/90 border border-amber-200 text-xs space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-amber-900 flex items-center gap-1">
+                                            <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                            Bypass Admin ({po.approvalChannel || 'WEB'})
+                                        </span>
+                                        <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-[10px] px-1.5 py-0">
+                                            Bypass
+                                        </Badge>
+                                    </div>
+                                    <div className="text-slate-700 text-[11px]">
+                                        Disetujui oleh: <span className="font-semibold text-slate-900">{po.approvedBy?.employee?.name || po.approvedBy?.username || "Admin"}</span>
+                                        {po.approvedBy?.role && <span className="text-slate-500"> ({po.approvedBy.role})</span>}
+                                    </div>
+                                    {(po.ceoApprovedAt || po.fvpApprovedAt) && (
+                                        <div className="text-[10px] text-slate-500">
+                                            Waktu: {new Date((po.ceoApprovedAt || po.fvpApprovedAt)!).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="mt-2.5 p-2.5 rounded-lg bg-emerald-50/90 border border-emerald-200 text-xs space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-semibold text-emerald-900 flex items-center gap-1">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                            Persetujuan Pimpinan
+                                        </span>
+                                        <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-300 text-[10px] px-1.5 py-0">
+                                            {po.approvalChannel === 'MOBILE' ? 'Mobile App' : po.approvalChannel || 'Mobile'}
+                                        </Badge>
+                                    </div>
+                                    <div className="space-y-1.5 pt-0.5 text-[11px]">
+                                        {po.ceoApprovedAt ? (
+                                            <div className="flex items-center justify-between text-slate-700">
+                                                <span className="flex items-center gap-1">
+                                                    <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                                                    CEO ({po.ceoApprovedBy?.employee?.name || po.ceo?.employee?.name || po.ceo?.username || po.pimpinan || "Pimpinan"}):
+                                                </span>
+                                                <span className="font-medium text-emerald-700">
+                                                    {new Date(po.ceoApprovedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                        ) : po.ceoId ? (
+                                            <div className="flex items-center justify-between text-slate-500">
+                                                <span>CEO:</span>
+                                                <span className="text-amber-600 flex items-center gap-1"><Clock className="w-3 h-3" /> Menunggu</span>
+                                            </div>
+                                        ) : null}
+
+                                        {po.fvpApprovedAt ? (
+                                            <div className="flex items-center justify-between text-slate-700">
+                                                <span className="flex items-center gap-1">
+                                                    <Smartphone className="w-3 h-3 text-slate-400 shrink-0" />
+                                                    FVP ({po.fvpApprovedBy?.employee?.name || po.fvp?.employee?.name || po.fvp?.username || "FVP"}):
+                                                </span>
+                                                <span className="font-medium text-emerald-700">
+                                                    {new Date(po.fvpApprovedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                        ) : po.fvpId ? (
+                                            <div className="flex items-center justify-between text-slate-500">
+                                                <span>FVP:</span>
+                                                <span className="text-amber-600 flex items-center gap-1"><Clock className="w-3 h-3" /> Menunggu</span>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            )
+                        ) : (
+                            <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">Persetujuan CEO:</span>
+                                    {po.ceoApprovedAt ? (
+                                        <span className="text-emerald-700 font-medium flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Disetujui ({new Date(po.ceoApprovedAt).toLocaleDateString('id-ID')})
+                                        </span>
+                                    ) : po.ceoId ? (
+                                        <span className="text-amber-600 flex items-center gap-1">
+                                            <Clock className="w-3 h-3" /> Menunggu
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400">-</span>
+                                    )}
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-500">Persetujuan FVP:</span>
+                                    {po.fvpApprovedAt ? (
+                                        <span className="text-emerald-700 font-medium flex items-center gap-1">
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Disetujui ({new Date(po.fvpApprovedAt).toLocaleDateString('id-ID')})
+                                        </span>
+                                    ) : po.fvpId ? (
+                                        <span className="text-amber-600 flex items-center gap-1">
+                                            <Clock className="w-3 h-3" /> Menunggu
+                                        </span>
+                                    ) : (
+                                        <span className="text-slate-400">-</span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Persetujuan FVP:</span>
-                                {po.fvpApprovedAt ? (
-                                    <span className="text-emerald-700 font-medium flex items-center gap-1">
-                                        <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Disetujui ({new Date(po.fvpApprovedAt).toLocaleDateString('id-ID')})
-                                    </span>
-                                ) : po.fvpId ? (
-                                    <span className="text-amber-600 flex items-center gap-1">
-                                        <Clock className="w-3 h-3" /> Menunggu
-                                    </span>
-                                ) : (
-                                    <span className="text-slate-400">-</span>
-                                )}
-                            </div>
-                        </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>

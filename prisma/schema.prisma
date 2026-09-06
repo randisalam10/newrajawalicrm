@@ -141,6 +141,9 @@ model User {
   defaultFvps PoCompanyGroup[] @relation("CompanyFvp")
   poCeos      PurchaseOrder[]  @relation("PoCeo")
   poFvps      PurchaseOrder[]  @relation("PoFvp")
+  poApprovedBy PurchaseOrder[] @relation("PoApprovedBy")
+  poCeoApprovedBy PurchaseOrder[] @relation("PoCeoApprovedBy")
+  poFvpApprovedBy PurchaseOrder[] @relation("PoFvpApprovedBy")
 
   // RBL Relations
   rblBudgetsCreated   RblBudget[]     @relation("RblBudgetCreatedBy")
@@ -576,6 +579,18 @@ model PurchaseOrder {
   fvpApprovedAt DateTime?
   ceo           User? @relation("PoCeo", fields: [ceoId], references: [id])
   fvp           User? @relation("PoFvp", fields: [fvpId], references: [id])
+
+  // Approval Execution Tracker
+  isBypassed         Boolean   @default(false)
+  approvalChannel    String?   // "MOBILE" | "WEB"
+  approvedById       String?
+  approvedBy         User?     @relation("PoApprovedBy", fields: [approvedById], references: [id])
+  ceoApprovedById    String?
+  ceoApprovedBy      User?     @relation("PoCeoApprovedBy", fields: [ceoApprovedById], references: [id])
+  ceoApprovalChannel String?   // "MOBILE" | "WEB"
+  fvpApprovedById    String?
+  fvpApprovedBy      User?     @relation("PoFvpApprovedBy", fields: [fvpApprovedById], references: [id])
+  fvpApprovalChannel String?   // "MOBILE" | "WEB"
 
   pic_name  String?
   pic_phone String?

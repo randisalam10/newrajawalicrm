@@ -42,9 +42,29 @@ ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovedAt" TIMESTAMP(3
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoId" TEXT;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpApprovedAt" TIMESTAMP(3);
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpId" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "isBypassed" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "approvalChannel" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "approvedById" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovedById" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovalChannel" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpApprovedById" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpApprovalChannel" TEXT;
 
 ALTER TABLE "PoCompanyGroup" ADD COLUMN IF NOT EXISTS "defaultCeoId" TEXT;
 ALTER TABLE "PoCompanyGroup" ADD COLUMN IF NOT EXISTS "defaultFvpId" TEXT;
+
+-- Backfill data PO lama yang APPROVED agar otomatis tercatat sebagai Bypass Admin (Web)
+UPDATE "PurchaseOrder" po
+SET 
+    "isBypassed" = true,
+    "approvalChannel" = 'WEB',
+    "approvedById" = COALESCE(
+        (SELECT u.id FROM "User" u WHERE u.username = po.pembuat_admin LIMIT 1),
+        (SELECT u.id FROM "User" u WHERE u.role IN ('SuperAdminBP', 'AdminLogistik') ORDER BY u.role DESC LIMIT 1)
+    ),
+    "ceoApprovedAt" = COALESCE(po."ceoApprovedAt", po."updatedAt", po."createdAt"),
+    "fvpApprovedAt" = COALESCE(po."fvpApprovedAt", po."updatedAt", po."createdAt")
+WHERE po.status = 'APPROVED' AND po."approvedById" IS NULL;
 
 -- 4. Tabel Role (Jika tipe enum bernama Role sebelumnya menghalangi pembuatan tabel, kita buat tabel jika belum ada)
 CREATE TABLE IF NOT EXISTS "Role" (

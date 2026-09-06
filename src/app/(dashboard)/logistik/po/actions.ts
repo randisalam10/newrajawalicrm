@@ -236,6 +236,9 @@ export async function getPurchaseOrders(params?: {
                 category: true,
                 items: { include: { masterItem: { include: { supplier: true } } } },
                 location: true,
+                approvedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
+                ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -284,6 +287,9 @@ export async function getPurchaseOrderById(id: string) {
                 location: true,
                 ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
                 fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                approvedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
+                ceoApprovedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
+                fvpApprovedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
                 items: {
                     include: {
                         masterItem: {
@@ -480,22 +486,60 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
 
         if (status === 'CANCELLED') {
             newStatus = 'CANCELLED'
-            updateData = { status: 'CANCELLED', fvpApprovedAt: null, ceoApprovedAt: null }
+            updateData = { 
+                status: 'CANCELLED', 
+                fvpApprovedAt: null, 
+                ceoApprovedAt: null,
+                approvedById: null,
+                approvalChannel: null,
+                ceoApprovedById: null,
+                ceoApprovalChannel: null,
+                fvpApprovedById: null,
+                fvpApprovalChannel: null,
+                isBypassed: false
+            }
         } else if (status === 'APPROVED') {
+            const currentUserId = session.user.id
             if (userRole === 'FVP') {
                 updateData.fvpApprovedAt = now
-                if (existingPo.ceoApprovedAt) newStatus = 'APPROVED'
+                updateData.fvpApprovedById = currentUserId
+                updateData.fvpApprovalChannel = 'WEB'
+                if (existingPo.ceoApprovedAt || !existingPo.ceoId) {
+                    newStatus = 'APPROVED'
+                    updateData.approvedById = currentUserId
+                    updateData.approvalChannel = 'WEB'
+                    updateData.isBypassed = false
+                }
             } else if (userRole === 'CEO') {
                 updateData.ceoApprovedAt = now
-                if (existingPo.fvpApprovedAt) newStatus = 'APPROVED'
+                updateData.ceoApprovedById = currentUserId
+                updateData.ceoApprovalChannel = 'WEB'
+                if (existingPo.fvpApprovedAt || !existingPo.fvpId) {
+                    newStatus = 'APPROVED'
+                    updateData.approvedById = currentUserId
+                    updateData.approvalChannel = 'WEB'
+                    updateData.isBypassed = false
+                }
             } else if (userRole === 'SuperAdminBP' || userRole === 'AdminLogistik') {
                 updateData.fvpApprovedAt = now
                 updateData.ceoApprovedAt = now
+                updateData.ceoApprovedById = currentUserId
+                updateData.fvpApprovedById = currentUserId
+                updateData.ceoApprovalChannel = 'WEB'
+                updateData.fvpApprovalChannel = 'WEB'
+                updateData.approvedById = currentUserId
+                updateData.approvalChannel = 'WEB'
+                updateData.isBypassed = true
                 newStatus = 'APPROVED'
             }
 
             if (newStatus === 'APPROVED') {
                 updateData.status = 'APPROVED'
+                if (!updateData.approvedById) {
+                    updateData.approvedById = currentUserId
+                    updateData.approvalChannel = 'WEB'
+                    updateData.isBypassed = false
+                }
             }
         }
 
