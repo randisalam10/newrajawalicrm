@@ -8,7 +8,7 @@ export async function GET(req: Request) {
 
     const user = authResult.user
 
-    if (!['AdminBP', 'SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP'].includes(user.role)) {
+    if (!['AdminBP', 'SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP', 'Approver'].includes(user.role)) {
         return NextResponse.json({ error: 'Forbidden: Insufficient privileges' }, { status: 403 })
     }
 
