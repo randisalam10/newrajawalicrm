@@ -71,7 +71,7 @@ export function POListClient({
     const [detailLoading, setDetailLoading] = useState(false)
     const [detailError, setDetailError] = useState<string | null>(null)
 
-    const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)
+    const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik', 'Approver'].includes(userRole)
 
     const fetchData = async (
         p: number, 

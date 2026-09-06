@@ -99,12 +99,20 @@ export function AppSidebar({ user }: AppSidebarProps) {
             ]
         },
         {
+            title: "Approval & Persetujuan",
+            defaultOpen: true,
+            items: [
+                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
+                    { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare }
+                ] : []),
+            ]
+        },
+        {
             title: "Logistik & Peralatan",
             defaultOpen: false,
             items: [
                 ...(hasPerm("LOGISTIK_VIEW") ? [{ title: "Dashboard", url: "/logistik", icon: LayoutDashboard }] : []),
                 ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart }] : []),
-                ...(hasPerm("LOGISTIK_APPROVE") ? [{ title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare }] : []),
                 ...(hasPerm("LOGISTIK_VIEW") ? [
                     { title: "Daftar PO", url: "/logistik/po", icon: FileText },
                     { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },

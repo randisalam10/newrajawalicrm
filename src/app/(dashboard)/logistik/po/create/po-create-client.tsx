@@ -409,19 +409,21 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                                     </Select>
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-xs text-slate-500">FVP Signer</Label>
+                                    <Label className="text-xs text-slate-500">Approver / FVP Signer</Label>
                                     <Select value={selectedFvpId} onValueChange={(val) => {
                                         setSelectedFvpId(val)
                                         const s = signers.find(u => u.id === val)
                                         setKepalaPeralatan(s?.employee?.name || s?.username || "")
                                     }}>
                                         <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Pilih FVP" />
+                                            <SelectValue placeholder="Pilih Approver / FVP" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="none">-- Kosongkan --</SelectItem>
-                                            {signers.filter(s => s.role === 'FVP').map(s => (
-                                                <SelectItem key={s.id} value={s.id}>{(s as any).employee?.name || s.username}</SelectItem>
+                                            {signers.filter(s => s.role === 'FVP' || s.role === 'Approver').map(s => (
+                                                <SelectItem key={s.id} value={s.id}>
+                                                    {(s as any).employee?.name || s.username} ({s.role})
+                                                </SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>

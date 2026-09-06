@@ -75,6 +75,12 @@ export const getRoleBadge = (role: string) => {
                     FVP
                 </Badge>
             )
+        case "Approver":
+            return (
+                <Badge className="bg-indigo-600 hover:bg-indigo-700 text-white border-none text-[11px] font-medium tracking-wide">
+                    Approver
+                </Badge>
+            )
         default:
             return (
                 <Badge variant="outline" className="text-[11px] font-medium tracking-wide">

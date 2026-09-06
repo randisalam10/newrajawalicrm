@@ -53,6 +53,7 @@ enum Position {
   AdminLogistik
   CEO
   FVP
+  Approver
 }
 
 enum EmployeeStatus {

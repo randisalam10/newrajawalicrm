@@ -37,7 +37,7 @@ export async function getPoCompanies() {
 
 export async function getUsersForSigners() {
     return await prisma.user.findMany({
-        where: { role: { in: ['CEO', 'FVP'] } },
+        where: { role: { in: ['CEO', 'FVP', 'Approver'] } },
         select: { 
             id: true, 
             username: true, 

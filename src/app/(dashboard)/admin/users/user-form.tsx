@@ -179,6 +179,7 @@ export function UserForm({
                                                 <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
                                                 <SelectItem value="CEO">CEO</SelectItem>
                                                 <SelectItem value="FVP">FVP</SelectItem>
+                                                <SelectItem value="Approver">Approver</SelectItem>
                                             </>
                                         )}
                                     </SelectContent>

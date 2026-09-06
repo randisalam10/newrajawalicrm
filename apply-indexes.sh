@@ -144,6 +144,7 @@ WHERE NOT EXISTS (
 -- 9. PO Approval & Signature Schema Updates
 ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'SUBMITTED';
 ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
+ALTER TYPE "Position" ADD VALUE IF NOT EXISTS 'Approver';
 
 ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "signatureUrl" TEXT;
 

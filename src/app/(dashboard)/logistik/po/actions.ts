@@ -617,20 +617,10 @@ export async function updatePoStatus(
             }
         } else if (status === 'APPROVED') {
             const currentUserId = session.user.id
-            if (userRole === 'FVP' || userRole === 'Approver') {
-                updateData.fvpApprovedAt = now
-                updateData.fvpApprovedById = currentUserId
-                updateData.fvpApprovalChannel = channel
-                if (signatureUrl) updateData.fvpSignatureUrl = signatureUrl
-                if (notes) updateData.fvpNotes = notes
+            const isDesignatedCeo = existingPo.ceoId === currentUserId
+            const isDesignatedFvp = existingPo.fvpId === currentUserId
 
-                if (existingPo.ceoApprovedAt || !existingPo.ceoId) {
-                    newStatus = 'APPROVED'
-                    updateData.approvedById = currentUserId
-                    updateData.approvalChannel = channel
-                    updateData.isBypassed = false
-                }
-            } else if (userRole === 'CEO') {
+            if (isDesignatedCeo || (userRole === 'CEO' && !isDesignatedFvp)) {
                 updateData.ceoApprovedAt = now
                 updateData.ceoApprovedById = currentUserId
                 updateData.ceoApprovalChannel = channel
@@ -638,6 +628,19 @@ export async function updatePoStatus(
                 if (notes) updateData.ceoNotes = notes
 
                 if (existingPo.fvpApprovedAt || !existingPo.fvpId) {
+                    newStatus = 'APPROVED'
+                    updateData.approvedById = currentUserId
+                    updateData.approvalChannel = channel
+                    updateData.isBypassed = false
+                }
+            } else if (isDesignatedFvp || userRole === 'FVP' || userRole === 'Approver') {
+                updateData.fvpApprovedAt = now
+                updateData.fvpApprovedById = currentUserId
+                updateData.fvpApprovalChannel = channel
+                if (signatureUrl) updateData.fvpSignatureUrl = signatureUrl
+                if (notes) updateData.fvpNotes = notes
+
+                if (existingPo.ceoApprovedAt || !existingPo.ceoId) {
                     newStatus = 'APPROVED'
                     updateData.approvedById = currentUserId
                     updateData.approvalChannel = channel
@@ -740,7 +743,7 @@ export async function getPoFormData() {
         prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
         prisma.masterItem.findMany({ include: { supplier: true }, orderBy: { name: 'asc' } }),
         prisma.user.findMany({ 
-            where: { role: { in: ['CEO', 'FVP'] } }, 
+            where: { role: { in: ['CEO', 'FVP', 'Approver'] } }, 
             select: { 
                 id: true, 
                 username: true, 
