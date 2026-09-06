@@ -1,12 +1,20 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table"
 import {
     Dialog,
     DialogContent,
@@ -17,33 +25,26 @@ import {
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-    CheckSquare,
-    Clock,
     CheckCircle2,
     XCircle,
-    FileText,
     Printer,
     Search,
     AlertTriangle,
     Eye,
-    PenTool,
     Upload,
     RotateCcw,
     Loader2,
-    ShieldCheck,
-    Building2,
-    Sparkles,
-    UserCheck,
-    Send,
-    ChevronRight,
-    HelpCircle
+    CheckSquare,
+    Clock,
+    FileText,
+    Trash2,
+    ImageIcon
 } from "lucide-react"
 import Link from "next/link"
 import { updatePoStatus, getApproverQueue, getApproverHistory, updateUserSignature } from "../po/actions"
 
 interface CurrentUser {
     id: string
-    name: string
     role: string
     signatureUrl: string | null
 }
@@ -57,34 +58,32 @@ export function ApprovalClient({
     initialHistory: any[]
     currentUser: CurrentUser
 }) {
-    const [activeTab, setActiveTab] = useState<"queue" | "history" | "profile">("queue")
+    const [activeTab, setActiveTab] = useState("queue")
     const [queue, setQueue] = useState<any[]>(initialQueue)
     const [history, setHistory] = useState<any[]>(initialHistory)
     const [userSig, setUserSig] = useState<string | null>(currentUser.signatureUrl)
     const [searchQuery, setSearchQuery] = useState("")
     const [loading, setLoading] = useState(false)
 
-    // Modal Review PO
+    // Modal Review PO State
     const [selectedPo, setSelectedPo] = useState<any | null>(null)
     const [reviewModalOpen, setReviewModalOpen] = useState(false)
 
-    // Form Approval State
+    // Approval Form State
     const [approverNotes, setApproverNotes] = useState("")
-    const [sigMode, setSigMode] = useState<"saved" | "draw" | "upload">(
-        currentUser.signatureUrl ? "saved" : "draw"
-    )
-    const [uploadedSigUrl, setUploadedSigUrl] = useState<string | null>(null)
-    const [saveAsDefault, setSaveAsDefault] = useState(false)
+    const [modalSigUrl, setModalSigUrl] = useState<string | null>(null)
+    const [modalSaveAsDefault, setModalSaveAsDefault] = useState(false)
+    const [uploadingSig, setUploadingSig] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // Profile Signature Upload State (Tab Tanda Tangan)
+    const [profileUploadFile, setProfileUploadFile] = useState<File | null>(null)
+    const [profilePreviewUrl, setProfilePreviewUrl] = useState<string | null>(null)
+    const [savingProfileSig, setSavingProfileSig] = useState(false)
 
     // Rejection state
     const [rejectMode, setRejectMode] = useState(false)
     const [rejectionReason, setRejectionReason] = useState("")
-
-    // Canvas Signature Ref & Drawing Logic
-    const canvasRef = useRef<HTMLCanvasElement | null>(null)
-    const [isDrawing, setIsDrawing] = useState(false)
-    const [hasDrawn, setHasDrawn] = useState(false)
 
     const isAdmin = ['SuperAdminBP', 'AdminLogistik'].includes(currentUser.role)
 
@@ -103,84 +102,99 @@ export function ApprovalClient({
         }
     }
 
-    // Canvas drawing helpers
-    useEffect(() => {
-        if (sigMode === "draw" && canvasRef.current) {
-            const canvas = canvasRef.current
-            const ctx = canvas.getContext("2d")
-            if (ctx) {
-                ctx.strokeStyle = "#0f172a"
-                ctx.lineWidth = 2.5
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-            }
+    // Helper: Upload PNG file to server
+    const uploadPngFile = async (file: File): Promise<string | null> => {
+        if (!file.type.includes("png") && !file.name.toLowerCase().endsWith(".png")) {
+            alert("Format file harus PNG (disarankan berlatar belakang transparan).")
+            return null
         }
-    }, [sigMode, reviewModalOpen])
-
-    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return
-
-        setIsDrawing(true)
-        const rect = canvas.getBoundingClientRect()
-        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-        ctx.beginPath()
-        ctx.moveTo(clientX - rect.left, clientY - rect.top)
-    }
-
-    const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-        if (!isDrawing) return
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return
-
-        const rect = canvas.getBoundingClientRect()
-        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
-        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY
-        ctx.lineTo(clientX - rect.left, clientY - rect.top)
-        ctx.stroke()
-        setHasDrawn(true)
-    }
-
-    const stopDrawing = () => {
-        setIsDrawing(false)
-    }
-
-    const clearCanvas = () => {
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext("2d")
-        if (!ctx) return
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        setHasDrawn(false)
-    }
-
-    // Handle File Upload for Signature
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
 
         const formData = new FormData()
         formData.append("file", file)
         formData.append("folder", "signatures")
 
+        const res = await fetch("/api/upload", {
+            method: "POST",
+            body: formData,
+        })
+        const data = await res.json()
+        if (data.success && data.url) {
+            return data.url
+        } else {
+            alert("Gagal mengupload file PNG: " + (data.error || "Unknown error"))
+            return null
+        }
+    }
+
+    // Handle Profile Tab File Selection
+    const handleProfileFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        if (!file.type.includes("png") && !file.name.toLowerCase().endsWith(".png")) {
+            alert("Mohon pilih file dengan format standard .PNG")
+            return
+        }
+
+        setProfileUploadFile(file)
+        const objectUrl = URL.createObjectURL(file)
+        setProfilePreviewUrl(objectUrl)
+    }
+
+    // Save Profile Signature
+    const handleSaveProfileSignature = async () => {
+        if (!profileUploadFile) return
+        setSavingProfileSig(true)
         try {
-            const res = await fetch("/api/upload", {
-                method: "POST",
-                body: formData,
-            })
-            const data = await res.json()
-            if (data.success && data.url) {
-                setUploadedSigUrl(data.url)
+            const uploadedUrl = await uploadPngFile(profileUploadFile)
+            if (!uploadedUrl) return
+
+            const res = await updateUserSignature(uploadedUrl)
+            if (res.success) {
+                setUserSig(uploadedUrl)
+                setProfileUploadFile(null)
+                setProfilePreviewUrl(null)
+                alert("Tanda tangan PNG berhasil disimpan ke profil Anda!")
             } else {
-                alert("Gagal mengupload tanda tangan: " + (data.error || "Unknown error"))
+                alert("Gagal menyimpan ke profil: " + res.error)
             }
-        } catch (err: any) {
-            alert("Error upload: " + err.message)
+        } finally {
+            setSavingProfileSig(false)
+        }
+    }
+
+    // Delete Profile Signature
+    const handleDeleteProfileSignature = async () => {
+        if (!confirm("Hapus tanda tangan PNG tersimpan dari profil Anda?")) return
+        setSavingProfileSig(true)
+        try {
+            const res = await updateUserSignature("")
+            if (res.success) {
+                setUserSig(null)
+                setProfileUploadFile(null)
+                setProfilePreviewUrl(null)
+                alert("Tanda tangan profil berhasil dihapus.")
+            } else {
+                alert("Gagal menghapus: " + res.error)
+            }
+        } finally {
+            setSavingProfileSig(false)
+        }
+    }
+
+    // Handle Modal File Upload
+    const handleModalFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploadingSig(true)
+        try {
+            const uploadedUrl = await uploadPngFile(file)
+            if (uploadedUrl) {
+                setModalSigUrl(uploadedUrl)
+            }
+        } finally {
+            setUploadingSig(false)
         }
     }
 
@@ -190,57 +204,27 @@ export function ApprovalClient({
         setApproverNotes("")
         setRejectMode(false)
         setRejectionReason("")
-        setHasDrawn(false)
-        setUploadedSigUrl(null)
-        setSigMode(userSig ? "saved" : "draw")
+        setModalSigUrl(userSig || null)
+        setModalSaveAsDefault(false)
         setReviewModalOpen(true)
     }
 
-    // Action: Approve
+    // Action: Approve PO
     const handleApprove = async () => {
         if (!selectedPo) return
 
-        let finalSigUrl: string | null = null
+        let finalSigUrl = modalSigUrl || userSig || null
 
-        // If not admin, require or resolve signature
-        if (!isAdmin) {
-            if (sigMode === "saved") {
-                if (!userSig) {
-                    alert("Anda belum memiliki tanda tangan tersimpan. Silakan gambar atau upload tanda tangan.")
-                    return
-                }
-                finalSigUrl = userSig
-            } else if (sigMode === "draw") {
-                if (!hasDrawn || !canvasRef.current) {
-                    alert("Silakan gambar tanda tangan Anda pada kotak tanda tangan terlebih dahulu.")
-                    return
-                }
-                const dataUrl = canvasRef.current.toDataURL("image/png")
-                // Upload canvas base64 to server
-                const uploadRes = await fetch("/api/upload", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ file: dataUrl, folder: "signatures" }),
-                })
-                const uploadData = await uploadRes.json()
-                if (!uploadData.success || !uploadData.url) {
-                    alert("Gagal memproses gambar tanda tangan: " + (uploadData.error || "Unknown error"))
-                    return
-                }
-                finalSigUrl = uploadData.url
-            } else if (sigMode === "upload") {
-                if (!uploadedSigUrl) {
-                    alert("Silakan pilih dan upload file tanda tangan terlebih dahulu.")
-                    return
-                }
-                finalSigUrl = uploadedSigUrl
-            }
+        // Approver non-admin wajib memiliki TTD PNG
+        if (!isAdmin && !finalSigUrl) {
+            alert("Harap upload tanda tangan PNG terlebih dahulu sebelum menyetujui PO.")
+            return
+        }
 
-            // If save as default is checked, update user profile signature
-            if (saveAsDefault && finalSigUrl) {
-                await updateUserSignature(finalSigUrl)
-                setUserSig(finalSigUrl)
-            }
+        // Simpan sebagai default jika dicentang
+        if (!isAdmin && modalSaveAsDefault && finalSigUrl) {
+            await updateUserSignature(finalSigUrl)
+            setUserSig(finalSigUrl)
         }
 
         setIsSubmitting(true)
@@ -265,7 +249,7 @@ export function ApprovalClient({
         }
     }
 
-    // Action: Reject
+    // Action: Reject PO
     const handleReject = async () => {
         if (!selectedPo) return
         if (!rejectionReason.trim()) {
@@ -294,7 +278,7 @@ export function ApprovalClient({
         }
     }
 
-    // Filtered lists
+    // Filter lists
     const filteredQueue = queue.filter(po => {
         const q = searchQuery.toLowerCase()
         return (
@@ -316,59 +300,46 @@ export function ApprovalClient({
     })
 
     return (
-        <div className="space-y-6">
-            {/* ── Page Header ── */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-6 rounded-2xl shadow-xl border border-slate-700/50 flex flex-wrap items-center justify-between gap-4">
-                <div className="space-y-1">
-                    <div className="flex items-center gap-2.5">
-                        <div className="p-2 bg-indigo-600/30 border border-indigo-400/30 rounded-xl">
-                            <ShieldCheck className="w-6 h-6 text-indigo-400" />
-                        </div>
-                        <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-                            Portal Persetujuan Purchase Order
-                        </h1>
-                    </div>
-                    <p className="text-xs md:text-sm text-slate-300">
-                        Pemeriksaan rincian barang, verifikasi tanda tangan digital, dan persetujuan PO Logistik.
+        <div className="space-y-4">
+            {/* ── Page Title & Actions ── */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200/80">
+                <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900">Persetujuan Purchase Order</h1>
+                    <p className="text-muted-foreground text-sm">
+                        Daftar antrean persetujuan PO logistik, riwayat approval, dan tanda tangan digital.
                     </p>
                 </div>
-                <div className="flex items-center gap-3">
-                    <div className="bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-xs">
-                        <span className="text-slate-400 block text-[10px]">Login Sebagai:</span>
-                        <span className="font-semibold text-indigo-200">{currentUser.name} ({currentUser.role})</span>
-                    </div>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-xs bg-white/5 border-white/20 text-white hover:bg-white/15"
-                        onClick={refreshData}
-                        disabled={loading}
-                    >
-                        <RotateCcw className={`w-3.5 h-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-                    </Button>
-                </div>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-xs h-8 gap-1.5 self-start sm:self-auto"
+                    onClick={refreshData}
+                    disabled={loading}
+                >
+                    <RotateCcw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh Data
+                </Button>
             </div>
 
             {/* ── Tabs Navigation ── */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList className="bg-slate-100 p-1 border border-slate-200">
                         <TabsTrigger value="queue" className="text-xs data-[state=active]:bg-white data-[state=active]:shadow-xs gap-2">
                             <Clock className="w-3.5 h-3.5 text-amber-600" />
                             <span>Menunggu Persetujuan</span>
-                            <Badge variant="secondary" className="ml-1 bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="ml-1 bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0 font-semibold">
                                 {queue.length}
                             </Badge>
                         </TabsTrigger>
                         <TabsTrigger value="history" className="text-xs data-[state=active]:bg-white data-[state=active]:shadow-xs gap-2">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
                             <span>Riwayat Persetujuan</span>
-                            <Badge variant="secondary" className="ml-1 bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0">
+                            <Badge variant="secondary" className="ml-1 bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0 font-semibold">
                                 {history.length}
                             </Badge>
                         </TabsTrigger>
                         <TabsTrigger value="profile" className="text-xs data-[state=active]:bg-white data-[state=active]:shadow-xs gap-2">
-                            <PenTool className="w-3.5 h-3.5 text-indigo-600" />
+                            <ImageIcon className="w-3.5 h-3.5 text-blue-600" />
                             <span>Tanda Tangan Saya</span>
                         </TabsTrigger>
                     </TabsList>
@@ -377,7 +348,7 @@ export function ApprovalClient({
                         <div className="relative w-full sm:w-64">
                             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                             <Input
-                                placeholder="Cari nomor PO, supplier..."
+                                placeholder="Cari no PO, supplier, proyek..."
                                 className="pl-8 text-xs h-8 bg-white border-slate-200"
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
@@ -386,180 +357,165 @@ export function ApprovalClient({
                     )}
                 </div>
 
-                {/* ── TAB 1: ANTRIAN MENUNGGU PERSETUJUAN ── */}
-                <TabsContent value="queue" className="space-y-3">
-                    {filteredQueue.length === 0 ? (
-                        <Card className="border-dashed py-12 text-center text-slate-500">
-                            <CheckCircle2 className="w-12 h-12 text-emerald-500/80 mx-auto mb-3" />
-                            <h3 className="font-semibold text-slate-700">Semua PO Sudah Diproses</h3>
-                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                                Saat ini tidak ada antrean Purchase Order yang membutuhkan persetujuan Anda.
-                            </p>
-                        </Card>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {filteredQueue.map(po => {
-                                const total = po.items?.reduce((acc: number, it: any) => acc + it.subtotal, 0) || 0
-                                const itemCount = po.items?.length || 0
+                {/* ── TAB 1: ANTREAN MENUNGGU PERSETUJUAN ── */}
+                <TabsContent value="queue">
+                    <Card>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader className="bg-slate-50/80">
+                                    <TableRow className="text-xs border-b border-slate-200">
+                                        <TableHead className="py-2.5 px-3">No. PO & Kategori</TableHead>
+                                        <TableHead className="py-2.5 px-3">Perusahaan & Proyek</TableHead>
+                                        <TableHead className="py-2.5 px-3">Supplier</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Tgl Terbit</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Jml Item</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-right">Total Nilai</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Aksi</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredQueue.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={7} className="text-center text-muted-foreground h-32 text-xs">
+                                                {searchQuery ? "Tidak ada PO yang cocok dengan pencarian." : "Tidak ada antrean Purchase Order yang menunggu persetujuan Anda."}
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredQueue.map(po => {
+                                            const total = po.items?.reduce((acc: number, it: any) => acc + (it.subtotal || 0), 0) || 0
+                                            const itemCount = po.items?.length || 0
 
-                                return (
-                                    <Card key={po.id} className="hover:shadow-md transition-shadow border-slate-200 flex flex-col justify-between">
-                                        <CardHeader className="pb-3 border-b border-slate-100 bg-slate-50/50">
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div>
-                                                    <span className="font-mono font-bold text-blue-600 text-sm">{po.po_number}</span>
-                                                    <div className="text-[11px] text-slate-500 mt-0.5">{po.category?.name || "Kategori"}</div>
-                                                </div>
-                                                <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 text-[10px] font-medium border-amber-200">
-                                                    Menunggu
-                                                </Badge>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="pt-3 pb-3 space-y-2 text-xs flex-1">
-                                            <div className="flex items-center gap-1.5 text-slate-700">
-                                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                <span className="font-medium truncate">{po.companyGroup?.name}</span>
-                                            </div>
-                                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100 text-[11px]">
-                                                <div>
-                                                    <span className="text-slate-400 block">Proyek:</span>
-                                                    <span className="text-slate-700 font-medium truncate block">{po.proyek_nama || "-"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-slate-400 block">Supplier:</span>
-                                                    <span className="text-slate-700 font-medium truncate block">{po.supplier_nama || "-"}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-slate-400 block">Tgl Pengajuan:</span>
-                                                    <span className="text-slate-700 font-medium">
-                                                        {po.submittedAt 
-                                                            ? new Date(po.submittedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-                                                            : new Date(po.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                                            return (
+                                                <TableRow key={po.id} className="hover:bg-slate-50/75 transition-colors text-xs border-b border-slate-100">
+                                                    <TableCell className="py-2.5 px-3">
+                                                        <div className="font-mono font-bold text-blue-600">{po.po_number}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-0.5">{po.category?.name || "-"}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 max-w-[180px]">
+                                                        <div className="font-medium text-slate-800 truncate">{po.companyGroup?.name || "-"}</div>
+                                                        <div className="text-[11px] text-slate-500 truncate">{po.proyek_nama || "-"}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 max-w-[140px] text-slate-800 font-medium truncate">
+                                                        {po.supplier_nama || "-"}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center text-slate-600 whitespace-nowrap text-[11px]">
+                                                        {po.tanggal_terbit
+                                                            ? new Date(po.tanggal_terbit).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                            : "-"
                                                         }
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-slate-400 block">Jumlah Item:</span>
-                                                    <span className="text-slate-700 font-medium">{itemCount} Macam Barang</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                                                <span className="text-slate-500 font-medium text-[11px]">Total Nilai PO:</span>
-                                                <span className="font-mono font-bold text-sm text-emerald-700">
-                                                    Rp {total.toLocaleString('id-ID')}
-                                                </span>
-                                            </div>
-                                        </CardContent>
-                                        <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
-                                            <div className="text-[10px] text-slate-400">
-                                                Pembuat: {po.pembuat_admin || po.submittedBy?.username || "Admin"}
-                                            </div>
-                                            <Button 
-                                                size="sm" 
-                                                className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-8 gap-1.5 shadow-xs"
-                                                onClick={() => openReview(po)}
-                                            >
-                                                <CheckSquare className="w-3.5 h-3.5" /> Review & Putuskan
-                                            </Button>
-                                        </div>
-                                    </Card>
-                                )
-                            })}
-                        </div>
-                    )}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center font-medium">
+                                                        {itemCount} Item
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                                        Rp {total.toLocaleString('id-ID')}
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center">
+                                                        <Button
+                                                            size="sm"
+                                                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-7 px-3 gap-1.5 font-medium shadow-xs"
+                                                            onClick={() => openReview(po)}
+                                                        >
+                                                            <CheckSquare className="w-3.5 h-3.5" /> Review & Putuskan
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
                 {/* ── TAB 2: RIWAYAT PERSETUJUAN ── */}
-                <TabsContent value="history" className="space-y-3">
-                    {filteredHistory.length === 0 ? (
-                        <Card className="border-dashed py-12 text-center text-slate-500">
-                            <Clock className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                            <h3 className="font-semibold text-slate-700">Belum Ada Riwayat</h3>
-                            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                                Purchase order yang telah Anda setujui atau tolak akan tercatat di sini.
-                            </p>
-                        </Card>
-                    ) : (
-                        <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-xs">
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left text-xs border-collapse">
-                                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
-                                        <tr>
-                                            <th className="py-2.5 px-3">No. PO</th>
-                                            <th className="py-2.5 px-3">Perusahaan & Proyek</th>
-                                            <th className="py-2.5 px-3">Supplier</th>
-                                            <th className="py-2.5 px-3 text-right">Total Nilai</th>
-                                            <th className="py-2.5 px-3 text-center">Status</th>
-                                            <th className="py-2.5 px-3">Catatan / Tanda Tangan</th>
-                                            <th className="py-2.5 px-3 text-center">Aksi</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                        {filteredHistory.map(po => {
-                                            const total = po.items?.reduce((acc: number, it: any) => acc + it.subtotal, 0) || 0
+                <TabsContent value="history">
+                    <Card>
+                        <CardContent className="p-0">
+                            <Table>
+                                <TableHeader className="bg-slate-50/80">
+                                    <TableRow className="text-xs border-b border-slate-200">
+                                        <TableHead className="py-2.5 px-3">No. PO</TableHead>
+                                        <TableHead className="py-2.5 px-3">Perusahaan & Proyek</TableHead>
+                                        <TableHead className="py-2.5 px-3">Supplier</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Tgl Keputusan</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-right">Total Nilai</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Status</TableHead>
+                                        <TableHead className="py-2.5 px-3">Catatan</TableHead>
+                                        <TableHead className="py-2.5 px-3 text-center">Aksi</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {filteredHistory.length === 0 ? (
+                                        <TableRow>
+                                            <TableCell colSpan={8} className="text-center text-muted-foreground h-32 text-xs">
+                                                {searchQuery ? "Tidak ada riwayat yang cocok dengan pencarian." : "Belum ada riwayat persetujuan atau penolakan PO."}
+                                            </TableCell>
+                                        </TableRow>
+                                    ) : (
+                                        filteredHistory.map(po => {
+                                            const total = po.items?.reduce((acc: number, it: any) => acc + (it.subtotal || 0), 0) || 0
                                             const isApproved = po.status === "APPROVED"
                                             const isRejected = po.status === "REJECTED"
 
                                             return (
-                                                <tr key={po.id} className="hover:bg-slate-50/75 transition-colors">
-                                                    <td className="py-2 px-3">
-                                                        <span className="font-mono font-bold text-blue-600">{po.po_number}</span>
-                                                        <div className="text-[10px] text-slate-400">{po.category?.name}</div>
-                                                    </td>
-                                                    <td className="py-2 px-3 max-w-[180px]">
-                                                        <div className="font-medium text-slate-800 truncate">{po.companyGroup?.name}</div>
-                                                        <div className="text-[10px] text-slate-400 truncate">{po.proyek_nama || "-"}</div>
-                                                    </td>
-                                                    <td className="py-2 px-3 text-slate-700">
+                                                <TableRow key={po.id} className="hover:bg-slate-50/75 transition-colors text-xs border-b border-slate-100">
+                                                    <TableCell className="py-2.5 px-3">
+                                                        <div className="font-mono font-bold text-blue-600">{po.po_number}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-0.5">{po.category?.name || "-"}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 max-w-[180px]">
+                                                        <div className="font-medium text-slate-800 truncate">{po.companyGroup?.name || "-"}</div>
+                                                        <div className="text-[11px] text-slate-500 truncate">{po.proyek_nama || "-"}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 max-w-[140px] text-slate-800 font-medium truncate">
                                                         {po.supplier_nama || "-"}
-                                                    </td>
-                                                    <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center text-slate-600 whitespace-nowrap text-[11px]">
+                                                        {po.updatedAt
+                                                            ? new Date(po.updatedAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                            : "-"
+                                                        }
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
                                                         Rp {total.toLocaleString('id-ID')}
-                                                    </td>
-                                                    <td className="py-2 px-3 text-center">
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center whitespace-nowrap">
                                                         {isApproved && (
-                                                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+                                                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-medium">
                                                                 Disetujui
                                                             </Badge>
                                                         )}
                                                         {isRejected && (
-                                                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px]">
+                                                            <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-medium">
                                                                 Ditolak
                                                             </Badge>
                                                         )}
                                                         {!isApproved && !isRejected && (
-                                                            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px]">
+                                                            <Badge className="bg-slate-100 text-slate-700 border-slate-200 text-[10px] font-medium">
                                                                 {po.status}
                                                             </Badge>
                                                         )}
-                                                    </td>
-                                                    <td className="py-2 px-3 max-w-[200px]">
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 max-w-[180px]">
                                                         {isRejected && po.rejectionReason && (
-                                                            <div className="text-[10px] text-rose-600 italic truncate" title={po.rejectionReason}>
+                                                            <span className="text-[11px] text-rose-600 italic truncate block" title={po.rejectionReason}>
                                                                 Alasan: {po.rejectionReason}
-                                                            </div>
+                                                            </span>
                                                         )}
                                                         {isApproved && (
-                                                            <div className="flex items-center gap-2">
-                                                                {po.fvpSignatureUrl || po.ceoSignatureUrl ? (
-                                                                    <div className="flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                                                        <PenTool className="w-3 h-3" /> TTD Terlampir
-                                                                    </div>
-                                                                ) : po.isBypassed ? (
-                                                                    <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                                                                        Bypass Admin
-                                                                    </span>
-                                                                ) : null}
-                                                            </div>
+                                                            <span className="text-[11px] text-slate-600 truncate block">
+                                                                {po.fvpNotes || po.ceoNotes || (po.isBypassed ? "Disetujui Administratif" : "Sesuai rincian")}
+                                                            </span>
                                                         )}
-                                                    </td>
-                                                    <td className="py-2 px-3 text-center">
+                                                    </TableCell>
+                                                    <TableCell className="py-2.5 px-3 text-center whitespace-nowrap">
                                                         <div className="flex items-center justify-center gap-1">
                                                             <Button
-                                                                variant="ghost" 
-                                                                size="icon" 
-                                                                className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50" 
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
                                                                 title="Lihat Detail PO"
                                                                 onClick={() => openReview(po)}
                                                             >
@@ -568,145 +524,136 @@ export function ApprovalClient({
                                                             {isApproved && (
                                                                 <Link href={`/print/po/${po.id}`} target="_blank">
                                                                     <Button
-                                                                        variant="ghost" 
-                                                                        size="icon" 
-                                                                        className="h-7 w-7 text-blue-600 hover:bg-blue-50" 
-                                                                        title="Cetak PO dengan TTD"
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-blue-600 hover:bg-blue-50"
+                                                                        title="Cetak Dokumen PO"
                                                                     >
                                                                         <Printer className="w-3.5 h-3.5" />
                                                                     </Button>
                                                                 </Link>
                                                             )}
                                                         </div>
-                                                    </td>
-                                                </tr>
+                                                    </TableCell>
+                                                </TableRow>
                                             )
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    )}
+                                        })
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
                 </TabsContent>
 
-                {/* ── TAB 3: TANDA TANGAN SAYA ── */}
-                <TabsContent value="profile" className="space-y-4">
-                    <Card className="max-w-2xl border-slate-200 shadow-sm">
-                        <CardHeader>
-                            <CardTitle className="text-base flex items-center gap-2">
-                                <PenTool className="w-4 h-4 text-indigo-600" />
-                                Kelola Tanda Tangan Digital Saya
+                {/* ── TAB 3: TANDA TANGAN SAYA (UPLOAD STANDAR PNG) ── */}
+                <TabsContent value="profile">
+                    <Card className="max-w-2xl border-slate-200">
+                        <CardHeader className="pb-3 border-b border-slate-100">
+                            <CardTitle className="text-base font-bold text-slate-900">
+                                Tanda Tangan Digital (Format PNG)
                             </CardTitle>
                             <CardDescription className="text-xs">
-                                Tanda tangan ini akan tersimpan secara aman di profil Anda dan dapat digunakan otomatis setiap kali Anda menyetujui Purchase Order.
+                                Upload gambar tanda tangan bertipe PNG (standard). Tanda tangan ini akan otomatis dilampirkan pada formulir Purchase Order saat Anda menyetujuinya.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            {userSig ? (
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-semibold text-slate-700">Tanda Tangan Aktif Saat Ini:</Label>
-                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center max-w-sm h-36">
-                                        <img 
-                                            src={userSig} 
-                                            alt="Tanda Tangan Saya" 
-                                            className="max-h-28 object-contain"
-                                        />
+                        <CardContent className="pt-4 space-y-4">
+                            {/* Preview TTD Aktif */}
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold text-slate-700">Tanda Tangan Aktif Saat Ini:</Label>
+                                {userSig ? (
+                                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row items-center justify-between gap-4 max-w-md">
+                                        <div className="h-20 max-w-[200px] flex items-center justify-center p-1 bg-white rounded border border-slate-100">
+                                            <img src={userSig} alt="Tanda Tangan Aktif" className="max-h-full max-w-full object-contain" />
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-xs text-rose-600 hover:bg-rose-50 border-rose-200 h-8 gap-1.5"
+                                            onClick={handleDeleteProfileSignature}
+                                            disabled={savingProfileSig}
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" /> Hapus
+                                        </Button>
                                     </div>
-                                    <p className="text-[11px] text-slate-500">
-                                        Tanda tangan ini akan otomatis digunakan saat Anda menekan tombol Setujui PO. Anda dapat menggantinya dengan menggambar ulang di bawah.
-                                    </p>
-                                </div>
-                            ) : (
-                                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-xs flex items-center gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                                    Anda belum memiliki tanda tangan tersimpan. Silakan gambar tanda tangan Anda di bawah dan simpan.
-                                </div>
-                            )}
+                                ) : (
+                                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2 max-w-md">
+                                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                        Belum ada tanda tangan tersimpan di profil Anda.
+                                    </div>
+                                )}
+                            </div>
 
-                            <div className="space-y-2 pt-2 border-t border-slate-100">
-                                <Label className="text-xs font-semibold text-slate-700">Buat Tanda Tangan Baru (Gambar pada Kotak):</Label>
-                                <div className="border border-slate-300 rounded-xl p-1 bg-white inline-block">
-                                    <canvas
-                                        ref={canvasRef}
-                                        width={380}
-                                        height={150}
-                                        className="bg-slate-50/50 rounded-lg cursor-crosshair touch-none"
-                                        onMouseDown={startDrawing}
-                                        onMouseMove={draw}
-                                        onMouseUp={stopDrawing}
-                                        onMouseLeave={stopDrawing}
-                                        onTouchStart={startDrawing}
-                                        onTouchMove={draw}
-                                        onTouchEnd={stopDrawing}
+                            {/* Form Upload File PNG Baru */}
+                            <div className="space-y-3 pt-3 border-t border-slate-100">
+                                <Label className="text-xs font-semibold text-slate-700">
+                                    {userSig ? "Ganti Tanda Tangan Baru (Upload File PNG):" : "Upload Tanda Tangan Baru (File PNG):"}
+                                </Label>
+
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                    <Input
+                                        type="file"
+                                        accept=".png,image/png"
+                                        onChange={handleProfileFileChange}
+                                        className="text-xs max-w-xs bg-white cursor-pointer"
                                     />
+                                    {profileUploadFile && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 gap-1.5 shadow-xs"
+                                            onClick={handleSaveProfileSignature}
+                                            disabled={savingProfileSig}
+                                        >
+                                            {savingProfileSig ? (
+                                                <>
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Mengupload...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Upload className="w-3.5 h-3.5" /> Simpan Tanda Tangan PNG
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
                                 </div>
-                                <div className="flex gap-2 pt-1">
-                                    <Button 
-                                        type="button" 
-                                        variant="outline" 
-                                        size="sm" 
-                                        onClick={clearCanvas} 
-                                        className="text-xs h-7"
-                                    >
-                                        <RotateCcw className="w-3 h-3 mr-1" /> Bersihkan
-                                    </Button>
-                                    <Button 
-                                        type="button" 
-                                        size="sm" 
-                                        disabled={!hasDrawn || isSubmitting}
-                                        className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs h-7"
-                                        onClick={async () => {
-                                            if (!canvasRef.current || !hasDrawn) return
-                                            setIsSubmitting(true)
-                                            try {
-                                                const dataUrl = canvasRef.current.toDataURL("image/png")
-                                                const uploadRes = await fetch("/api/upload", {
-                                                    method: "POST",
-                                                    headers: { "Content-Type": "application/json" },
-                                                    body: JSON.stringify({ file: dataUrl, folder: "signatures" }),
-                                                })
-                                                const uploadData = await uploadRes.json()
-                                                if (uploadData.success && uploadData.url) {
-                                                    await updateUserSignature(uploadData.url)
-                                                    setUserSig(uploadData.url)
-                                                    alert("Tanda tangan profil berhasil diperbarui!")
-                                                    clearCanvas()
-                                                } else {
-                                                    alert("Gagal mengupload tanda tangan: " + uploadData.error)
-                                                }
-                                            } finally {
-                                                setIsSubmitting(false)
-                                            }
-                                        }}
-                                    >
-                                        {isSubmitting ? "Menyimpan..." : "💾 Simpan ke Profil Saya"}
-                                    </Button>
-                                </div>
+
+                                {profilePreviewUrl && (
+                                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg max-w-xs space-y-1.5">
+                                        <span className="text-[11px] font-medium text-slate-500 block">Preview File yang Dipilih:</span>
+                                        <div className="h-16 flex items-center justify-center bg-white border border-slate-100 rounded p-1">
+                                            <img src={profilePreviewUrl} alt="Preview" className="max-h-full object-contain" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <p className="text-[11px] text-slate-500">
+                                    * Standar format yang didukung: <strong>.PNG</strong> (disarankan file hasil scan/export dengan background transparan).
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
                 </TabsContent>
             </Tabs>
 
-            {/* ── MODAL REVIEW & APPROVAL DIALOG ── */}
+            {/* ── MODAL REVIEW & PERSETUJUAN PO ── */}
             <Dialog open={reviewModalOpen} onOpenChange={setReviewModalOpen}>
-                <DialogContent className="!max-w-4xl sm:!max-w-4xl md:!max-w-4xl lg:!max-w-4xl w-[95vw] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden rounded-2xl border border-slate-200/90 shadow-2xl bg-white">
-                    <DialogHeader className="px-6 py-4 bg-slate-50/90 border-b border-slate-200 shrink-0">
+                <DialogContent className="!max-w-4xl sm:!max-w-4xl md:!max-w-4xl lg:!max-w-4xl w-[95vw] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden rounded-xl border border-slate-200 shadow-xl bg-white">
+                    <DialogHeader className="px-6 py-4 bg-slate-50/80 border-b border-slate-200 shrink-0">
                         <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <div className="p-1.5 bg-blue-100 text-blue-700 rounded-lg">
-                                    <FileText className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <DialogTitle className="text-base font-bold text-slate-800">
-                                        Review Purchase Order: <span className="font-mono text-blue-600">{selectedPo?.po_number}</span>
-                                    </DialogTitle>
-                                    <DialogDescription className="text-xs text-slate-500">
-                                        Periksa rincian pembelian barang sebelum memberikan persetujuan resmi.
-                                    </DialogDescription>
-                                </div>
+                            <div>
+                                <DialogTitle className="text-base font-bold text-slate-900">
+                                    Review PO: <span className="font-mono text-blue-600">{selectedPo?.po_number}</span>
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-slate-500">
+                                    Periksa rincian pembelian barang sebelum memberikan keputusan persetujuan.
+                                </DialogDescription>
                             </div>
-                            <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
+                            <Badge className={
+                                selectedPo?.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-xs' :
+                                selectedPo?.status === 'REJECTED' ? 'bg-rose-50 text-rose-700 border-rose-200 text-xs' :
+                                'bg-amber-50 text-amber-700 border-amber-200 text-xs'
+                            }>
                                 Status: {selectedPo?.status}
                             </Badge>
                         </div>
@@ -714,38 +661,38 @@ export function ApprovalClient({
 
                     {selectedPo && (
                         <div className="p-6 overflow-y-auto space-y-4 flex-1">
-                            {/* Ringkasan Header PO */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs">
+                            {/* Metadata Ringkas PO */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-slate-50 rounded-lg border border-slate-200/80 text-xs">
                                 <div>
-                                    <span className="text-slate-400 block text-[10px]">Perusahaan:</span>
-                                    <span className="font-semibold text-slate-800">{selectedPo.companyGroup?.name}</span>
+                                    <span className="text-slate-500 block text-[11px]">Perusahaan:</span>
+                                    <span className="font-semibold text-slate-800">{selectedPo.companyGroup?.name || "-"}</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-400 block text-[10px]">Proyek:</span>
+                                    <span className="text-slate-500 block text-[11px]">Proyek:</span>
                                     <span className="font-semibold text-slate-800">{selectedPo.proyek_nama || "-"}</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-400 block text-[10px]">Supplier / Toko:</span>
+                                    <span className="text-slate-500 block text-[11px]">Supplier / Toko:</span>
                                     <span className="font-semibold text-slate-800">{selectedPo.supplier_nama || "-"}</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-400 block text-[10px]">Pembayaran:</span>
+                                    <span className="text-slate-500 block text-[11px]">Pembayaran:</span>
                                     <span className="font-semibold text-slate-800">
                                         {selectedPo.metode_pembayaran === 'CASH' ? 'Tunai (Cash)' : 'Kredit (Tempo)'}
                                     </span>
                                 </div>
                             </div>
 
-                            {/* Daftar Barang Table */}
+                            {/* Daftar Barang */}
                             <div className="space-y-1.5">
-                                <Label className="text-xs font-semibold text-slate-700">Rincian Barang yang Dipesan:</Label>
-                                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                                <Label className="text-xs font-semibold text-slate-700">Rincian Barang:</Label>
+                                <div className="border border-slate-200 rounded-lg overflow-hidden">
                                     <table className="w-full text-left text-xs border-collapse">
-                                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[10px] uppercase">
+                                        <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-semibold text-[11px]">
                                             <tr>
                                                 <th className="py-2 px-3 w-8 text-center">No</th>
                                                 <th className="py-2 px-3">Nama Barang</th>
-                                                <th className="py-2 px-3">Part / Merk</th>
+                                                <th className="py-2 px-3">Merk / Tipe</th>
                                                 <th className="py-2 px-3 text-right">Qty</th>
                                                 <th className="py-2 px-3">Satuan</th>
                                                 <th className="py-2 px-3 text-right">Harga Satuan</th>
@@ -763,7 +710,7 @@ export function ApprovalClient({
                                                         <td className="py-2 px-3 font-medium text-slate-800">
                                                             {masterItem?.name || "Barang"}
                                                             {hasPriceHike && (
-                                                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                                                <span className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-normal">
                                                                     <AlertTriangle className="w-2.5 h-2.5 text-amber-500" /> Kenaikan Harga
                                                                 </span>
                                                             )}
@@ -792,11 +739,11 @@ export function ApprovalClient({
                                         </tbody>
                                         <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
                                             <tr>
-                                                <td colSpan={6} className="px-3 py-2.5 text-right text-slate-600 uppercase text-[11px]">
-                                                    Total Nilai Pembelian:
+                                                <td colSpan={6} className="px-3 py-2 text-right text-slate-600 text-xs">
+                                                    Total Nilai PO:
                                                 </td>
-                                                <td className="px-3 py-2.5 text-right font-mono font-bold text-sm text-emerald-700">
-                                                    Rp {(selectedPo.items?.reduce((s: number, it: any) => s + it.subtotal, 0) || 0).toLocaleString('id-ID')}
+                                                <td className="px-3 py-2 text-right font-mono font-bold text-sm text-emerald-700">
+                                                    Rp {(selectedPo.items?.reduce((s: number, it: any) => s + (it.subtotal || 0), 0) || 0).toLocaleString('id-ID')}
                                                 </td>
                                             </tr>
                                         </tfoot>
@@ -804,33 +751,33 @@ export function ApprovalClient({
                                 </div>
                             </div>
 
-                            {/* Section: Penolakan Form (if Reject Mode is Active) */}
+                            {/* Section: Penolakan PO (Jika tombol Tolak ditekan) */}
                             {rejectMode ? (
-                                <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2">
-                                    <div className="flex items-center gap-2 text-rose-800 font-semibold text-xs">
+                                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg space-y-2">
+                                    <Label className="text-xs font-semibold text-rose-800 flex items-center gap-1.5">
                                         <XCircle className="w-4 h-4 text-rose-600" />
-                                        Alasan Penolakan Purchase Order
-                                    </div>
+                                        Alasan Penolakan Purchase Order:
+                                    </Label>
                                     <Textarea
                                         value={rejectionReason}
                                         onChange={e => setRejectionReason(e.target.value)}
-                                        placeholder="Tuliskan alasan mengapa Purchase Order ini ditolak..."
+                                        placeholder="Masukkan alasan mengapa PO ini ditolak..."
                                         className="text-xs bg-white border-rose-300"
                                         rows={3}
                                     />
                                     <div className="flex justify-end gap-2 pt-1">
-                                        <Button 
-                                            type="button" 
-                                            variant="outline" 
-                                            size="sm" 
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
                                             className="text-xs h-8"
                                             onClick={() => setRejectMode(false)}
                                         >
-                                            Batal Tolak
+                                            Batal
                                         </Button>
-                                        <Button 
-                                            type="button" 
-                                            size="sm" 
+                                        <Button
+                                            type="button"
+                                            size="sm"
                                             className="bg-rose-600 hover:bg-rose-700 text-white text-xs h-8"
                                             onClick={handleReject}
                                             disabled={isSubmitting || !rejectionReason.trim()}
@@ -839,153 +786,85 @@ export function ApprovalClient({
                                         </Button>
                                     </div>
                                 </div>
-                            ) : (
-                                /* Section: Tanda Tangan & Persetujuan (if Approver) */
-                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3.5">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-xs text-slate-800 flex items-center gap-1.5">
-                                            <PenTool className="w-3.5 h-3.5 text-indigo-600" />
-                                            Verifikasi & Tanda Tangan Digital
-                                        </span>
-                                        {isAdmin && (
-                                            <Badge variant="outline" className="text-[10px] text-slate-500 bg-white">
-                                                Bypass Administratif
-                                            </Badge>
-                                        )}
-                                    </div>
-
+                            ) : selectedPo.status === "SUBMITTED" ? (
+                                /* Section: Tanda Tangan & Catatan Approval */
+                                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                                     {isAdmin ? (
-                                        <div className="p-3 bg-blue-50/70 border border-blue-200/80 rounded-lg text-blue-900 text-xs">
-                                            <p className="leading-relaxed">
-                                                Anda login dengan hak akses <strong>{currentUser.role}</strong>. Persetujuan ini bersifat administratif (bypass) dan <strong>tidak memerlukan input tanda tangan gambar</strong>. Pada cetakan PO resmi akan tercantum stempel administratif.
-                                            </p>
+                                        <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-blue-900 text-xs">
+                                            Persetujuan Anda sebagai <strong>Administrator</strong> bersifat bypass administratif (tanpa lampiran tanda tangan gambar).
                                         </div>
                                     ) : (
-                                        <div className="space-y-3">
-                                            {/* Pilihan Metode Tanda Tangan */}
-                                            <div className="flex flex-wrap gap-2 text-xs">
-                                                {userSig && (
-                                                    <Button
-                                                        type="button"
-                                                        variant={sigMode === "saved" ? "default" : "outline"}
-                                                        size="sm"
-                                                        className={`text-xs h-7 ${sigMode === "saved" ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
-                                                        onClick={() => setSigMode("saved")}
-                                                    >
-                                                        Tanda Tangan Tersimpan
-                                                    </Button>
-                                                )}
-                                                <Button
-                                                    type="button"
-                                                    variant={sigMode === "draw" ? "default" : "outline"}
-                                                    size="sm"
-                                                    className={`text-xs h-7 ${sigMode === "draw" ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
-                                                    onClick={() => setSigMode("draw")}
-                                                >
-                                                    Gambar Baru
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    variant={sigMode === "upload" ? "default" : "outline"}
-                                                    size="sm"
-                                                    className={`text-xs h-7 ${sigMode === "upload" ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
-                                                    onClick={() => setSigMode("upload")}
-                                                >
-                                                    Upload File
-                                                </Button>
-                                            </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-xs font-semibold text-slate-700 block">
+                                                Tanda Tangan Digital (PNG):
+                                            </Label>
 
-                                            {/* Preview or Input Box */}
-                                            {sigMode === "saved" && userSig && (
-                                                <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center gap-4">
-                                                    <div className="h-20 w-44 bg-slate-50 rounded border border-slate-100 flex items-center justify-center p-1">
-                                                        <img src={userSig} alt="Tanda Tangan Tersimpan" className="max-h-full object-contain" />
+                                            {modalSigUrl ? (
+                                                <div className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-lg max-w-md">
+                                                    <div className="h-14 w-28 bg-slate-50 border rounded flex items-center justify-center p-1">
+                                                        <img src={modalSigUrl} alt="TTD" className="max-h-full object-contain" />
                                                     </div>
-                                                    <div className="text-xs text-slate-600 space-y-0.5">
-                                                        <div className="font-semibold text-slate-800">Tanda Tangan Default Profil</div>
-                                                        <div className="text-[11px] text-slate-500">Tanda tangan ini akan dicetak pada lembar PO.</div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {sigMode === "draw" && (
-                                                <div className="space-y-1.5">
-                                                    <div className="border border-slate-300 rounded-xl p-1 bg-white inline-block">
-                                                        <canvas
-                                                            ref={canvasRef}
-                                                            width={380}
-                                                            height={130}
-                                                            className="bg-slate-50/50 rounded-lg cursor-crosshair touch-none"
-                                                            onMouseDown={startDrawing}
-                                                            onMouseMove={draw}
-                                                            onMouseUp={stopDrawing}
-                                                            onMouseLeave={stopDrawing}
-                                                            onTouchStart={startDrawing}
-                                                            onTouchMove={draw}
-                                                            onTouchEnd={stopDrawing}
-                                                        />
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <Button 
-                                                            type="button" 
-                                                            variant="outline" 
-                                                            size="sm" 
-                                                            onClick={clearCanvas} 
-                                                            className="text-xs h-6 px-2"
-                                                        >
-                                                            <RotateCcw className="w-3 h-3 mr-1" /> Bersihkan
-                                                        </Button>
-                                                        <label className="flex items-center gap-1.5 text-[11px] text-slate-600 cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={saveAsDefault} 
-                                                                onChange={e => setSaveAsDefault(e.target.checked)}
-                                                                className="rounded text-indigo-600"
+                                                    <div className="text-xs space-y-1">
+                                                        <span className="text-slate-600 font-medium block">
+                                                            {modalSigUrl === userSig ? "Tanda Tangan Default Profil" : "Tanda Tangan Baru Terunggah"}
+                                                        </span>
+                                                        <label className="text-blue-600 hover:underline cursor-pointer text-[11px] block">
+                                                            <span>Ganti File PNG</span>
+                                                            <input
+                                                                type="file"
+                                                                accept=".png,image/png"
+                                                                onChange={handleModalFileChange}
+                                                                className="hidden"
                                                             />
-                                                            Simpan sebagai tanda tangan profil saya
                                                         </label>
                                                     </div>
                                                 </div>
-                                            )}
-
-                                            {sigMode === "upload" && (
+                                            ) : (
                                                 <div className="space-y-2">
-                                                    <Input
-                                                        type="file"
-                                                        accept="image/png,image/jpeg"
-                                                        onChange={handleFileUpload}
-                                                        className="text-xs max-w-sm bg-white"
-                                                    />
-                                                    {uploadedSigUrl && (
-                                                        <div className="h-20 w-44 bg-slate-50 rounded border border-slate-200 flex items-center justify-center p-1">
-                                                            <img src={uploadedSigUrl} alt="Uploaded Sig" className="max-h-full object-contain" />
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-center gap-2">
+                                                        <Input
+                                                            type="file"
+                                                            accept=".png,image/png"
+                                                            onChange={handleModalFileChange}
+                                                            disabled={uploadingSig}
+                                                            className="text-xs max-w-xs bg-white cursor-pointer"
+                                                        />
+                                                        {uploadingSig && <Loader2 className="w-4 h-4 animate-spin text-slate-500" />}
+                                                    </div>
+                                                    <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={modalSaveAsDefault}
+                                                            onChange={e => setModalSaveAsDefault(e.target.checked)}
+                                                            className="rounded text-blue-600"
+                                                        />
+                                                        Simpan sebagai tanda tangan profil saya
+                                                    </label>
                                                 </div>
                                             )}
                                         </div>
                                     )}
 
-                                    {/* Catatan Persetujuan Optional */}
+                                    {/* Catatan Approval Opsional */}
                                     <div className="space-y-1">
                                         <Label className="text-xs text-slate-700">Catatan Persetujuan (Opsional):</Label>
                                         <Input
                                             value={approverNotes}
                                             onChange={e => setApproverNotes(e.target.value)}
-                                            placeholder="Contoh: Disetujui dengan pengiriman bertahap..."
+                                            placeholder="Contoh: Disetujui, pengiriman dijadwalkan besok..."
                                             className="text-xs bg-white"
                                         />
                                     </div>
                                 </div>
-                            )}
+                            ) : null}
                         </div>
                     )}
 
-                    <DialogFooter className="px-6 py-3 bg-slate-50/90 border-t border-slate-200 flex items-center justify-between shrink-0">
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="text-xs" 
+                    <DialogFooter className="px-6 py-3 bg-slate-50/80 border-t border-slate-200 flex items-center justify-between shrink-0">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
                             onClick={() => setReviewModalOpen(false)}
                             disabled={isSubmitting}
                         >
@@ -994,22 +873,22 @@ export function ApprovalClient({
 
                         {!rejectMode && selectedPo?.status === "SUBMITTED" && (
                             <div className="flex items-center gap-2">
-                                <Button 
-                                    type="button" 
-                                    variant="outline" 
-                                    size="sm" 
-                                    className="text-xs text-rose-600 hover:bg-rose-50 border-rose-200 h-8"
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs text-rose-600 hover:bg-rose-50 border-rose-200 h-8 gap-1"
                                     onClick={() => setRejectMode(true)}
                                     disabled={isSubmitting}
                                 >
-                                    <XCircle className="w-3.5 h-3.5 mr-1" /> Tolak PO
+                                    <XCircle className="w-3.5 h-3.5" /> Tolak PO
                                 </Button>
-                                <Button 
-                                    type="button" 
-                                    size="sm" 
-                                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8 gap-1.5 shadow-sm"
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium h-8 gap-1.5 shadow-xs"
                                     onClick={handleApprove}
-                                    disabled={isSubmitting}
+                                    disabled={isSubmitting || uploadingSig}
                                 >
                                     {isSubmitting ? (
                                         <>

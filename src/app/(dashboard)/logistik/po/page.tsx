@@ -2,8 +2,7 @@ import { getPurchaseOrders, getPoFormData } from "./actions"
 import { POListClient } from "./po-list-client"
 import { POReportClient } from "./po-report-client"
 import { Card, CardContent } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ClipboardList, BarChart2 } from "lucide-react"
+import { POTabsWrapper } from "./po-tabs-wrapper"
 import { auth } from "@/auth"
 
 export default async function POListPage() {
@@ -22,17 +21,8 @@ export default async function POListPage() {
                 <p className="text-muted-foreground text-sm">Daftar PO dan laporan bulanan pengeluaran.</p>
             </div>
 
-            <Tabs defaultValue="daftar">
-                <TabsList className="mb-2">
-                    <TabsTrigger value="daftar" className="gap-2">
-                        <ClipboardList className="w-4 h-4" /> Daftar PO
-                    </TabsTrigger>
-                    <TabsTrigger value="laporan" className="gap-2">
-                        <BarChart2 className="w-4 h-4" /> Laporan Bulanan
-                    </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="daftar">
+            <POTabsWrapper
+                childrenDaftar={
                     <Card>
                         <CardContent className="p-0">
                             <POListClient 
@@ -45,9 +35,8 @@ export default async function POListPage() {
                             />
                         </CardContent>
                     </Card>
-                </TabsContent>
-
-                <TabsContent value="laporan">
+                }
+                childrenLaporan={
                     <Card>
                         <CardContent className="p-0">
                             <POReportClient
@@ -56,8 +45,8 @@ export default async function POListPage() {
                             />
                         </CardContent>
                     </Card>
-                </TabsContent>
-            </Tabs>
+                }
+            />
         </div>
     )
 }

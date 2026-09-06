@@ -978,9 +978,6 @@ export async function getApproverQueue() {
             include: {
                 companyGroup: true,
                 category: true,
-                submittedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
-                ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
-                fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
                 items: {
                     include: {
                         masterItem: {
@@ -991,7 +988,7 @@ export async function getApproverQueue() {
                     }
                 }
             },
-            orderBy: { submittedAt: 'desc' }
+            orderBy: { tanggal_terbit: 'desc' }
         })
 
         // Fetch supplier & project names
@@ -1007,10 +1004,33 @@ export async function getApproverQueue() {
             : []
         const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
 
-        const enrichedOrders = orders.map(po => ({
+        // Fetch users (submittedBy, approvers) by ID safely
+        const userIds = [...new Set([
+            ...orders.map((o: any) => o.submittedById),
+            ...orders.map((o: any) => o.fvpApprovedById),
+            ...orders.map((o: any) => o.ceoApprovedById),
+            ...orders.map((o: any) => o.rejectedById),
+            ...orders.map((o: any) => o.approvedById),
+            ...orders.map((o: any) => o.ceoId),
+            ...orders.map((o: any) => o.fvpId),
+        ].filter(Boolean))] as string[]
+
+        const users = userIds.length > 0
+            ? await prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, username: true, employee: { select: { name: true } } }
+            })
+            : []
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+
+        const enrichedOrders = orders.map((po: any) => ({
             ...po,
             proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
-            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
+            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-",
+            submittedBy: po.submittedById ? userMap[po.submittedById] || null : null,
+            fvpApprovedBy: po.fvpApprovedById ? userMap[po.fvpApprovedById] || null : null,
+            ceoApprovedBy: po.ceoApprovedById ? userMap[po.ceoApprovedById] || null : null,
+            rejectedBy: po.rejectedById ? userMap[po.rejectedById] || null : null,
         }))
 
         return { success: true, data: enrichedOrders }
@@ -1046,10 +1066,6 @@ export async function getApproverHistory() {
             include: {
                 companyGroup: true,
                 category: true,
-                submittedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
-                fvpApprovedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
-                ceoApprovedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
-                rejectedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
                 items: {
                     include: {
                         masterItem: {
@@ -1077,10 +1093,33 @@ export async function getApproverHistory() {
             : []
         const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
 
-        const enrichedOrders = orders.map(po => ({
+        // Fetch users (submittedBy, approvers) by ID safely
+        const userIds = [...new Set([
+            ...orders.map((o: any) => o.submittedById),
+            ...orders.map((o: any) => o.fvpApprovedById),
+            ...orders.map((o: any) => o.ceoApprovedById),
+            ...orders.map((o: any) => o.rejectedById),
+            ...orders.map((o: any) => o.approvedById),
+            ...orders.map((o: any) => o.ceoId),
+            ...orders.map((o: any) => o.fvpId),
+        ].filter(Boolean))] as string[]
+
+        const users = userIds.length > 0
+            ? await prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, username: true, employee: { select: { name: true } } }
+            })
+            : []
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]))
+
+        const enrichedOrders = orders.map((po: any) => ({
             ...po,
             proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
-            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
+            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-",
+            submittedBy: po.submittedById ? userMap[po.submittedById] || null : null,
+            fvpApprovedBy: po.fvpApprovedById ? userMap[po.fvpApprovedById] || null : null,
+            ceoApprovedBy: po.ceoApprovedById ? userMap[po.ceoApprovedById] || null : null,
+            rejectedBy: po.rejectedById ? userMap[po.rejectedById] || null : null,
         }))
 
         return { success: true, data: enrichedOrders }

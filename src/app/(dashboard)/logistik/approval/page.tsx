@@ -31,13 +31,12 @@ export default async function ApprovalPage() {
     const userSignature = sigRes.success ? sigRes.signatureUrl : null
 
     return (
-        <div className="container mx-auto py-6 space-y-6 max-w-7xl">
+        <div className="space-y-4">
             <ApprovalClient 
                 initialQueue={queue}
                 initialHistory={history}
                 currentUser={{
                     id: session.user.id,
-                    name: (session.user as any).name || session.user.username || "Approver",
                     role: userRole,
                     signatureUrl: userSignature || null
                 }}
