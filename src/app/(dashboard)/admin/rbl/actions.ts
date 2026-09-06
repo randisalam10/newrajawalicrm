@@ -7,10 +7,16 @@ import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 
 // ─── Helpers & Permission Guards ──────────────────────────────────────────────
+export function isCorporateOrSuperAdmin(session: any): boolean {
+    if (!session?.user) return false
+    return session.user.role === "SuperAdminBP" ||
+        session.user.roleScope === "ALL_BRANCHES" ||
+        ["CEO", "FVP"].includes(session.user.role || "")
+}
 
 function getTargetLocationId(session: any, requestedLocationId?: string): string {
-    const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-    if (isSuperAdmin && requestedLocationId && requestedLocationId !== "all") {
+    const isCorp = isCorporateOrSuperAdmin(session)
+    if (isCorp && requestedLocationId && requestedLocationId !== "all") {
         return requestedLocationId
     }
     return session.user.locationId || ""
@@ -27,7 +33,12 @@ export async function getActiveBudget(locationId?: string) {
     const session = await auth()
     if (!session?.user) return null
 
-    const targetLocId = getTargetLocationId(session, locationId)
+    const isCorp = isCorporateOrSuperAdmin(session)
+    let targetLocId = getTargetLocationId(session, locationId)
+    if (!targetLocId && isCorp) {
+        const firstLoc = await prisma.location.findFirst({ orderBy: { name: "asc" } })
+        targetLocId = firstLoc?.id || ""
+    }
     if (!targetLocId) return null
 
     const budget = await prisma.rblBudget.findFirst({
@@ -71,10 +82,10 @@ export async function getBudgetHistory(filters: { locationId?: string; year?: nu
     const session = await auth()
     if (!session?.user) return []
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-    const targetLocId = isSuperAdmin
+    const isCorp = isCorporateOrSuperAdmin(session)
+    const targetLocId = isCorp
         ? (filters.locationId && filters.locationId !== "all" ? filters.locationId : undefined)
-        : session.user.locationId!
+        : (session.user.locationId || undefined)
 
     const currentYear = filters.year || new Date().getFullYear()
 
@@ -139,9 +150,9 @@ export async function getBudgetDetail(budgetId: string) {
 
     if (!budget) return null
 
-    // Enforce branch isolation for non-superadmin
-    const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-    if (!isSuperAdmin && budget.locationId !== session.user.locationId) {
+    // Enforce branch isolation for non-superadmin / non-corporate
+    const isCorp = isCorporateOrSuperAdmin(session)
+    if (!isCorp && budget.locationId !== session.user.locationId) {
         return null
     }
 
@@ -242,8 +253,8 @@ export async function closeBudget(budgetId: string, closeNotes?: string, closedA
         if (!budget) return { success: false, error: "Budget RBL tidak ditemukan." }
 
         // Enforce branch isolation
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak: Anda tidak dapat menutup budget cabang lain." }
         }
 
@@ -300,8 +311,8 @@ export async function addExpenseBatch(budgetId: string, items: Array<{
         if (!budget) return { success: false, error: "Budget tidak ditemukan." }
 
         // Enforce branch isolation
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak." }
         }
 
@@ -367,8 +378,8 @@ export async function updateExpense(id: string, data: {
         if (!expense) return { success: false, error: "Pengeluaran tidak ditemukan." }
 
         // Enforce branch isolation
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && expense.budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && expense.budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak." }
         }
 
@@ -415,8 +426,8 @@ export async function deleteExpense(id: string) {
         if (!expense) return { success: false, error: "Pengeluaran tidak ditemukan." }
 
         // Enforce branch isolation
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && expense.budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && expense.budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak." }
         }
 
@@ -446,8 +457,8 @@ export async function uploadBulkReceipts(budgetId: string, formData: FormData) {
         const budget = await prisma.rblBudget.findUnique({ where: { id: budgetId } })
         if (!budget) return { success: false, error: "Budget tidak ditemukan." }
 
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak." }
         }
 
@@ -505,8 +516,8 @@ export async function deleteAttachment(attachmentId: string) {
 
         if (!attachment) return { success: false, error: "Lampiran tidak ditemukan." }
 
-        const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
-        if (!isSuperAdmin && attachment.budget.locationId !== session.user.locationId) {
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && attachment.budget.locationId !== session.user.locationId) {
             return { success: false, error: "Akses ditolak." }
         }
 
@@ -527,16 +538,23 @@ export async function getRblSummaryData(filters: { locationId?: string; year?: n
     const session = await auth()
     if (!session?.user) return null
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
+    const isCorp = isCorporateOrSuperAdmin(session)
     const currentYear = filters.year || new Date().getFullYear()
+
+    let locationWhere: any = {}
+    if (isCorp) {
+        if (filters.locationId && filters.locationId !== "all") {
+            locationWhere = { id: filters.locationId }
+        }
+    } else if (session.user.locationId) {
+        locationWhere = { id: session.user.locationId }
+    } else {
+        locationWhere = { id: "__NONE__" }
+    }
 
     // Get all locations or single
     const locations = await prisma.location.findMany({
-        where: isSuperAdmin && filters.locationId && filters.locationId !== "all"
-            ? { id: filters.locationId }
-            : !isSuperAdmin
-            ? { id: session.user.locationId! }
-            : {},
+        where: locationWhere,
         include: {
             rblBudgets: {
                 where: { periodYear: currentYear },
@@ -583,7 +601,7 @@ export async function getRblSummaryData(filters: { locationId?: string; year?: n
     const grandRemaining = grandTotalBudget - grandTotalExpense
 
     return {
-        isSuperAdmin,
+        isSuperAdmin: isCorp,
         currentYear,
         branchSummaries,
         grandTotalBudget,

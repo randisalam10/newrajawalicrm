@@ -10,23 +10,42 @@ export const dynamic = 'force-dynamic'
 export default async function ProduksiPage() {
     const session = await auth()
     const userRole = session?.user?.role || "OperatorBP"
+    const isAllBranches = userRole === "SuperAdminBP" || session?.user?.roleScope === "ALL_BRANCHES" || ["CEO", "FVP"].includes(userRole)
+
+    // Check if current user has permission to create production records
+    const canCreate = userRole === "SuperAdminBP" ||
+        Boolean(session?.user?.permissions && session.user.permissions.includes("PRODUKSI_CREATE")) ||
+        ["OperatorBP", "AdminBP"].includes(userRole)
 
     const [masters, recent, locations] = await Promise.all([
         getProductionMasters(),
         getRecentProductions(),
-        userRole === "SuperAdminBP" ? getLocations() : Promise.resolve([])
+        isAllBranches ? getLocations() : Promise.resolve([])
     ])
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col space-y-1">
-                <h1 className="text-3xl font-bold tracking-tight">Input Produksi</h1>
-                <p className="text-slate-500">Mencatat pengiriman beton dan mengirim Notifikasi Surat Jalan ke Telegram.</p>
+                <div className="flex items-center gap-3">
+                    <h1 className="text-3xl font-bold tracking-tight">
+                        {canCreate ? "Input Produksi" : "Data & Monitoring Produksi"}
+                    </h1>
+                    {!canCreate && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 font-medium px-2.5 py-0.5">
+                            Mode Pemantauan (Hanya Lihat)
+                        </Badge>
+                    )}
+                </div>
+                <p className="text-slate-500">
+                    {canCreate
+                        ? "Mencatat pengiriman beton dan mengirim Notifikasi Surat Jalan ke Telegram."
+                        : "Memantau riwayat transaksi pengiriman beton dan status produksi terkini."}
+                </p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 <div className="lg:col-span-8 2xl:col-span-9">
-                    <ProduksiClient masters={masters} userRole={userRole} locations={locations} />
+                    <ProduksiClient masters={masters} userRole={userRole} locations={locations} canCreate={canCreate} />
                 </div>
 
                 <div className="lg:col-span-4 2xl:col-span-3">

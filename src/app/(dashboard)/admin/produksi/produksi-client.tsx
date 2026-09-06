@@ -11,7 +11,7 @@ import {
     CardHeader,
     CardTitle,
 } from "@/components/ui/card"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, ShieldAlert, Lock } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
     Command,
@@ -29,7 +29,17 @@ import {
 
 import { createProduction } from "./actions"
 
-export function ProduksiClient({ masters, userRole, locations = [] }: { masters: any, userRole?: string, locations?: any[] }) {
+export function ProduksiClient({
+    masters,
+    userRole,
+    locations = [],
+    canCreate = true
+}: {
+    masters: any
+    userRole?: string
+    locations?: any[]
+    canCreate?: boolean
+}) {
     const { projects = [], vehicles = [], drivers = [], qualities = [], workItems = [] } = masters || {}
     const [loading, setLoading] = useState(false)
 
@@ -97,6 +107,11 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
     }
 
     async function handleSubmit(formData: FormData) {
+        if (!canCreate) {
+            alert("Akses Ditolak: Akun Anda (" + userRole + ") hanya memiliki izin pemantauan (Hanya Lihat).")
+            return
+        }
+
         if (userRole === 'SuperAdminBP' && !selectedLocationId) {
             alert("Harap pilih Cabang Operasional terlebih dahulu.")
             return
@@ -126,10 +141,35 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
     return (
         <Card className="h-full">
             <CardHeader>
-                <CardTitle>Form Input Produksi</CardTitle>
-                <CardDescription>Buat transaksi pengiriman beton precast baru.</CardDescription>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <CardTitle>{canCreate ? "Form Input Produksi" : "Form Data Produksi (Terkunci)"}</CardTitle>
+                        <CardDescription>
+                            {canCreate
+                                ? "Buat transaksi pengiriman beton precast baru."
+                                : "Mode tampilan hanya lihat untuk monitoring. Form penginputan dinonaktifkan untuk role " + (userRole || "Pemantau") + "."}
+                        </CardDescription>
+                    </div>
+                    {!canCreate && (
+                        <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-semibold border border-amber-200">
+                            <Lock className="w-3.5 h-3.5" />
+                            Read-Only
+                        </div>
+                    )}
+                </div>
             </CardHeader>
             <CardContent>
+                {!canCreate && (
+                    <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50/90 text-amber-900 text-sm mb-6">
+                        <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                            <p className="font-semibold text-amber-950">Akses Terkunci: Mode Pemantauan (Hanya Lihat)</p>
+                            <p className="text-xs text-amber-800 leading-relaxed">
+                                Akun Anda terdaftar sebagai <strong>{userRole}</strong> yang hanya memiliki hak akses pemantauan (VIEW). Form input dan tombol simpan dinonaktifkan agar tidak terjadi kesalahan penginputan transaksi tiket pengiriman.
+                            </p>
+                        </div>
+                    </div>
+                )}
                 <form action={handleSubmit} className="space-y-6">
                     {/* Native hidden inputs for standard FormData submission */}
                     <input type="hidden" name="projectId" value={selectedProjectId} />
@@ -214,6 +254,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openCustomer}
                                             className="w-full justify-between"
+                                            disabled={!canCreate}
                                         >
                                             {selectedCustomerId
                                                 ? (uniqueCustomers.find(c => c.id === selectedCustomerId)?.customer_name ?? "-- Pilih Customer --")
@@ -254,7 +295,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openProject}
                                             className="w-full justify-between"
-                                            disabled={!selectedCustomerId}
+                                            disabled={!canCreate || !selectedCustomerId}
                                         >
                                             {selectedProjectId
                                                 ? (customerProjects.find((p: any) => p.id === selectedProjectId)?.name ?? "-- Pilih Proyek --")
@@ -304,6 +345,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                     type="datetime-local"
                                     defaultValue={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                                     required
+                                    disabled={!canCreate}
                                 />
                             </div>
 
@@ -328,6 +370,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openVehicle}
                                             className="w-full justify-between"
+                                            disabled={!canCreate}
                                         >
                                             {selectedVehicleId
                                                 ? (() => {
@@ -378,6 +421,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openDriver}
                                             className="w-full justify-between"
+                                            disabled={!canCreate}
                                         >
                                             {selectedDriverId
                                                 ? (() => {
@@ -435,6 +479,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openQuality}
                                             className="w-full justify-between"
+                                            disabled={!canCreate}
                                         >
                                             {selectedQualityId
                                                 ? (() => {
@@ -485,6 +530,7 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
                                             role="combobox"
                                             aria-expanded={openWorkItem}
                                             className="w-full justify-between"
+                                            disabled={!canCreate}
                                         >
                                             {selectedWorkItemId
                                                 ? (() => {
@@ -528,19 +574,26 @@ export function ProduksiClient({ masters, userRole, locations = [] }: { masters:
 
                             <div className="space-y-2">
                                 <Label htmlFor="volume_cubic">Volume (m³) *</Label>
-                                <Input id="volume_cubic" name="volume_cubic" type="number" step="0.1" placeholder="Ex: 7.5" required />
+                                <Input id="volume_cubic" name="volume_cubic" type="number" step="0.1" placeholder="Ex: 7.5" required disabled={!canCreate} />
                             </div>
 
                             <div className="space-y-2">
                                 <Label htmlFor="slump">Nilai Slump *</Label>
-                                <Input id="slump" name="slump" placeholder="Ex: 10 ± 2" required />
+                                <Input id="slump" name="slump" placeholder="Ex: 10 ± 2" required disabled={!canCreate} />
                             </div>
                         </div>
                     </div>
 
-                    <Button type="submit" className="w-full h-12 text-md" disabled={loading}>
-                        {loading ? "Memproses..." : "Simpan & Kirim Notifikasi"}
-                    </Button>
+                    {canCreate ? (
+                        <Button type="submit" className="w-full h-12 text-md" disabled={loading}>
+                            {loading ? "Memproses..." : "Simpan & Kirim Notifikasi"}
+                        </Button>
+                    ) : (
+                        <div className="p-3.5 bg-slate-100 rounded-xl text-center text-slate-500 text-sm font-medium border border-dashed border-slate-300 flex items-center justify-center gap-2">
+                            <Lock className="w-4 h-4 text-slate-400" />
+                            <span>Tombol Simpan Dinonaktifkan (Role <strong>{userRole}</strong> Tidak Memiliki Izin Input Produksi)</span>
+                        </div>
+                    )}
 
                 </form>
             </CardContent>

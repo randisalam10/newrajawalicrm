@@ -23,11 +23,13 @@ export default async function RblPage({
     }
 
     const { locationId, year } = await searchParams
-    const isSuperAdmin = session.user.role === "SuperAdminBP" && session.user.roleScope !== "OWN_BRANCH"
+    const isCorporate = session.user.role === "SuperAdminBP" ||
+        session.user.roleScope === "ALL_BRANCHES" ||
+        ["CEO", "FVP"].includes(session.user.role ?? "")
     const parsedYear = year ? parseInt(year) : new Date().getFullYear()
 
-    // Non-superadmin is strictly locked to their locationId
-    const targetLocationId = isSuperAdmin ? (locationId || "all") : session.user.locationId!
+    // Corporate users can view all or specific branch; branch-scoped users locked to locationId
+    const targetLocationId = isCorporate ? (locationId || "all") : (session.user.locationId || "")
 
     const [activeBudget, history, summaryData, allLocations] = await Promise.all([
         getActiveBudget(targetLocationId === "all" ? undefined : targetLocationId),
@@ -43,7 +45,7 @@ export default async function RblPage({
     ])
 
     // Filter locations for branch-scoped users
-    const locations = isSuperAdmin
+    const locations = isCorporate
         ? allLocations
         : allLocations.filter(loc => loc.id === session.user.locationId)
 
@@ -56,7 +58,7 @@ export default async function RblPage({
                 locations={locations}
                 userRole={session.user.role || ""}
                 userLocationId={session.user.locationId || ""}
-                isSuperAdmin={isSuperAdmin}
+                isSuperAdmin={isCorporate}
             />
         </div>
     )

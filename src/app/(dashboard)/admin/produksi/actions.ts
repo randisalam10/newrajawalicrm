@@ -19,17 +19,20 @@ const productionSchema = z.object({
 
 export async function getProductionMasters() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+    if (!session?.user) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter: any = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ['CEO', 'FVP'].includes(session.user.role || '')
+    if (!session.user.employeeId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+    if (!session.user.locationId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+
+    const filter: any = isCorp ? {} : { locationId: session.user.locationId! }
 
     const [projects, vehicles, drivers, qualities, workItems] = await Promise.all([
         prisma.project.findMany({
             where: {
                 customer: {
                     status: "Active",
-                    ...(isSuperAdmin ? {} : { locationId: session.user.locationId! })
+                    ...(isCorp ? {} : { locationId: session.user.locationId! })
                 }
             },
             include: { customer: true },
@@ -46,10 +49,13 @@ export async function getProductionMasters() {
 
 export async function getRecentProductions() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    if (!session?.user) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter: any = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ['CEO', 'FVP'].includes(session.user.role || '')
+    if (!session.user.employeeId && !isCorp) return []
+    if (!session.user.locationId && !isCorp) return []
+
+    const filter: any = isCorp ? {} : { locationId: session.user.locationId! }
 
     return await prisma.productionTransaction.findMany({
         where: filter,
@@ -68,10 +74,22 @@ export async function getRecentProductions() {
 
 export async function createProduction(formData: FormData) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    // Enforce permission guard: FVP, CEO, Approver only have VIEW access
+    const canCreate = session.user.role === 'SuperAdminBP' ||
+        (session.user.permissions && session.user.permissions.includes('PRODUKSI_CREATE')) ||
+        ['OperatorBP', 'AdminBP'].includes(session.user.role)
+
+    if (!canCreate) {
+        return {
+            success: false,
+            error: "Akses Ditolak: Akun Anda (" + session.user.role + ") hanya memiliki izin pemantauan (Hanya Lihat). Anda tidak diizinkan membuat transaksi produksi."
+        }
+    }
 
     const data = Object.fromEntries(formData.entries())
-    const locationId = session.user.role === 'SuperAdminBP' ? data.locationId as string : session.user.locationId;
+    const locationId = session.user.role === 'SuperAdminBP' ? data.locationId as string : (session.user.locationId || data.locationId as string);
     if (!locationId) return { success: false, error: "Location must be set to create production." }
 
     const parsed = productionSchema.safeParse(data)
