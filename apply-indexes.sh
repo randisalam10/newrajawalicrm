@@ -98,8 +98,17 @@ CREATE INDEX IF NOT EXISTS "PurchaseOrder_status_tanggal_terbit_idx" ON "Purchas
 EOF
 )
 
+# Bersihkan parameter Prisma ?schema=... jika ada agar psql tidak komplain
+CLEAN_DB_URL=""
 if [ -n "$DB_URL" ]; then
-    echo "$SQL_COMMANDS" | psql "$DB_URL" || echo "$SQL_COMMANDS" | sudo -u postgres psql -d "$DB_NAME"
+    CLEAN_DB_URL=$(echo "$DB_URL" | sed -E 's/[?&]schema=[^&]*//g')
+fi
+
+# Prioritaskan koneksi lokal via user postgres (paling stabil & aman di host)
+if sudo -u postgres psql -d "$DB_NAME" -c '\q' 2>/dev/null; then
+    echo "$SQL_COMMANDS" | sudo -u postgres psql -d "$DB_NAME"
+elif [ -n "$CLEAN_DB_URL" ]; then
+    echo "$SQL_COMMANDS" | psql "$CLEAN_DB_URL"
 else
     echo "$SQL_COMMANDS" | sudo -u postgres psql -d "$DB_NAME"
 fi
