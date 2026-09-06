@@ -136,6 +136,10 @@ model User {
   employeeId String     @unique
   auditLogs  AuditLog[]
 
+  signatureUrl        String?          // URL / path TTD tersimpan approver
+  poSubmitted         PurchaseOrder[]  @relation("PoSubmittedBy")
+  poRejected          PurchaseOrder[]  @relation("PoRejectedBy")
+
   // Multi-Level Approval Relations
   defaultCeos PoCompanyGroup[] @relation("CompanyCeo")
   defaultFvps PoCompanyGroup[] @relation("CompanyFvp")
@@ -515,7 +519,9 @@ enum PoPaymentMethod {
 
 enum PurchaseOrderStatus {
   DRAFT
+  SUBMITTED
   APPROVED
+  REJECTED
   CANCELLED
 }
 
@@ -661,6 +667,20 @@ model PurchaseOrder {
   fvpApprovedById    String?
   fvpApprovedBy      User?     @relation("PoFvpApprovedBy", fields: [fvpApprovedById], references: [id])
   fvpApprovalChannel String?   // "MOBILE" | "WEB"
+  fvpSignatureUrl    String?   // Gambar TTD FVP
+  fvpNotes           String?   // Catatan FVP
+
+  ceoSignatureUrl    String?   // Gambar TTD CEO
+  ceoNotes           String?   // Catatan CEO
+
+  // Submission & Rejection Tracking
+  submittedAt        DateTime?
+  submittedById      String?
+  submittedBy        User?     @relation("PoSubmittedBy", fields: [submittedById], references: [id])
+  rejectionReason    String?
+  rejectedAt         DateTime?
+  rejectedById       String?
+  rejectedBy         User?     @relation("PoRejectedBy", fields: [rejectedById], references: [id])
 
   pic_name  String?
   pic_phone String?

@@ -140,6 +140,35 @@ FROM "MasterItem" m
 WHERE NOT EXISTS (
     SELECT 1 FROM "MasterItemPriceHistory" h WHERE h."masterItemId" = m."id"
 );
+
+-- 9. PO Approval & Signature Schema Updates
+ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'SUBMITTED';
+ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
+
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "signatureUrl" TEXT;
+
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3);
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "submittedById" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpSignatureUrl" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpNotes" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoSignatureUrl" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoNotes" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectedAt" TIMESTAMP(3);
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectedById" TEXT;
+
+DO $$ BEGIN
+    ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_submittedById_fkey" FOREIGN KEY ("submittedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_rejectedById_fkey" FOREIGN KEY ("rejectedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "PurchaseOrder_submittedAt_idx" ON "PurchaseOrder"("submittedAt");
+CREATE INDEX IF NOT EXISTS "PurchaseOrder_status_submittedAt_idx" ON "PurchaseOrder"("status", "submittedAt");
 EOF
 )
 

@@ -52,6 +52,11 @@ export type POData = {
     pic_phone?: string | null
     status?: string
     updatedAt?: string | null
+    fvp_signature_url?: string | null
+    fvp_approved_at?: string | null
+    ceo_signature_url?: string | null
+    ceo_approved_at?: string | null
+    is_bypassed?: boolean
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -303,26 +308,25 @@ export function PODocument({ po }: { po: POData }) {
 
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>
-                    {/* MENYETUJUI (KIRI) */}
+                    {/* MENYETUJUI (KIRI) - PIMPINAN / CEO */}
                     <View style={shared.signBox}>
-                        <Text style={[shared.signLabel, { marginBottom: 40 }]}>Menyetujui,</Text>
-                        {/* 
-                        <View style={{ height: 36, justifyContent: 'center', alignItems: 'center' }}>
-                            {po.status === 'APPROVED' && po.updatedAt && (
-                                <>
-                                    <Text style={{ fontSize: 6, color: COLORS.primary, fontFamily: 'Helvetica-Bold' }}>
-                                        Approved by {po.pimpinan}
+                        <Text style={shared.signLabel}>Menyetujui,</Text>
+                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
+                            {po.ceo_signature_url ? (
+                                <Image src={po.ceo_signature_url} style={{ width: 80, height: 40, objectFit: 'contain' }} />
+                            ) : po.is_bypassed ? (
+                                <View style={{ alignItems: 'center' }}>
+                                    <Text style={{ fontSize: 6.5, color: COLORS.muted, fontFamily: 'Helvetica-Bold' }}>
+                                        [ Disetujui Administratif ]
                                     </Text>
-                                    <Text style={{ fontSize: 5.5, color: COLORS.primary, marginTop: 1.5 }}>
-                                        {format(new Date(po.updatedAt), "dd MMM yy HH:mm", { locale: idLocale })}
-                                    </Text>
-                                    <Text style={{ fontSize: 5.5, color: COLORS.primary, marginTop: 1.5 }}>
-                                        via Aplikasi M-Rajawali
-                                    </Text>
-                                </>
-                            )}
+                                    {po.updatedAt && (
+                                        <Text style={{ fontSize: 5.5, color: COLORS.muted, marginTop: 1 }}>
+                                            {format(new Date(po.updatedAt), "dd MMM yyyy", { locale: idLocale })}
+                                        </Text>
+                                    )}
+                                </View>
+                            ) : null}
                         </View>
-                        */}
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.pimpinan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
@@ -330,9 +334,14 @@ export function PODocument({ po }: { po: POData }) {
                         </Text>
                     </View>
 
-                    {/* MENGETAHUI (TENGAH) */}
+                    {/* MENGETAHUI (TENGAH) - FVP / APPROVER */}
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Mengetahui,</Text>
+                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
+                            {po.fvp_signature_url ? (
+                                <Image src={po.fvp_signature_url} style={{ width: 80, height: 40, objectFit: 'contain' }} />
+                            ) : null}
+                        </View>
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.kepala_peralatan}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
@@ -340,9 +349,12 @@ export function PODocument({ po }: { po: POData }) {
                         </Text>
                     </View>
 
-                    {/* DIBUAT OLEH (KANAN) */}
+                    {/* DIBUAT OLEH (KANAN) - ADMIN */}
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Dibuat oleh,</Text>
+                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
+                            {/* Empty space for admin signature or stamp */}
+                        </View>
                         <View style={shared.signLine} />
                         <Text style={shared.signName}>{po.pembuat}</Text>
                         <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>

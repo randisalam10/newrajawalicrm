@@ -88,6 +88,16 @@ export default async function PrintPOPage({
         if (adminUser?.employee?.name) pembuatName = adminUser.employee.name
     }
 
+    let fvpSigUrl = po.fvpSignatureUrl
+    if (fvpSigUrl) {
+        fvpSigUrl = fvpSigUrl.startsWith('http') ? fvpSigUrl : `${baseUrl}${fvpSigUrl}`
+    }
+
+    let ceoSigUrl = po.ceoSignatureUrl
+    if (ceoSigUrl) {
+        ceoSigUrl = ceoSigUrl.startsWith('http') ? ceoSigUrl : `${baseUrl}${ceoSigUrl}`
+    }
+
     const formattedPO = {
         po_number: po.po_number,
         tanggal_terbit: po.tanggal_terbit.toISOString(),
@@ -120,7 +130,11 @@ export default async function PrintPOPage({
         pic_phone: po.pic_phone,
         status: po.status,
         updatedAt: po.updatedAt?.toISOString() || null,
-
+        fvp_signature_url: fvpSigUrl || undefined,
+        fvp_approved_at: po.fvpApprovedAt?.toISOString() || null,
+        ceo_signature_url: ceoSigUrl || undefined,
+        ceo_approved_at: po.ceoApprovedAt?.toISOString() || null,
+        is_bypassed: po.isBypassed,
     }
 
     return <POPrintClient po={formattedPO} />

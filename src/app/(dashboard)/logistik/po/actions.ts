@@ -348,6 +348,7 @@ export async function createPurchaseOrder(data: {
     fvpId?: string | null
     items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number; updateMasterPrice?: boolean }[]
     pembuat_admin: string
+    isDraft?: boolean
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
@@ -359,14 +360,6 @@ export async function createPurchaseOrder(data: {
     let fvpId = data.fvpId || null
     let companyProjectId = data.companyProjectId || null
 
-    if (ceoId) {
-        const userExists = await prisma.user.findUnique({ where: { id: ceoId } })
-        if (!userExists) ceoId = null
-    }
-    if (fvpId) {
-        const userExists = await prisma.user.findUnique({ where: { id: fvpId } })
-        if (!userExists) fvpId = null
-    }
     if (companyProjectId) {
         const projectExists = await prisma.poCompanyProject.findUnique({ where: { id: companyProjectId } })
         if (!projectExists) companyProjectId = null
@@ -379,7 +372,8 @@ export async function createPurchaseOrder(data: {
     while (attempt < retries) {
         try {
             const po_number = await generatePoNumber(data.companyGroupId, data.categoryId, data.tanggal_terbit)
-            
+            const poStatus = data.isDraft ? 'DRAFT' : 'SUBMITTED'
+
             const created = await prisma.purchaseOrder.create({
                 data: {
                     po_number,
@@ -399,6 +393,9 @@ export async function createPurchaseOrder(data: {
                     pic_phone: data.pic_phone || null,
                     ceoId,
                     fvpId,
+                    status: poStatus,
+                    submittedAt: data.isDraft ? null : new Date(),
+                    submittedById: data.isDraft ? null : session.user.id,
                     items: {
                         create: items.map(item => ({
                             masterItemId: item.masterItemId,
@@ -449,29 +446,30 @@ export async function createPurchaseOrder(data: {
                 }
             }
 
-            // --- PUSH NOTIFICATION ---
-            // Cari token fcm Pimpinan (Hanya yang dipilih: ceoId, fvpId), dan SuperAdminBP
-            const targetedIds = [data.ceoId, data.fvpId].filter(Boolean) as string[]
-            
-            const admins = await prisma.user.findMany({
-                where: {
-                    OR: [
-                        { id: { in: targetedIds } },
-                        { role: 'SuperAdminBP' }
-                    ],
-                    fcmToken: { not: null }
-                },
-                select: { fcmToken: true }
-            })
+            // --- PUSH NOTIFICATION (Hanya jika langsung diajukan / bukan DRAFT) ---
+            if (!data.isDraft) {
+                const targetedIds = [data.ceoId, data.fvpId].filter(Boolean) as string[]
+                
+                const admins = await prisma.user.findMany({
+                    where: {
+                        OR: [
+                            { id: { in: targetedIds } },
+                            { role: 'SuperAdminBP' }
+                        ],
+                        fcmToken: { not: null }
+                    },
+                    select: { fcmToken: true }
+                })
 
-            const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
-            if (tokens.length > 0) {
-                await sendPushNotification(
-                    tokens,
-                    "PO Baru Membutuhkan Persetujuan",
-                    `PO ${po_number} telah dibuat oleh Logistik.`,
-                    { poId: created.id, type: "PO_APPROVAL" }
-                )
+                const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
+                if (tokens.length > 0) {
+                    await sendPushNotification(
+                        tokens,
+                        "PO Baru Membutuhkan Persetujuan",
+                        `PO ${po_number} telah diajukan oleh Logistik.`,
+                        { poId: created.id, type: "PO_APPROVAL" }
+                    )
+                }
             }
             // -------------------------
             revalidatePath("/logistik/po")
@@ -503,12 +501,78 @@ export async function createPurchaseOrder(data: {
     return { success: false, error: `Gagal menyimpan PO setelah ${retries} kali percobaan karena nomor PO duplikat: ${lastError?.message || 'Unique constraint failed'}` }
 }
 
-export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED") {
+export async function submitPurchaseOrder(id: string) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    try {
+        const existingPo = await prisma.purchaseOrder.findUnique({ where: { id } })
+        if (!existingPo) return { success: false, error: "PO tidak ditemukan" }
+        if (existingPo.status !== 'DRAFT' && existingPo.status !== 'REJECTED') {
+            return { success: false, error: "Hanya PO berstatus Draft atau Ditolak yang dapat diajukan." }
+        }
+
+        const updated = await prisma.purchaseOrder.update({
+            where: { id },
+            data: {
+                status: 'SUBMITTED',
+                submittedAt: new Date(),
+                submittedById: session.user.id,
+                rejectionReason: null,
+                rejectedAt: null,
+                rejectedById: null,
+            }
+        })
+
+        // Notifikasi ke approver
+        const targetedIds = [updated.ceoId, updated.fvpId].filter(Boolean) as string[]
+        const approvers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { id: { in: targetedIds } },
+                    { role: 'SuperAdminBP' }
+                ],
+                fcmToken: { not: null }
+            },
+            select: { fcmToken: true }
+        })
+
+        const tokens = approvers.map(u => u.fcmToken).filter(Boolean) as string[]
+        if (tokens.length > 0) {
+            await sendPushNotification(
+                tokens,
+                "PO Diajukan untuk Persetujuan",
+                `PO ${updated.po_number} telah diajukan dan menunggu persetujuan Anda.`,
+                { poId: updated.id, type: "PO_APPROVAL" }
+            )
+        }
+
+        if (pusherServer) {
+            await pusherServer.trigger('logistik-channel', 'po-updated', {
+                message: `PO ${updated.po_number} telah diajukan untuk persetujuan.`,
+                poId: updated.id,
+                status: 'SUBMITTED'
+            })
+        }
+
+        revalidatePath("/logistik/po")
+        revalidatePath("/logistik/approval")
+        return { success: true, status: 'SUBMITTED' }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function updatePoStatus(
+    id: string,
+    status: "APPROVED" | "CANCELLED" | "REJECTED",
+    options?: { notes?: string; signatureUrl?: string; channel?: "WEB" | "MOBILE" }
+) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
 
     const userRole = session.user.role as string
-    if (!['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik'].includes(userRole)) {
+    if (!['SuperAdminBP', 'CEO', 'FVP', 'Approver', 'AdminLogistik'].includes(userRole)) {
         return { success: false, error: "Forbidden: Anda tidak memiliki izin untuk mengubah status PO" }
     }
 
@@ -516,9 +580,17 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
         const existingPo = await prisma.purchaseOrder.findUnique({ where: { id } })
         if (!existingPo) return { success: false, error: "PO tidak ditemukan" }
 
+        // Enforce: Draft PO cannot be approved!
+        if (status === 'APPROVED' && existingPo.status === 'DRAFT') {
+            return { success: false, error: "PO masih berstatus Draft dan belum diajukan. Silakan ajukan PO terlebih dahulu sebelum disetujui." }
+        }
+
         let newStatus = existingPo.status
         let updateData: any = {}
         const now = new Date()
+        const channel = options?.channel || 'WEB'
+        const signatureUrl = options?.signatureUrl || null
+        const notes = options?.notes || null
 
         if (status === 'CANCELLED') {
             newStatus = 'CANCELLED'
@@ -534,37 +606,53 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
                 fvpApprovalChannel: null,
                 isBypassed: false
             }
+            if (notes) updateData.notes = notes
+        } else if (status === 'REJECTED') {
+            newStatus = 'REJECTED'
+            updateData = {
+                status: 'REJECTED',
+                rejectionReason: notes || 'Ditolak oleh approver',
+                rejectedAt: now,
+                rejectedById: session.user.id
+            }
         } else if (status === 'APPROVED') {
             const currentUserId = session.user.id
-            if (userRole === 'FVP') {
+            if (userRole === 'FVP' || userRole === 'Approver') {
                 updateData.fvpApprovedAt = now
                 updateData.fvpApprovedById = currentUserId
-                updateData.fvpApprovalChannel = 'WEB'
+                updateData.fvpApprovalChannel = channel
+                if (signatureUrl) updateData.fvpSignatureUrl = signatureUrl
+                if (notes) updateData.fvpNotes = notes
+
                 if (existingPo.ceoApprovedAt || !existingPo.ceoId) {
                     newStatus = 'APPROVED'
                     updateData.approvedById = currentUserId
-                    updateData.approvalChannel = 'WEB'
+                    updateData.approvalChannel = channel
                     updateData.isBypassed = false
                 }
             } else if (userRole === 'CEO') {
                 updateData.ceoApprovedAt = now
                 updateData.ceoApprovedById = currentUserId
-                updateData.ceoApprovalChannel = 'WEB'
+                updateData.ceoApprovalChannel = channel
+                if (signatureUrl) updateData.ceoSignatureUrl = signatureUrl
+                if (notes) updateData.ceoNotes = notes
+
                 if (existingPo.fvpApprovedAt || !existingPo.fvpId) {
                     newStatus = 'APPROVED'
                     updateData.approvedById = currentUserId
-                    updateData.approvalChannel = 'WEB'
+                    updateData.approvalChannel = channel
                     updateData.isBypassed = false
                 }
             } else if (userRole === 'SuperAdminBP' || userRole === 'AdminLogistik') {
+                // Admin bypass: Sesuai instruksi, admin yg approve TIDAK menambahkan gambar TTD
                 updateData.fvpApprovedAt = now
                 updateData.ceoApprovedAt = now
                 updateData.ceoApprovedById = currentUserId
                 updateData.fvpApprovedById = currentUserId
-                updateData.ceoApprovalChannel = 'WEB'
-                updateData.fvpApprovalChannel = 'WEB'
+                updateData.ceoApprovalChannel = channel
+                updateData.fvpApprovalChannel = channel
                 updateData.approvedById = currentUserId
-                updateData.approvalChannel = 'WEB'
+                updateData.approvalChannel = channel
                 updateData.isBypassed = true
                 newStatus = 'APPROVED'
             }
@@ -573,7 +661,7 @@ export async function updatePoStatus(id: string, status: "APPROVED" | "CANCELLED
                 updateData.status = 'APPROVED'
                 if (!updateData.approvedById) {
                     updateData.approvedById = currentUserId
-                    updateData.approvalChannel = 'WEB'
+                    updateData.approvalChannel = channel
                     updateData.isBypassed = false
                 }
             }
@@ -858,3 +946,177 @@ export async function updatePurchaseOrder(poId: string, data: {
         return { success: false, error: e.message }
     }
 }
+
+export async function getApproverQueue() {
+    const session = await auth()
+    if (!session?.user) return { success: false, data: [], error: "Unauthorized" }
+
+    const user = session.user
+    const userRole = user.role as string
+
+    try {
+        let where: any = { status: 'SUBMITTED' }
+
+        if (userRole === 'FVP' || userRole === 'Approver') {
+            where.fvpApprovedAt = null
+            where.OR = [
+                { fvpId: user.id },
+                { fvpId: null }
+            ]
+        } else if (userRole === 'CEO') {
+            where.ceoApprovedAt = null
+            where.OR = [
+                { ceoId: user.id },
+                { ceoId: null }
+            ]
+        } else if (!['SuperAdminBP', 'AdminLogistik'].includes(userRole)) {
+            return { success: true, data: [] }
+        }
+
+        const orders = await prisma.purchaseOrder.findMany({
+            where,
+            include: {
+                companyGroup: true,
+                category: true,
+                submittedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                items: {
+                    include: {
+                        masterItem: {
+                            include: {
+                                supplier: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { submittedAt: 'desc' }
+        })
+
+        // Fetch supplier & project names
+        const projectIds = [...new Set(orders.map(o => o.companyProjectId).filter(Boolean))] as string[]
+        const projects = projectIds.length > 0
+            ? await prisma.poCompanyProject.findMany({ where: { id: { in: projectIds } } })
+            : []
+        const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
+
+        const supplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean))] as string[]
+        const suppliers = supplierIds.length > 0
+            ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+            : []
+        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
+
+        const enrichedOrders = orders.map(po => ({
+            ...po,
+            proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
+            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
+        }))
+
+        return { success: true, data: enrichedOrders }
+    } catch (e: any) {
+        console.error("getApproverQueue Error:", e)
+        return { success: false, data: [], error: e.message }
+    }
+}
+
+export async function getApproverHistory() {
+    const session = await auth()
+    if (!session?.user) return { success: false, data: [], error: "Unauthorized" }
+
+    const user = session.user
+    const userRole = user.role as string
+
+    try {
+        let where: any = {}
+
+        if (['SuperAdminBP', 'AdminLogistik'].includes(userRole)) {
+            where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] }
+        } else {
+            where.OR = [
+                { fvpApprovedById: user.id },
+                { ceoApprovedById: user.id },
+                { approvedById: user.id },
+                { rejectedById: user.id }
+            ]
+        }
+
+        const orders = await prisma.purchaseOrder.findMany({
+            where,
+            include: {
+                companyGroup: true,
+                category: true,
+                submittedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                fvpApprovedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                ceoApprovedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                rejectedBy: { select: { id: true, username: true, employee: { select: { name: true } } } },
+                items: {
+                    include: {
+                        masterItem: {
+                            include: {
+                                supplier: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { updatedAt: 'desc' },
+            take: 100
+        })
+
+        // Fetch supplier & project names
+        const projectIds = [...new Set(orders.map(o => o.companyProjectId).filter(Boolean))] as string[]
+        const projects = projectIds.length > 0
+            ? await prisma.poCompanyProject.findMany({ where: { id: { in: projectIds } } })
+            : []
+        const projectMap = Object.fromEntries(projects.map(p => [p.id, p.name]))
+
+        const supplierIds = [...new Set(orders.map(o => o.supplierId).filter(Boolean))] as string[]
+        const suppliers = supplierIds.length > 0
+            ? await prisma.supplier.findMany({ where: { id: { in: supplierIds } } })
+            : []
+        const supplierMap = Object.fromEntries(suppliers.map(s => [s.id, s.name]))
+
+        const enrichedOrders = orders.map(po => ({
+            ...po,
+            proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
+            supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
+        }))
+
+        return { success: true, data: enrichedOrders }
+    } catch (e: any) {
+        console.error("getApproverHistory Error:", e)
+        return { success: false, data: [], error: e.message }
+    }
+}
+
+export async function updateUserSignature(signatureUrl: string) {
+    const session = await auth()
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" }
+
+    try {
+        await prisma.user.update({
+            where: { id: session.user.id },
+            data: { signatureUrl }
+        })
+        return { success: true, signatureUrl }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function getUserSignature() {
+    const session = await auth()
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" }
+
+    try {
+        const u = await prisma.user.findUnique({
+            where: { id: session.user.id },
+            select: { signatureUrl: true }
+        })
+        return { success: true, signatureUrl: u?.signatureUrl || null }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+

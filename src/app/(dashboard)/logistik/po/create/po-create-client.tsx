@@ -227,8 +227,9 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
 
     const totalHarga = poItems.reduce((acc, curr) => acc + (curr.harga * curr.quantity), 0)
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
+    const [savedAsDraft, setSavedAsDraft] = useState(false)
+    const handleSubmit = async (e?: React.FormEvent, isDraft: boolean = false) => {
+        if (e && e.preventDefault) e.preventDefault()
         if (poItems.length === 0) { alert("Tambahkan minimal 1 item barang."); return }
         if (!selectedCompanyId || !selectedCategoryId || !selectedSupplierId) {
             alert("Perusahaan, Kategori, dan Toko wajib dipilih.")
@@ -254,6 +255,7 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                 ceoId: selectedCeoId !== "none" ? selectedCeoId : undefined,
                 fvpId: selectedFvpId !== "none" ? selectedFvpId : undefined,
                 pembuat_admin: pembuatAdmin,
+                isDraft,
                 items: poItems.map(item => ({
                     masterItemId: item.id,
                     quantity: item.quantity,
@@ -266,6 +268,7 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
 
             if (result.success && result.po_number) {
                 setSavedPoNumber(result.po_number)
+                setSavedAsDraft(isDraft)
             } else {
                 alert("Gagal menyimpan PO: " + result.error)
             }
@@ -301,8 +304,21 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
         return (
             <div className="flex flex-col items-center justify-center py-20 space-y-4">
                 <CheckCircle className="w-16 h-16 text-green-500" />
-                <h2 className="text-2xl font-bold">PO Berhasil Dibuat!</h2>
+                <h2 className="text-2xl font-bold">
+                    {savedAsDraft ? "PO Berhasil Disimpan sebagai Draft!" : "PO Berhasil Dibuat & Diajukan!"}
+                </h2>
                 <p className="text-muted-foreground">Nomor PO: <span className="font-mono font-bold text-slate-800">{savedPoNumber}</span></p>
+                <div className="text-xs px-3 py-1.5 rounded-full font-medium border">
+                    {savedAsDraft ? (
+                        <span className="text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                            Status: <strong>DRAFT</strong> (Belum diajukan. Anda dapat mengedit dan mengajukannya nanti)
+                        </span>
+                    ) : (
+                        <span className="text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
+                            Status: <strong>SUBMITTED</strong> (Telah diajukan untuk persetujuan Approver/FVP/CEO)
+                        </span>
+                    )}
+                </div>
                 <div className="flex gap-3 mt-4">
                     <Button variant="outline" onClick={() => router.push("/logistik/po")}>Lihat Daftar PO</Button>
                     <Button onClick={() => router.push(`/print/po/${savedPoNumber}`)}>Print PO</Button>
@@ -732,10 +748,28 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                 </CardContent>
             </Card>
 
-            <div className="flex justify-end gap-2 sticky bottom-4">
-                <Button type="button" variant="outline" className="bg-white" onClick={() => router.back()}>Batal</Button>
-                <Button type="submit" size="lg" disabled={poItems.length === 0 || saving} className="shadow-lg">
-                    {saving ? "Menyimpan..." : "Simpan dan Generate Nomor PO"}
+            <div className="flex justify-end gap-2.5 sticky bottom-4 bg-white/95 backdrop-blur-xs p-3 rounded-xl border border-slate-200/80 shadow-lg">
+                <Button type="button" variant="outline" className="bg-white" onClick={() => router.back()}>
+                    Batal
+                </Button>
+                <Button 
+                    type="button" 
+                    variant="outline"
+                    size="lg" 
+                    disabled={poItems.length === 0 || saving} 
+                    className="border-slate-300 text-slate-700 hover:bg-slate-100 font-medium"
+                    onClick={() => handleSubmit(undefined, true)}
+                >
+                    {saving ? "Menyimpan..." : "💾 Simpan sebagai Draft"}
+                </Button>
+                <Button 
+                    type="button" 
+                    size="lg" 
+                    disabled={poItems.length === 0 || saving} 
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md gap-1.5"
+                    onClick={() => handleSubmit(undefined, false)}
+                >
+                    {saving ? "Menyimpan..." : "🚀 Simpan & Ajukan Persetujuan"}
                 </Button>
             </div>
 

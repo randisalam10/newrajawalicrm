@@ -179,6 +179,16 @@ export const ROLES = [
             'RBL_VIEW', 'RBL_EXPORT',
         ],
     },
+    {
+        name: 'Approver',
+        label: 'Approver',
+        description: 'Pemeriksa dan pemberi persetujuan (Approval) PO dan pengadaan logistik.',
+        isSystem: true,
+        scope: 'ALL_BRANCHES' as const,
+        permissions: [
+            'DASHBOARD_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW',
+        ],
+    },
 ]
 
 async function main() {

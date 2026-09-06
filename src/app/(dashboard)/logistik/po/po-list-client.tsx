@@ -15,9 +15,9 @@ import {
     ChevronLeft, ChevronRight, FilterX, Eye, Loader2,
     Building2, Store, Calendar, FileText, CheckCircle2,
     Clock, ShieldCheck, AlertCircle, ExternalLink, X,
-    MapPin, CreditCard, ShieldAlert, Smartphone
+    MapPin, CreditCard, ShieldAlert, Smartphone, Send
 } from "lucide-react"
-import { updatePoStatus, getPurchaseOrders, getPurchaseOrderById } from "./actions"
+import { updatePoStatus, getPurchaseOrders, getPurchaseOrderById, submitPurchaseOrder } from "./actions"
 import Link from "next/link"
 import {
     Select,
@@ -28,9 +28,11 @@ import {
 } from "@/components/ui/select"
 
 const statusConfig: Record<string, { label: string; className: string }> = {
-    DRAFT: { label: "Draft", className: "bg-slate-100 text-slate-700" },
-    APPROVED: { label: "Disetujui", className: "bg-green-100 text-green-700" },
-    CANCELLED: { label: "Dibatalkan", className: "bg-red-100 text-red-700" },
+    DRAFT: { label: "Draft", className: "bg-slate-100 text-slate-700 border border-slate-200" },
+    SUBMITTED: { label: "Menunggu Approval", className: "bg-amber-50 text-amber-700 border border-amber-200" },
+    APPROVED: { label: "Disetujui", className: "bg-green-50 text-green-700 border border-green-200" },
+    REJECTED: { label: "Ditolak", className: "bg-red-50 text-red-700 border border-red-200" },
+    CANCELLED: { label: "Dibatalkan", className: "bg-rose-50 text-rose-700 border border-rose-200" },
 }
 
 export function POListClient({ 
@@ -215,13 +217,15 @@ export function POListClient({
 
                     {/* Status Approval */}
                     <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-                        <SelectTrigger className="w-[130px] text-xs h-8 bg-white border-slate-200">
+                        <SelectTrigger className="w-[145px] text-xs h-8 bg-white border-slate-200">
                             <SelectValue placeholder="Semua Status" />
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="ALL" className="text-xs">Semua Status</SelectItem>
+                            <SelectItem value="SUBMITTED" className="text-xs">Menunggu Approval</SelectItem>
                             <SelectItem value="APPROVED" className="text-xs">Disetujui</SelectItem>
-                            <SelectItem value="DRAFT" className="text-xs">Draft</SelectItem>
+                            <SelectItem value="DRAFT" className="text-xs">Draft (Belum Diajukan)</SelectItem>
+                            <SelectItem value="REJECTED" className="text-xs">Ditolak</SelectItem>
                             <SelectItem value="CANCELLED" className="text-xs">Dibatalkan</SelectItem>
                         </SelectContent>
                     </Select>
@@ -375,7 +379,7 @@ export function POListClient({
 
                                 let cfg = statusConfig[po.status] ?? statusConfig.DRAFT
                                 
-                                if (po.status === 'DRAFT') {
+                                if (po.status === 'SUBMITTED') {
                                     let required = 0
                                     let approved = 0
                                     if (po.ceoId) required++
@@ -394,10 +398,14 @@ export function POListClient({
                                             cfg = { label: "Disetujui", className: "bg-green-50 text-green-700 border border-green-200" }
                                         }
                                     } else {
-                                        cfg = { label: "Draft", className: "bg-slate-100 text-slate-700 border border-slate-200" }
+                                        cfg = { label: "Menunggu Approval", className: "bg-amber-50 text-amber-700 border border-amber-200" }
                                     }
+                                } else if (po.status === 'DRAFT') {
+                                    cfg = { label: "Draft", className: "bg-slate-100 text-slate-700 border border-slate-200" }
                                 } else if (po.status === 'APPROVED') {
                                     cfg = { label: "Disetujui", className: "bg-green-50 text-green-700 border border-green-200" }
+                                } else if (po.status === 'REJECTED') {
+                                    cfg = { label: "Ditolak", className: "bg-red-50 text-red-700 border border-red-200" }
                                 } else if (po.status === 'CANCELLED') {
                                     cfg = { label: "Dibatalkan", className: "bg-rose-50 text-rose-700 border border-rose-200" }
                                 }
@@ -518,8 +526,29 @@ export function POListClient({
                                                     </Link>
                                                 )}
 
-                                                {/* Edit Button */}
+                                                {/* Submit / Ajukan Button for DRAFT */}
                                                 {po.status === "DRAFT" && (
+                                                    <Button
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-7 w-7 text-blue-600 hover:text-blue-800 hover:bg-blue-50" 
+                                                        title="Ajukan PO untuk Persetujuan"
+                                                        onClick={async () => {
+                                                            if (!confirm(`Ajukan PO "${po.po_number}" untuk persetujuan pimpinan / approver?`)) return
+                                                            const res = await submitPurchaseOrder(po.id)
+                                                            if (res.success) {
+                                                                fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
+                                                            } else {
+                                                                alert(`Gagal mengajukan: ${res.error}`)
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Send className="w-3.5 h-3.5 text-blue-600" />
+                                                    </Button>
+                                                )}
+
+                                                {/* Edit Button */}
+                                                {(po.status === "DRAFT" || po.status === "SUBMITTED") && (
                                                     <Link href={`/logistik/po/${po.id}/edit`}>
                                                         <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50" title="Edit PO">
                                                             <Pencil className="w-3.5 h-3.5 text-blue-600" />
@@ -527,29 +556,43 @@ export function POListClient({
                                                     </Link>
                                                 )}
 
-                                                {/* Approve Button */}
-                                                {po.status === "DRAFT" && canApprove && (
+                                                {/* Approve Button (Only for SUBMITTED, never DRAFT) */}
+                                                {po.status === "SUBMITTED" && canApprove && (
                                                     <Button
-                                                        variant="ghost" size="icon" className="h-7 w-7 hover:bg-green-50" title="Setujui"
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-7 w-7 hover:bg-green-50 text-green-600 hover:text-green-800" 
+                                                        title="Setujui PO (Bypass Administratif)"
                                                         onClick={async () => {
-                                                            if (!confirm("Setujui PO ini (sesuai role Anda)?")) return
+                                                            if (!confirm(`Setujui PO "${po.po_number}" sebagai ${userRole}?`)) return
                                                             const res = await updatePoStatus(po.id, "APPROVED")
-                                                            if (res.success) fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
-                                                            else alert(`Gagal: ${res.error}`)
+                                                            if (res.success) {
+                                                                fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
+                                                            } else {
+                                                                alert(`Gagal: ${res.error}`)
+                                                            }
                                                         }}
                                                     >
                                                         <CheckCircle className="w-3.5 h-3.5 text-green-600" />
                                                     </Button>
                                                 )}
 
-                                                {/* Cancel Button */}
-                                                {po.status !== "CANCELLED" && canApprove && (
+                                                {/* Cancel / Reject Button */}
+                                                {po.status !== "CANCELLED" && po.status !== "REJECTED" && canApprove && (
                                                     <Button
-                                                        variant="ghost" size="icon" className="h-7 w-7 hover:bg-red-50" title="Batalkan"
+                                                        variant="ghost" 
+                                                        size="icon" 
+                                                        className="h-7 w-7 hover:bg-red-50 text-red-500 hover:text-red-700" 
+                                                        title="Batalkan / Tolak PO"
                                                         onClick={async () => {
-                                                            if (!confirm("Batalkan PO ini?")) return
-                                                            const res = await updatePoStatus(po.id, "CANCELLED")
-                                                            if (res.success) fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
+                                                            const reason = prompt("Masukkan alasan pembatalan / penolakan:")
+                                                            if (reason === null) return
+                                                            const res = await updatePoStatus(po.id, "CANCELLED", { notes: reason })
+                                                            if (res.success) {
+                                                                fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
+                                                            } else {
+                                                                alert(`Gagal: ${res.error}`)
+                                                            }
                                                         }}
                                                     >
                                                         <XCircle className="w-3.5 h-3.5 text-red-500" />

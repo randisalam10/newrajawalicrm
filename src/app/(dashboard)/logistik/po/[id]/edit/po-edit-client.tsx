@@ -18,7 +18,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import { updatePurchaseOrder } from "../../actions"
+import { updatePurchaseOrder, submitPurchaseOrder } from "../../actions"
 import { quickUpdateItemPrice } from "../../../master-barang/actions"
 import { useRouter } from "next/navigation"
 
@@ -224,8 +224,8 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
 
     const totalHarga = poItems.reduce((acc, curr) => acc + (curr.harga * curr.quantity), 0)
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault()
+    const handleSubmit = async (e?: React.FormEvent, shouldSubmit: boolean = false) => {
+        if (e && e.preventDefault) e.preventDefault()
         if (poItems.length === 0) { alert("Tambahkan minimal 1 item barang."); return }
         if (!selectedCompanyId || !selectedCategoryId || !selectedSupplierId) {
             alert("Perusahaan, Kategori, dan Toko wajib dipilih.")
@@ -260,7 +260,16 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
             })
 
             if (result.success) {
-                alert("PO Berhasil diperbarui!")
+                if (shouldSubmit) {
+                    const submitRes = await submitPurchaseOrder(initialPo.id)
+                    if (submitRes.success) {
+                        alert("PO Berhasil diperbarui dan diajukan untuk persetujuan!")
+                    } else {
+                        alert("PO diperbarui, namun gagal diajukan: " + submitRes.error)
+                    }
+                } else {
+                    alert("PO Berhasil diperbarui!")
+                }
                 router.push(`/logistik/po`)
                 router.refresh()
             } else {
@@ -688,11 +697,43 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                 </CardContent>
             </Card>
 
-            <div className="flex justify-end gap-2 sticky bottom-4">
-                <Button type="button" variant="outline" className="bg-white" onClick={() => router.back()}>Batal</Button>
-                <Button type="submit" size="lg" disabled={poItems.length === 0 || saving} className="shadow-lg">
-                    {saving ? "Menyimpan..." : "Simpan Perubahan PO"}
+            <div className="flex justify-end gap-2.5 sticky bottom-4 bg-white/95 backdrop-blur-xs p-3 rounded-xl border border-slate-200/80 shadow-lg">
+                <Button type="button" variant="outline" className="bg-white" onClick={() => router.back()}>
+                    Batal
                 </Button>
+                {initialPo.status === "DRAFT" ? (
+                    <>
+                        <Button 
+                            type="button" 
+                            variant="outline"
+                            size="lg" 
+                            disabled={poItems.length === 0 || saving} 
+                            className="border-slate-300 text-slate-700 hover:bg-slate-100 font-medium"
+                            onClick={() => handleSubmit(undefined, false)}
+                        >
+                            {saving ? "Menyimpan..." : "💾 Simpan Perubahan (Tetap Draft)"}
+                        </Button>
+                        <Button 
+                            type="button" 
+                            size="lg" 
+                            disabled={poItems.length === 0 || saving} 
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md gap-1.5"
+                            onClick={() => handleSubmit(undefined, true)}
+                        >
+                            {saving ? "Menyimpan..." : "🚀 Simpan & Ajukan Persetujuan"}
+                        </Button>
+                    </>
+                ) : (
+                    <Button 
+                        type="button" 
+                        size="lg" 
+                        disabled={poItems.length === 0 || saving} 
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium shadow-md"
+                        onClick={() => handleSubmit(undefined, false)}
+                    >
+                        {saving ? "Menyimpan..." : "Simpan Perubahan PO"}
+                    </Button>
+                )}
             </div>
 
             {/* Shortcut Ubah Harga Master Modal */}
