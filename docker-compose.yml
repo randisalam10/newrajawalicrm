@@ -26,7 +26,7 @@ services:
       - TELEGRAM_GROUP_ID=-100yourgroupidhere
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=BIlGR6nIKsx26ZZ-pLz806slsgQLBh7Y4taaCoOu0hwbOMsjw6x87TCkLhqRH6gjFWrD16enC8Rmn_furAWXl8E
       - VAPID_PRIVATE_KEY=V-URsTkXs2Iw7XnvJPB0n1ucSdWhObqRR0zUMWQESgI
-      - VAPID_SUBJECT=mailto:admin@rajawalimix.com
+      - VAPID_SUBJECT=mailto:rsi.rajawali@gmail.com
     volumes:
       - ./uploads:/app/uploads
       - ./rajawali-development-firebase-adminsdk-fbsvc-8a05ea685a.json:/app/rajawali-development-firebase-adminsdk-fbsvc-8a05ea685a.json:ro
