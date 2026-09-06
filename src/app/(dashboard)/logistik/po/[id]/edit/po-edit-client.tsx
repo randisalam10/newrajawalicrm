@@ -248,6 +248,7 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                 notes: notes || undefined,
                 pic_name: picName || undefined,
                 pic_phone: picPhone || undefined,
+                pembuat_admin: pembuatAdmin,
                 items: poItems.map(item => ({
                     masterItemId: item.id,
                     quantity: item.quantity,
