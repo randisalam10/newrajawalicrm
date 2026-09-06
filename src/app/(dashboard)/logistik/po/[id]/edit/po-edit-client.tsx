@@ -29,14 +29,19 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
     const [jabatanKepala, setJabatanKepala] = useState(initialPo.jabatan_kepala || "Kepala Peralatan")
 
     // Map existing items
-    const defaultItems = initialPo.items?.map((i: any) => ({
-        ...i.masterItem,
-        id: i.masterItemId, // MasterItem ID!
-        cartId: i.id, // Gunakan original item ID as cart ID
-        quantity: i.quantity,
-        harga: i.harga_satuan, // Snapshot harga lama
-        keterangan: i.keterangan || ""
-    })) || []
+    const defaultItems = initialPo.items?.map((i: any) => {
+        const m = items.find((it: any) => it.id === i.masterItemId) || i.masterItem
+        return {
+            ...i.masterItem,
+            id: i.masterItemId, // MasterItem ID!
+            cartId: i.id, // Gunakan original item ID as cart ID
+            quantity: i.quantity,
+            masterHarga: m?.harga ?? i.harga_satuan,
+            harga: i.harga_satuan, // Snapshot harga
+            keterangan: i.keterangan || "",
+            updateMasterPrice: false
+        }
+    }) || []
     const [poItems, setPoItems] = useState<any[]>(defaultItems)
 
     const [selectedItemId, setSelectedItemId] = useState("")
@@ -70,8 +75,10 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
         setPoItems([...poItems, {
             ...itm,
             cartId: Math.random().toString(), // local id for rendering
+            masterHarga: itm.harga,
             quantity: 1,
-            keterangan: ""
+            keterangan: "",
+            updateMasterPrice: false
         }])
         setSelectedItemId("")
     }
@@ -109,6 +116,7 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                     harga_satuan: item.harga,
                     keterangan: item.keterangan || undefined,
                     subtotal: item.harga * item.quantity,
+                    updateMasterPrice: item.updateMasterPrice || false
                 }))
             })
 
@@ -276,7 +284,37 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                                                 />
                                             </td>
                                             <td className="py-2 px-4 text-slate-600">{item.satuan}</td>
-                                            <td className="py-2 px-4 text-right whitespace-nowrap">Rp {Number(item.harga).toLocaleString('id-ID')}</td>
+                                            <td className="py-2 px-4">
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        <span className="text-xs text-slate-400 font-medium">Rp</span>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            step="any"
+                                                            value={item.harga}
+                                                            onChange={e => {
+                                                                const val = Number(e.target.value) || 0
+                                                                setPoItems(poItems.map(i => i.cartId === item.cartId ? { ...i, harga: val } : i))
+                                                            }}
+                                                            className="w-28 text-right h-8 font-semibold text-xs text-slate-800"
+                                                        />
+                                                    </div>
+                                                    {Math.abs(item.harga - (item.masterHarga ?? item.harga)) > 0.001 && (
+                                                        <label className="flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded cursor-pointer hover:bg-amber-100 transition-colors whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={item.updateMasterPrice || false}
+                                                                onChange={e => {
+                                                                    setPoItems(poItems.map(i => i.cartId === item.cartId ? { ...i, updateMasterPrice: e.target.checked } : i))
+                                                                }}
+                                                                className="rounded text-amber-600 focus:ring-amber-500 h-3 w-3"
+                                                            />
+                                                            <span>Update Master ({item.harga > (item.masterHarga ?? 0) ? `▲ +${Math.round(((item.harga - (item.masterHarga ?? 1)) / (item.masterHarga ?? 1)) * 100)}%` : '▼ Turun'})</span>
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="py-2 px-4">
                                                 <Input
                                                     placeholder="Contoh: Plat DT 8258 RI"

@@ -150,6 +150,9 @@ model User {
   rblBudgetsClosed    RblBudget[]     @relation("RblBudgetClosedBy")
   rblExpensesCreated  RblExpense[]    @relation("RblExpenseCreatedBy")
   rblAttachments      RblAttachment[] @relation("RblAttachmentUploadedBy")
+
+  // Master Item Price History
+  masterItemPriceHistories MasterItemPriceHistory[] @relation("PriceHistoryUpdatedBy")
 }
 
 model Employee {
@@ -579,11 +582,34 @@ model MasterItem {
   category    PoCategory @relation(fields: [categoryId], references: [id])
   categoryId  String
   poItems     PoItem[]
+  priceHistories MasterItemPriceHistory[]
   createdAt   DateTime   @default(now())
 
   @@index([name])
   @@index([categoryId])
   @@index([supplierId])
+}
+
+model MasterItemPriceHistory {
+  id            String     @id @default(uuid())
+  masterItem    MasterItem @relation(fields: [masterItemId], references: [id], onDelete: Cascade)
+  masterItemId  String
+
+  oldPrice      Float
+  newPrice      Float
+  priceDiff     Float      // newPrice - oldPrice
+  percentage    Float      // ((newPrice - oldPrice) / oldPrice) * 100
+
+  effectiveDate DateTime   @default(now())
+  reason        String?
+
+  updatedById   String?
+  updatedBy     User?      @relation("PriceHistoryUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt     DateTime   @default(now())
+
+  @@index([masterItemId])
+  @@index([effectiveDate])
 }
 
 model PurchaseOrder {

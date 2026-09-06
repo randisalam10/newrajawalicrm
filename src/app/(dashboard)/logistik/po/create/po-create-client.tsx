@@ -77,8 +77,10 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
         setPoItems([...poItems, {
             ...itm,
             cartId: Math.random().toString(),
+            masterHarga: itm.harga,
             quantity: 1,
-            keterangan: ""
+            keterangan: "",
+            updateMasterPrice: false
         }])
         setSelectedItemId("")
     }
@@ -118,6 +120,7 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                     harga_satuan: item.harga,
                     keterangan: item.keterangan || undefined,
                     subtotal: item.harga * item.quantity,
+                    updateMasterPrice: item.updateMasterPrice || false
                 }))
             })
 
@@ -339,7 +342,37 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                                                 />
                                             </td>
                                             <td className="py-2 px-4 text-slate-600">{item.satuan}</td>
-                                            <td className="py-2 px-4 text-right whitespace-nowrap">Rp {Number(item.harga).toLocaleString('id-ID')}</td>
+                                            <td className="py-2 px-4">
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        <span className="text-xs text-slate-400 font-medium">Rp</span>
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            step="any"
+                                                            value={item.harga}
+                                                            onChange={e => {
+                                                                const val = Number(e.target.value) || 0
+                                                                setPoItems(poItems.map(i => i.cartId === item.cartId ? { ...i, harga: val } : i))
+                                                            }}
+                                                            className="w-28 text-right h-8 font-semibold text-xs text-slate-800"
+                                                        />
+                                                    </div>
+                                                    {Math.abs(item.harga - (item.masterHarga ?? item.harga)) > 0.001 && (
+                                                        <label className="flex items-center gap-1 text-[10px] bg-amber-50 border border-amber-200 text-amber-800 px-1.5 py-0.5 rounded cursor-pointer hover:bg-amber-100 transition-colors whitespace-nowrap">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={item.updateMasterPrice || false}
+                                                                onChange={e => {
+                                                                    setPoItems(poItems.map(i => i.cartId === item.cartId ? { ...i, updateMasterPrice: e.target.checked } : i))
+                                                                }}
+                                                                className="rounded text-amber-600 focus:ring-amber-500 h-3 w-3"
+                                                            />
+                                                            <span>Update Master ({item.harga > (item.masterHarga ?? 0) ? `▲ +${Math.round(((item.harga - (item.masterHarga ?? 1)) / (item.masterHarga ?? 1)) * 100)}%` : '▼ Turun'})</span>
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="py-2 px-4">
                                                 <Input
                                                     placeholder="Contoh: Plat DT 8258 RI"

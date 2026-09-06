@@ -346,7 +346,7 @@ export async function createPurchaseOrder(data: {
     pic_phone?: string
     ceoId?: string | null
     fvpId?: string | null
-    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
+    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number; updateMasterPrice?: boolean }[]
     pembuat_admin: string
 }) {
     const session = await auth()
@@ -414,6 +414,41 @@ export async function createPurchaseOrder(data: {
             if (jabatan_kepala) {
                 await prisma.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${created.id}`
             }
+
+            // --- Update Master Item Price & Record History if requested ---
+            for (const item of items) {
+                if (item.updateMasterPrice) {
+                    try {
+                        const mItem = await prisma.masterItem.findUnique({ where: { id: item.masterItemId } })
+                        if (mItem && Math.abs(mItem.harga - item.harga_satuan) > 0.001) {
+                            const oldPrice = mItem.harga
+                            const newPrice = item.harga_satuan
+                            const priceDiff = newPrice - oldPrice
+                            const percentage = oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 0
+
+                            await prisma.masterItemPriceHistory.create({
+                                data: {
+                                    masterItemId: item.masterItemId,
+                                    oldPrice,
+                                    newPrice,
+                                    priceDiff,
+                                    percentage,
+                                    reason: `Diperbarui otomatis saat pembuatan PO: ${po_number}`,
+                                    updatedById: session.user.id
+                                }
+                            })
+
+                            await prisma.masterItem.update({
+                                where: { id: item.masterItemId },
+                                data: { harga: newPrice }
+                            })
+                        }
+                    } catch (err) {
+                        console.error("Failed to update master item price from PO:", err)
+                    }
+                }
+            }
+
             // --- PUSH NOTIFICATION ---
             // Cari token fcm Pimpinan (Hanya yang dipilih: ceoId, fvpId), dan SuperAdminBP
             const targetedIds = [data.ceoId, data.fvpId].filter(Boolean) as string[]
@@ -441,6 +476,7 @@ export async function createPurchaseOrder(data: {
             // -------------------------
             revalidatePath("/logistik/po")
             revalidatePath("/logistik/po/create")
+            revalidatePath("/logistik/master-barang")
             return { success: true, po_number }
         } catch (e: any) {
             lastError = e
@@ -738,7 +774,7 @@ export async function updatePurchaseOrder(poId: string, data: {
     pic_phone?: string
     ceoId?: string
     fvpId?: string
-    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number }[]
+    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number; updateMasterPrice?: boolean }[]
     pembuat_admin: string
 }) {
     const session = await auth()
@@ -781,10 +817,41 @@ export async function updatePurchaseOrder(poId: string, data: {
             if (jabatan_kepala !== undefined) {
                 await tx.$executeRaw`UPDATE "PurchaseOrder" SET "jabatan_kepala" = ${jabatan_kepala} WHERE id = ${poId}`
             }
+
+            // Update Master Item Price & Record History if requested
+            for (const item of items) {
+                if (item.updateMasterPrice) {
+                    const mItem = await tx.masterItem.findUnique({ where: { id: item.masterItemId } })
+                    if (mItem && Math.abs(mItem.harga - item.harga_satuan) > 0.001) {
+                        const oldPrice = mItem.harga
+                        const newPrice = item.harga_satuan
+                        const priceDiff = newPrice - oldPrice
+                        const percentage = oldPrice > 0 ? ((newPrice - oldPrice) / oldPrice) * 100 : 0
+
+                        await tx.masterItemPriceHistory.create({
+                            data: {
+                                masterItemId: item.masterItemId,
+                                oldPrice,
+                                newPrice,
+                                priceDiff,
+                                percentage,
+                                reason: `Diperbarui otomatis saat perubahan PO: ${existingPO.po_number}`,
+                                updatedById: session.user.id
+                            }
+                        })
+
+                        await tx.masterItem.update({
+                            where: { id: item.masterItemId },
+                            data: { harga: newPrice }
+                        })
+                    }
+                }
+            }
         })
 
         revalidatePath("/logistik/po")
         revalidatePath(`/logistik/po/${poId}/edit`)
+        revalidatePath("/logistik/master-barang")
         return { success: true }
     } catch (e: any) {
         console.error("Update PO Error:", e)
