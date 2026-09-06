@@ -21,7 +21,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 DEFAULT_IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-DEFAULT_IMAGE_TAG="v2.0.9"
+DEFAULT_IMAGE_TAG="v2.1.0"
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} 🚀 Memulai Deployment Otomatis Rajawali BP ERP  ${NC}"
