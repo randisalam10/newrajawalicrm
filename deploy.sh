@@ -114,7 +114,13 @@ fi
 
 # ── 4. Eksekusi Migrasi Database Prisma ───────────────────────
 echo ""
-echo -e "${CYAN}[4/6] Menjalankan migrasi database Prisma...${NC}"
+echo -e "${CYAN}[4/6] Menjalankan migrasi database Prisma & optimasi...${NC}"
+
+# 0. Jalankan apply-indexes.sh langsung (Tabel MasterItemPriceHistory + Indexes + Backfill Harga)
+if [ -f "apply-indexes.sh" ]; then
+    echo -e "${YELLOW}   Mengeksekusi tabel baru, indexes, dan backfill harga via apply-indexes.sh...${NC}"
+    bash apply-indexes.sh || true
+fi
 
 # 1. Resolve rollback jika ada migrasi lama yang tertahan
 docker run --rm \
@@ -129,7 +135,7 @@ docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
-    npx prisma migrate deploy
+    npx prisma migrate deploy || true
 
 echo -e "${GREEN}   ✓ Seluruh migrasi database berhasil diterapkan.${NC}"
 

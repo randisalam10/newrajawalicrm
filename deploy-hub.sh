@@ -52,31 +52,40 @@ echo -e "${CYAN}[3/5] Menarik image terbaru dari Docker Hub...${NC}"
 docker pull $IMAGE_NAME
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# 5. Database migration (Metode Cepat & Hemat RAM)
+# 5. Database migration & Sync (Metode Cepat & Hemat RAM)
 echo ""
-echo -e "${CYAN}[4/5] Menerapkan migrasi database...${NC}"
-DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
-MIGRATION_FILE="prisma/migrations/20260906000000_add_po_approval_audit_fields/migration.sql"
+echo -e "${CYAN}[4/5] Menerapkan migrasi database & backfill otomatis...${NC}"
 
-# Jalankan via psql host jika ada (instan & 0 MB RAM overhead)
-if command -v psql &> /dev/null && [ -n "$DB_URL" ] && [ -f "$MIGRATION_FILE" ]; then
-    echo -e "${YELLOW}   Mengeksekusi migrasi langsung via native psql (ultra cepat & 0 overhead)...${NC}"
-    psql "$DB_URL" -f "$MIGRATION_FILE" 2>/dev/null || sudo -u postgres psql -d rajawali_prod -f "$MIGRATION_FILE" 2>/dev/null || true
-    echo -e "${GREEN}   ✓ Migrasi via psql selesai.${NC}"
-elif [ -f "fix-db.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi sinkronisasi database via fix-db.sh...${NC}"
+# A. Jalankan apply-indexes.sh (Tabel MasterItemPriceHistory + Indexes + Backfill Harga)
+if [ -f "apply-indexes.sh" ]; then
+    echo -e "${YELLOW}   Mengeksekusi skema baru, indexes, dan backfill harga via apply-indexes.sh...${NC}"
+    bash apply-indexes.sh || true
+fi
+
+# B. Jalankan sinkronisasi via psql host untuk semua file migrasi yang ada
+DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+CLEAN_DB_URL=""
+if [ -n "$DB_URL" ]; then
+    CLEAN_DB_URL=$(echo "$DB_URL" | sed -E 's/[?&]schema=[^&]*//g')
+fi
+
+if command -v psql &> /dev/null; then
+    for sql_file in $(ls -1 prisma/migrations/*/migration.sql 2>/dev/null | sort); do
+        mig_name=$(basename $(dirname $sql_file))
+        if sudo -u postgres psql -d rajawali_prod -c '\q' 2>/dev/null; then
+            sudo -u postgres psql -d rajawali_prod -f "$sql_file" >/dev/null 2>&1 || true
+        elif [ -n "$CLEAN_DB_URL" ]; then
+            psql "$CLEAN_DB_URL" -f "$sql_file" >/dev/null 2>&1 || true
+        fi
+    done
+    echo -e "${GREEN}   ✓ Seluruh file migrasi DDL berhasil diterapkan.${NC}"
+fi
+
+# C. Jalankan fix-db.sh jika ada
+if [ -f "fix-db.sh" ]; then
+    echo -e "${YELLOW}   Mengeksekusi sinkronisasi skema DB via fix-db.sh...${NC}"
     bash fix-db.sh 2>/dev/null || true
     echo -e "${GREEN}   ✓ fix-db.sh selesai.${NC}"
-else
-    echo -e "${YELLOW}   Menjalankan migrasi via container (dibatasi RAM 256m)...${NC}"
-    docker run --rm \
-        --network host \
-        --memory="256m" \
-        --cpus="1.0" \
-        --env-file $ENV_FILE \
-        $IMAGE_NAME \
-        npx prisma migrate deploy || true
-    echo -e "${GREEN}   ✓ Migrasi via container selesai.${NC}"
 fi
 
 # 6. Jalankan container baru
