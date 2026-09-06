@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
+import { isCorporateUser } from "@/lib/rbac"
 
 const mutuSchema = z.object({
     id: z.string().optional(),
@@ -16,12 +17,18 @@ const mutuSchema = z.object({
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
+function canManageMutu(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+}
+
 export async function getMutu() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    if (!session?.user) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const isCorp = isCorporateUser(session.user)
+    const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     return await prisma.concreteQuality.findMany({
         where: filter,
@@ -32,7 +39,9 @@ export async function getMutu() {
 
 export async function createMutu(formData: FormData) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageMutu(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data mutu beton" }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = mutuSchema.safeParse(data)
@@ -64,7 +73,9 @@ export async function createMutu(formData: FormData) {
 
 export async function updateMutu(id: string, formData: FormData) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageMutu(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data mutu beton" }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = mutuSchema.safeParse(data)
@@ -103,7 +114,9 @@ export async function updateMutu(id: string, formData: FormData) {
 
 export async function deleteMutu(id: string) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageMutu(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data mutu beton" }
+    }
 
     try {
         const isSuperAdmin = session.user.role === 'SuperAdminBP'

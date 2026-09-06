@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { isCorporateUser, getLocationFilter } from "@/lib/rbac"
 
 const incomingSchema = z.object({
     id: z.string().optional(),
@@ -19,10 +20,7 @@ export async function getIncomingMaterials() {
     const session = await auth()
     if (!session?.user) return []
 
-    const filter: any = {}
-    if (session.user.role === "AdminBP") {
-        filter.locationId = session.user.locationId
-    }
+    const filter = getLocationFilter(session.user)
 
     return await prisma.materialIncoming.findMany({
         where: {
@@ -39,13 +37,22 @@ export async function createIncomingMaterial(formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
         const rawData = {
             date: formData.get("date"),
             name: formData.get("name"),
             supplier: formData.get("supplier"),
             tonnage: formData.get("tonnage"),
             delivery_note: formData.get("delivery_note"),
-            locationId: session.user.role === "SuperAdminBP" ? formData.get("locationId") : session.user.locationId
+            locationId: targetLocationId
         }
 
         const data = incomingSchema.parse(rawData)
@@ -74,13 +81,22 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
         const rawData = {
             date: formData.get("date"),
             name: formData.get("name"),
             supplier: formData.get("supplier"),
             tonnage: formData.get("tonnage"),
             delivery_note: formData.get("delivery_note"),
-            locationId: session.user.role === "SuperAdminBP" ? formData.get("locationId") : session.user.locationId
+            locationId: targetLocationId
         }
 
         const data = incomingSchema.parse(rawData)
@@ -106,11 +122,18 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
 
 export async function deleteIncomingMaterial(id: string) {
     try {
+        const session = await auth()
+        if (!session?.user) throw new Error("Unauthorized")
+
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        }
+
         await prisma.materialIncoming.delete({ where: { id } })
         revalidatePath("/admin/material-in")
         return { success: true }
     } catch (error: any) {
-        return { error: "Gagal menghapus data" }
+        return { error: error.message || "Gagal menghapus data" }
     }
 }
 
@@ -119,13 +142,18 @@ export async function getStockLedger(locationId?: string) {
     const session = await auth()
     if (!session?.user) return []
 
-    const locFilter = session.user.role === "AdminBP" ? session.user.locationId : locationId
+    const isCorp = isCorporateUser(session.user)
+    const locFilter = isCorp
+        ? (locationId && locationId !== "all" ? locationId : undefined)
+        : session.user.locationId
+
+    const locWhere = locFilter ? { locationId: locFilter } : {}
 
     // 1. Fetch INCOMING (Semen Masuk)
     const incomings = await prisma.materialIncoming.findMany({
         where: {
             material_type: "Semen",
-            ...(locFilter !== "all" && locFilter ? { locationId: locFilter } : {})
+            ...locWhere
         },
         include: { location: true }
     })
@@ -134,7 +162,7 @@ export async function getStockLedger(locationId?: string) {
     const production = await prisma.productionTransaction.findMany({
         where: {
             status: "Confirmed",
-            ...(locFilter !== "all" && locFilter ? { locationId: locFilter } : {})
+            ...locWhere
         },
         include: {
             concreteQuality: true,

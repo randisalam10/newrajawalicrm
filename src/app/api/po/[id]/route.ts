@@ -251,29 +251,41 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 select: { fcmToken: true }
             })
 
+            let notifTitle = "Info PO"
+            let notifBody = ""
+
+            if (status === 'CANCELLED') {
+                notifTitle = "PO Dibatalkan (Mobile)"
+                notifBody = `PO ${po.po_number} telah dibatalkan oleh ${user.username || 'System'}.`
+            } else if (status === 'REJECTED') {
+                notifTitle = "PO Ditolak"
+                notifBody = `PO ${po.po_number} ditolak oleh ${user.username || 'Approver'}: ${notes || '-'}`
+            } else if (newStatus === 'APPROVED') {
+                notifTitle = "PO Disetujui Penuh"
+                notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
+            } else {
+                notifTitle = "PO Disetujui Parsial"
+                notifBody = `PO ${po.po_number} telah disetujui oleh ${user.username || 'Approver'}. Menunggu persetujuan selanjutnya.`
+            }
+
             const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
             if (tokens.length > 0) {
-                let notifTitle = "Info PO"
-                let notifBody = ""
-
-                if (status === 'CANCELLED') {
-                    notifTitle = "PO Dibatalkan (Mobile)"
-                    notifBody = `PO ${po.po_number} telah dibatalkan oleh ${user.username || 'System'}.`
-                } else if (status === 'REJECTED') {
-                    notifTitle = "PO Ditolak"
-                    notifBody = `PO ${po.po_number} ditolak oleh ${user.username || 'Approver'}: ${notes || '-'}`
-                } else if (newStatus === 'APPROVED') {
-                    notifTitle = "PO Disetujui Penuh"
-                    notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
-                } else {
-                    notifTitle = "PO Disetujui Parsial"
-                    notifBody = `PO ${po.po_number} telah disetujui oleh ${user.username || 'Approver'}. Menunggu persetujuan selanjutnya.`
-                }
-
                 await sendPushNotification(tokens, notifTitle, notifBody, { poId: po.id, type: "PO_UPDATE" })
             }
+
+            // Web Push Notification to PO creator & signers
+            const { sendWebPushToUsers } = await import('@/lib/web-push')
+            const webPushUserIds = [po.submittedById, po.ceoId, po.fvpId].filter(Boolean) as string[]
+            if (webPushUserIds.length > 0) {
+                await sendWebPushToUsers(webPushUserIds, {
+                    title: notifTitle,
+                    body: notifBody,
+                    url: "/logistik/po",
+                    tag: `po-update-${po.id}`
+                })
+            }
         } catch (fcmErr) {
-            console.error("FCM Status Update Error:", fcmErr)
+            console.error("Push Notification Status Update Error:", fcmErr)
         }
 
         return NextResponse.json({ success: true, message: `PO successfully ${status}`, data: { status: po.status } })

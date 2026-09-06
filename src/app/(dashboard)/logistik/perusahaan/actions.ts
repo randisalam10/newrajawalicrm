@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { auth } from "@/auth"
 import { z } from "zod"
 
 const companySchema = z.object({
@@ -23,6 +24,12 @@ const projectSchema = z.object({
     kode_proyek: z.string().optional(),
     companyGroupId: z.string().min(1, "Perusahaan wajib dipilih"),
 })
+
+function canManageCompany(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP" || user.role === "AdminLogistik"
+}
 
 export async function getPoCompanies() {
     return await prisma.poCompanyGroup.findMany({
@@ -49,6 +56,11 @@ export async function getUsersForSigners() {
 }
 
 export async function createPoCompany(formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola perusahaan" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = companySchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -72,6 +84,11 @@ export async function createPoCompany(formData: FormData) {
 }
 
 export async function updatePoCompany(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola perusahaan" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = companySchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -95,6 +112,11 @@ export async function updatePoCompany(id: string, formData: FormData) {
 }
 
 export async function deletePoCompany(id: string) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola perusahaan" }
+    }
+
     try {
         await prisma.poCompanyGroup.delete({ where: { id } })
         revalidatePath("/logistik/perusahaan")
@@ -105,6 +127,11 @@ export async function deletePoCompany(id: string) {
 }
 
 export async function createPoCompanyProject(formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola proyek perusahaan" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = projectSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -119,6 +146,11 @@ export async function createPoCompanyProject(formData: FormData) {
 }
 
 export async function updatePoCompanyProject(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola proyek perusahaan" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = projectSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -133,6 +165,11 @@ export async function updatePoCompanyProject(id: string, formData: FormData) {
 }
 
 export async function deletePoCompanyProject(id: string) {
+    const session = await auth()
+    if (!session?.user || !canManageCompany(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola proyek perusahaan" }
+    }
+
     try {
         await prisma.poCompanyProject.delete({ where: { id } })
         revalidatePath("/logistik/perusahaan")

@@ -13,11 +13,11 @@ export async function GET(req: Request) {
     const user = authResult.user
 
     // Allowed roles for Billing Dashboard
-    if (!['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(user.role)) {
+    if (!['AdminBP', 'SuperAdminBP', 'CEO', 'FVP', 'Approver'].includes(user.role)) {
         return NextResponse.json({ error: 'Forbidden: Insufficient privileges' }, { status: 403 })
     }
 
-    const isSuperAdmin = ['SuperAdminBP', 'CEO', 'FVP'].includes(user.role)
+    const isSuperAdmin = ['SuperAdminBP', 'CEO', 'FVP', 'Approver'].includes(user.role)
     const userLocationId = user.locationId
 
     try {
@@ -31,8 +31,8 @@ export async function GET(req: Request) {
 
         // Base filter for location scoping
         const locationFilter = isSuperAdmin
-            ? (locationIdFilter ? { locationId: locationIdFilter } : {})
-            : { locationId: userLocationId! }
+            ? (locationIdFilter && locationIdFilter !== "all" ? { locationId: locationIdFilter } : {})
+            : (userLocationId ? { locationId: userLocationId } : {})
 
         // Fetch Invoices
         const invoices = await prisma.invoice.findMany({

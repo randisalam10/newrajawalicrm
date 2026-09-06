@@ -35,6 +35,9 @@ export function RetaseClient({
     locations,
     userRole,
     customers,
+    canConfirm = true,
+    canDelete = true,
+    canManageSettings = true,
 }: {
     pendingTransactions: any[],
     confirmedTransactions: any[],
@@ -42,7 +45,11 @@ export function RetaseClient({
     locations: any[],
     userRole: string,
     customers: any[],
+    canConfirm?: boolean,
+    canDelete?: boolean,
+    canManageSettings?: boolean,
 }) {
+    const isCorporate = userRole === "SuperAdminBP" || ["CEO", "FVP", "Approver"].includes(userRole)
     const { toast } = useToast()
     const [isConfirming, setIsConfirming] = useState<string | null>(null)
     const [distanceInput, setDistanceInput] = useState("")
@@ -177,7 +184,7 @@ export function RetaseClient({
     return (
         <div className="space-y-6">
             <Tabs defaultValue="pending">
-                <TabsList className="grid w-full grid-cols-4 max-w-3xl mb-8">
+                <TabsList className={`grid w-full ${canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"} mb-8`}>
                     <TabsTrigger value="pending" className="flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4" />
                         Konfirmasi Retase ({pendingTransactions.length})
@@ -190,10 +197,12 @@ export function RetaseClient({
                         <Settings className="w-4 h-4" />
                         Laporan
                     </TabsTrigger>
-                    <TabsTrigger value="settings" className="flex items-center gap-2">
-                        <Settings className="w-4 h-4" />
-                        Pengaturan Harga Jarak
-                    </TabsTrigger>
+                    {canManageSettings && (
+                        <TabsTrigger value="settings" className="flex items-center gap-2">
+                            <Settings className="w-4 h-4" />
+                            Pengaturan Harga Jarak
+                        </TabsTrigger>
+                    )}
                 </TabsList>
 
                 <TabsContent value="pending" className="space-y-4">
@@ -229,18 +238,18 @@ export function RetaseClient({
                                                 <TableHead>
                                                     <SortableHeader<any> label="Supir / No Pol" sortKey="driver.name" sortConfig={sortConfig} onSort={toggleSort} />
                                                 </TableHead>
-                                                {userRole === 'SuperAdminBP' && (
+                                                {isCorporate && (
                                                     <TableHead>
                                                         <SortableHeader<any> label="Cabang" sortKey="location.name" sortConfig={sortConfig} onSort={toggleSort} />
                                                     </TableHead>
                                                 )}
-                                                <TableHead className="text-right">Aksi</TableHead>
+                                                {canConfirm && <TableHead className="text-right">Aksi</TableHead>}
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
                                             {items.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={userRole === 'SuperAdminBP' ? 7 : 6} className="text-center text-slate-500 py-8">
+                                                    <TableCell colSpan={(isCorporate ? 1 : 0) + (canConfirm ? 1 : 0) + 5} className="text-center text-slate-500 py-8">
                                                         Tidak ada transaksi pending.
                                                     </TableCell>
                                                 </TableRow>
@@ -263,12 +272,14 @@ export function RetaseClient({
                                                         <div className="text-xs font-medium">{t.driver.name}</div>
                                                         <div className="text-[10px] text-slate-500">{t.vehicle.plate_number}</div>
                                                     </TableCell>
-                                                    {userRole === 'SuperAdminBP' && <TableCell className="text-xs">{t.location.name}</TableCell>}
-                                                    <TableCell className="text-right">
-                                                        <Button size="sm" onClick={() => handleOpenConfirm(t)}>
-                                                            Konfirmasi
-                                                        </Button>
-                                                    </TableCell>
+                                                    {isCorporate && <TableCell className="text-xs">{t.location.name}</TableCell>}
+                                                    {canConfirm && (
+                                                        <TableCell className="text-right">
+                                                            <Button size="sm" onClick={() => handleOpenConfirm(t)}>
+                                                                Konfirmasi
+                                                            </Button>
+                                                        </TableCell>
+                                                    )}
                                                 </TableRow>
                                             ))}
                                         </TableBody>
@@ -287,8 +298,8 @@ export function RetaseClient({
                                 Cetak surat jalan dan pantau histori transaksi yang telah selesai. Segala modifikasi akan tercatat abadi di Audit Log.
                             </CardDescription>
                         </CardHeader>
-                        {/* SuperAdmin Filters */}
-                        {userRole === 'SuperAdminBP' && (
+                        {/* SuperAdmin & Corporate Filters */}
+                        {isCorporate && (
                             <div className="flex flex-wrap gap-3 px-6 pt-4 pb-0">
                                 <div className="flex items-center gap-2">
                                     <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Cabang:</label>
@@ -391,7 +402,7 @@ export function RetaseClient({
                                                 <TableHead>
                                                     <SortableHeader<any> label="Retase (Sopir)" sortKey="driver.name" sortConfig={sortConfig} onSort={toggleSort} />
                                                 </TableHead>
-                                                {userRole === 'SuperAdminBP' && (
+                                                {isCorporate && (
                                                     <TableHead>
                                                         <SortableHeader<any> label="Cabang" sortKey="location.name" sortConfig={sortConfig} onSort={toggleSort} />
                                                     </TableHead>
@@ -402,7 +413,7 @@ export function RetaseClient({
                                         <TableBody>
                                             {items.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={userRole === 'SuperAdminBP' ? 9 : 8} className="text-center text-slate-500 py-8">
+                                                    <TableCell colSpan={isCorporate ? 9 : 8} className="text-center text-slate-500 py-8">
                                                         Tidak ada histori.
                                                     </TableCell>
                                                 </TableRow>
@@ -441,7 +452,7 @@ export function RetaseClient({
                                                             <span className="text-slate-400 italic text-xs">Retase Error</span>
                                                         )}
                                                     </TableCell>
-                                                    {userRole === 'SuperAdminBP' && <TableCell className="text-xs">{t.location.name}</TableCell>}
+                                                    {isCorporate && <TableCell className="text-xs">{t.location.name}</TableCell>}
                                                     <TableCell className="text-right">
                                                         <DropdownMenu>
                                                             <DropdownMenuTrigger asChild>
@@ -457,9 +468,11 @@ export function RetaseClient({
                                                                 <DropdownMenuItem disabled>
                                                                     <Edit className="mr-2 h-4 w-4" /> Edit Transaksi
                                                                 </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => setDeleteId(t.id)} className="text-red-600 focus:bg-red-50">
-                                                                    <Trash2 className="mr-2 h-4 w-4" /> Hapus Transaksi (Log)
-                                                                </DropdownMenuItem>
+                                                                {canDelete && (
+                                                                    <DropdownMenuItem onClick={() => setDeleteId(t.id)} className="text-red-600 focus:bg-red-50">
+                                                                        <Trash2 className="mr-2 h-4 w-4" /> Hapus Transaksi (Log)
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </TableCell>
@@ -486,8 +499,9 @@ export function RetaseClient({
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="settings">
-                    <Card className="max-w-2xl">
+                {canManageSettings && (
+                    <TabsContent value="settings">
+                        <Card className="max-w-2xl">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Settings className="w-5 h-5 text-blue-600" />
@@ -715,7 +729,8 @@ export function RetaseClient({
                             </form>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                    </TabsContent>
+                )}
             </Tabs>
 
             {/* Dialog Alert Peringatan Konfirmasi Backdate */}

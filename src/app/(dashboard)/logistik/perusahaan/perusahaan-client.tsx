@@ -24,7 +24,7 @@ import {
     createPoCompanyProject, updatePoCompanyProject, deletePoCompanyProject
 } from "./actions"
 
-export function PerusahaanClient({ initialData, signers }: { initialData: any[], signers: any[] }) {
+export function PerusahaanClient({ initialData, signers, canManage = true }: { initialData: any[], signers: any[], canManage?: boolean }) {
     const [expandedCompany, setExpandedCompany] = useState<string | null>(null)
     const [dialogMode, setDialogMode] = useState<"companyNew" | "companyEdit" | "projectNew" | "projectEdit" | null>(null)
     const [editData, setEditData] = useState<any>(null)
@@ -61,7 +61,7 @@ export function PerusahaanClient({ initialData, signers }: { initialData: any[],
         }
     }
 
-    function openCompanyDialog(mode: "companyNew" | "companyEdit", data?: any) {
+    const openCompanyDialog = (mode: "companyNew" | "companyEdit", data?: any) => {
         setEditData(data || null)
         setLogoPreview(data?.logo_url || null)
         setLogoUrl(data?.logo_url || "")
@@ -81,9 +81,11 @@ export function PerusahaanClient({ initialData, signers }: { initialData: any[],
         <div className="space-y-4 p-4">
             <div className="flex justify-between items-center">
                 <div />
-                <Button onClick={() => openCompanyDialog("companyNew")}>
-                    <Plus className="w-4 h-4 mr-2" /> Tambah Perusahaan
-                </Button>
+                {canManage && (
+                    <Button onClick={() => openCompanyDialog("companyNew")}>
+                        <Plus className="w-4 h-4 mr-2" /> Tambah Perusahaan
+                    </Button>
+                )}
             </div>
 
             <div className="rounded-md border bg-white overflow-hidden">
@@ -96,13 +98,13 @@ export function PerusahaanClient({ initialData, signers }: { initialData: any[],
                             <TableHead>Kota</TableHead>
                             <TableHead>Pimpinan</TableHead>
                             <TableHead>Proyek</TableHead>
-                            <TableHead className="w-[120px] text-center">Aksi</TableHead>
+                            {canManage && <TableHead className="w-[120px] text-center">Aksi</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {initialData.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={7} className="text-center text-muted-foreground h-24">
+                                <TableCell colSpan={canManage ? 7 : 6} className="text-center text-muted-foreground h-24">
                                     Belum ada perusahaan. Tambah terlebih dahulu.
                                 </TableCell>
                             </TableRow>
@@ -130,48 +132,52 @@ export function PerusahaanClient({ initialData, signers }: { initialData: any[],
                                     <TableCell>
                                         <Badge variant="secondary">{company.projects?.length ?? 0} proyek</Badge>
                                     </TableCell>
-                                    <TableCell onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8" title="Tambah Proyek"
-                                                onClick={() => { setParentCompany(company); setEditData(null); setExpandedCompany(company.id); setDialogMode("projectNew") }}
-                                            >
-                                                <FolderOpen className="w-4 h-4 text-green-600" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8"
-                                                onClick={() => openCompanyDialog("companyEdit", company)}
-                                            >
-                                                <Pencil className="w-4 h-4 text-slate-500" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8"
-                                                onClick={async () => {
-                                                    if (!confirm(`Hapus perusahaan "${company.name}"?`)) return
-                                                    const r = await deletePoCompany(company.id)
-                                                    if (!r.success) alert(r.error)
-                                                }}
-                                            >
-                                                <Trash2 className="w-4 h-4 text-red-500" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                                    {canManage && (
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    variant="ghost" size="icon" className="h-8 w-8" title="Tambah Proyek"
+                                                    onClick={() => { setParentCompany(company); setEditData(null); setExpandedCompany(company.id); setDialogMode("projectNew") }}
+                                                >
+                                                    <FolderOpen className="w-4 h-4 text-green-600" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost" size="icon" className="h-8 w-8"
+                                                    onClick={() => openCompanyDialog("companyEdit", company)}
+                                                >
+                                                    <Pencil className="w-4 h-4 text-slate-500" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost" size="icon" className="h-8 w-8"
+                                                    onClick={async () => {
+                                                        if (!confirm(`Hapus perusahaan "${company.name}"?`)) return
+                                                        const r = await deletePoCompany(company.id)
+                                                        if (!r.success) alert(r.error)
+                                                    }}
+                                                >
+                                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    )}
                                 </TableRow>
 
                                 {expandedCompany === company.id && (
                                     <TableRow className="bg-slate-50/80">
-                                        <TableCell colSpan={7} className="p-0">
+                                        <TableCell colSpan={canManage ? 7 : 6} className="p-0">
                                             <div className="px-10 py-3 border-l-4 border-blue-200 bg-blue-50/30">
                                                 <div className="flex justify-between items-center mb-2">
                                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                                         Proyek / Lokasi <span className="text-blue-700">{company.name}</span>
                                                     </p>
-                                                    <Button
-                                                        size="sm" variant="outline" className="h-7 text-xs"
-                                                        onClick={() => { setParentCompany(company); setEditData(null); setDialogMode("projectNew") }}
-                                                    >
-                                                        <Plus className="w-3 h-3 mr-1" /> Tambah Proyek
-                                                    </Button>
+                                                    {canManage && (
+                                                        <Button
+                                                            size="sm" variant="outline" className="h-7 text-xs"
+                                                            onClick={() => { setParentCompany(company); setEditData(null); setDialogMode("projectNew") }}
+                                                        >
+                                                            <Plus className="w-3 h-3 mr-1" /> Tambah Proyek
+                                                        </Button>
+                                                    )}
                                                 </div>
                                                 {(!company.projects || company.projects.length === 0) ? (
                                                     <p className="text-sm text-slate-400 italic py-2">Belum ada proyek.</p>
@@ -188,26 +194,28 @@ export function PerusahaanClient({ initialData, signers }: { initialData: any[],
                                                                             </span>
                                                                         )}
                                                                     </td>
-                                                                    <td className="py-2 w-[80px]">
-                                                                        <div className="flex gap-1 justify-end">
-                                                                            <Button
-                                                                                variant="ghost" size="icon" className="h-7 w-7"
-                                                                                onClick={() => { setParentCompany(company); setEditData(proj); setDialogMode("projectEdit") }}
-                                                                            >
-                                                                                <Pencil className="w-3 h-3 text-slate-500" />
-                                                                            </Button>
-                                                                            <Button
-                                                                                variant="ghost" size="icon" className="h-7 w-7"
-                                                                                onClick={async () => {
-                                                                                    if (!confirm("Hapus proyek ini?")) return
-                                                                                    const r = await deletePoCompanyProject(proj.id)
-                                                                                    if (!r.success) alert(r.error)
-                                                                                }}
-                                                                            >
-                                                                                <Trash2 className="w-3 h-3 text-red-500" />
-                                                                            </Button>
-                                                                        </div>
-                                                                    </td>
+                                                                    {canManage && (
+                                                                        <td className="py-2 w-[80px]">
+                                                                            <div className="flex gap-1 justify-end">
+                                                                                <Button
+                                                                                    variant="ghost" size="icon" className="h-7 w-7"
+                                                                                    onClick={() => { setParentCompany(company); setEditData(proj); setDialogMode("projectEdit") }}
+                                                                                >
+                                                                                    <Pencil className="w-3 h-3 text-slate-500" />
+                                                                                </Button>
+                                                                                <Button
+                                                                                    variant="ghost" size="icon" className="h-7 w-7"
+                                                                                    onClick={async () => {
+                                                                                        if (!confirm("Hapus proyek ini?")) return
+                                                                                        const r = await deletePoCompanyProject(proj.id)
+                                                                                        if (!r.success) alert(r.error)
+                                                                                    }}
+                                                                                >
+                                                                                    <Trash2 className="w-3 h-3 text-red-500" />
+                                                                                </Button>
+                                                                            </div>
+                                                                        </td>
+                                                                    )}
                                                                 </tr>
                                                             ))}
                                                         </tbody>

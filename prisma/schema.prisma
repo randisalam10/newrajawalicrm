@@ -158,6 +158,23 @@ model User {
 
   // Master Item Price History
   masterItemPriceHistories MasterItemPriceHistory[] @relation("PriceHistoryUpdatedBy")
+
+  // Web Push Subscriptions
+  webPushSubscriptions WebPushSubscription[]
+}
+
+model WebPushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Employee {

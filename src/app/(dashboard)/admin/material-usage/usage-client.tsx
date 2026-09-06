@@ -23,19 +23,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 export function MaterialUsageClient({
     initialData,
     locations,
-    userRole
+    userRole,
+    isCorporate = false,
 }: {
     initialData: any[]
     locations: any[]
     userRole: string
+    isCorporate?: boolean
 }) {
     const [selectedLocation, setSelectedLocation] = useState<string>("all")
+    const showCabang = userRole === "SuperAdminBP" || isCorporate
 
-    // Filter by location if SuperAdmin
+    // Filter by location if SuperAdmin or Corporate
     const filteredSourceData = useMemo(() => {
-        if (selectedLocation === "all" || userRole !== "SuperAdminBP") return initialData
+        if (selectedLocation === "all" || !showCabang) return initialData
         return initialData.filter(item => item.locationId === selectedLocation)
-    }, [initialData, selectedLocation, userRole])
+    }, [initialData, selectedLocation, showCabang])
 
     // Format Data & Calculate Usages
     const tableData = useMemo(() => {
@@ -95,7 +98,7 @@ export function MaterialUsageClient({
                     <h1 className="text-3xl font-bold tracking-tight">Dashboard Penggunaan Material</h1>
                     <p className="text-muted-foreground">Analisa konsumsi Semen, Pasir, dan Batu berdasarkan Transaksi Produksi.</p>
                 </div>
-                {userRole === "SuperAdminBP" && (
+                {showCabang && (
                     <div className="w-full sm:w-64">
                         <Select value={selectedLocation} onValueChange={setSelectedLocation}>
                             <SelectTrigger className="bg-white">
@@ -202,7 +205,7 @@ export function MaterialUsageClient({
                                     <TableHead>
                                         <SortableHeader<any> label="Tanggal" sortKey="rawDate" sortConfig={sortConfig} onSort={toggleSort} />
                                     </TableHead>
-                                    {userRole === "SuperAdminBP" && (
+                                    {showCabang && (
                                         <TableHead>
                                             <SortableHeader<any> label="Cabang" sortKey="locationName" sortConfig={sortConfig} onSort={toggleSort} />
                                         </TableHead>
@@ -233,7 +236,7 @@ export function MaterialUsageClient({
                             <TableBody>
                                 {items.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={userRole === "SuperAdminBP" ? 9 : 8} className="h-24 text-center text-muted-foreground">
+                                        <TableCell colSpan={showCabang ? 9 : 8} className="h-24 text-center text-muted-foreground">
                                             Tidak ada data penggunaan material.
                                         </TableCell>
                                     </TableRow>
@@ -241,7 +244,7 @@ export function MaterialUsageClient({
                                 {items.map((row) => (
                                     <TableRow key={row.id} className="hover:bg-slate-50/50 transition-colors">
                                         <TableCell className="text-xs font-medium">{row.date}</TableCell>
-                                        {userRole === "SuperAdminBP" && (
+                                        {showCabang && (
                                             <TableCell>
                                                 <Badge variant="outline" className="text-[10px] uppercase font-bold text-blue-600 border-blue-200">
                                                     {row.locationName}

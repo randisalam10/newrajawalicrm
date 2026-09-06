@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useMemo, useTransition, useRef } from "react"
+import React, { useState, useEffect, useMemo, useTransition, useRef } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -57,12 +57,18 @@ function PaginationBar({ page, total, perPage, onPageChange }: { page: number, t
     )
 }
 
-export function BillingClient({ initialData, locations, userRole, userLocationId }: {
-    initialData: any, locations: any[], userRole: string, userLocationId: string
+export function BillingClient({ initialData, locations, userRole, userLocationId, canManage = true }: {
+    initialData: any, locations: any[], userRole: string, userLocationId: string, canManage?: boolean
 }) {
+    const [mounted, setMounted] = useState(false)
+    useEffect(() => {
+        setMounted(true)
+    }, [])
+
+    const isCorporate = userRole === "SuperAdminBP" || ["CEO", "FVP", "Approver"].includes(userRole)
     const [data, setData] = useState(initialData)
     const [isLoading, setIsLoading] = useState(false)
-    const [selectedLocation, setSelectedLocation] = useState(userRole !== "SuperAdminBP" ? userLocationId : "all")
+    const [selectedLocation, setSelectedLocation] = useState(!isCorporate && userLocationId ? userLocationId : "all")
 
     // Unbilled state
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
@@ -375,10 +381,18 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     }, [data, statusFilter, invoiceSearch, invoiceSort])
 
 
+    if (!mounted) {
+        return (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                <span className="text-sm font-medium">Memuat Tagihan & Invoice...</span>
+            </div>
+        )
+    }
+
     return (
         <div className="space-y-4">
-            {/* Location filter for SuperAdmin */}
-            {userRole === "SuperAdminBP" && (
+            {/* Location filter for SuperAdmin and Corporate */}
+            {isCorporate && (
                 <div className="flex items-center gap-3">
                     <Label className="text-sm whitespace-nowrap">Cabang:</Label>
                     <Select
@@ -445,9 +459,11 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             <SelectItem value="mutu">Group by Mutu</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                    <Button variant="outline" size="sm" className="h-8 text-xs" onClick={selectAll}>
-                                        {selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0 ? "Batal Pilih" : "Pilih Semua"}
-                                    </Button>
+                                     {canManage && (
+                                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={selectAll}>
+                                            {selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0 ? "Batal Pilih" : "Pilih Semua"}
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         </CardHeader>
@@ -462,13 +478,15 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     <Table>
                                         <TableHeader>
                                             <TableRow className="bg-slate-50">
-                                                <TableHead className="w-8 px-3">
-                                                    <input type="checkbox"
-                                                        checked={selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0}
-                                                        onChange={selectAll}
-                                                        className="rounded"
-                                                    />
-                                                </TableHead>
+                                                {canManage && (
+                                                    <TableHead className="w-8 px-3">
+                                                        <input type="checkbox"
+                                                            checked={selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0}
+                                                            onChange={selectAll}
+                                                            className="rounded"
+                                                        />
+                                                    </TableHead>
+                                                )}
                                                 <TableHead className="text-xs">Tanggal</TableHead>
                                                 <TableHead className="text-xs">Customer / Proyek</TableHead>
                                                 <TableHead className="text-xs">Mutu</TableHead>
@@ -484,16 +502,21 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             {groupedUnbilled.map(group => (
                                                 <React.Fragment key={group.key}>
                                                     {groupBy !== "flat" && (
-                                                        <TableRow className="bg-slate-50 hover:bg-slate-100 cursor-pointer" onClick={() => selectGroup(group.items)}>
-                                                            <TableCell className="px-3">
-                                                                <input type="checkbox"
-                                                                    checked={group.items.every((tx: any) => selectedTxIds.has(tx.id))}
-                                                                    onChange={() => selectGroup(group.items)}
-                                                                    className="rounded"
-                                                                    onClick={e => e.stopPropagation()}
-                                                                />
-                                                            </TableCell>
-                                                            <TableCell colSpan={8} className="py-1.5 font-semibold text-xs text-slate-700">
+                                                        <TableRow
+                                                            className={`bg-slate-50 hover:bg-slate-100 ${canManage ? "cursor-pointer" : ""}`}
+                                                            onClick={() => canManage && selectGroup(group.items)}
+                                                        >
+                                                            {canManage && (
+                                                                <TableCell className="px-3">
+                                                                    <input type="checkbox"
+                                                                        checked={group.items.every((tx: any) => selectedTxIds.has(tx.id))}
+                                                                        onChange={() => selectGroup(group.items)}
+                                                                        className="rounded"
+                                                                        onClick={e => e.stopPropagation()}
+                                                                    />
+                                                                </TableCell>
+                                                            )}
+                                                            <TableCell colSpan={canManage ? 9 : 9} className="py-1.5 font-semibold text-xs text-slate-700">
                                                                 {groupBy === "date" ? `📅 ${group.label}` : groupBy === "customer" ? `👤 ${group.label}` : `🔷 Mutu ${group.label}`}
                                                                 <span className="ml-2 text-slate-400 font-normal">
                                                                     ({group.items.length} tx · {group.items.reduce((s: number, tx: any) => s + tx.volume_cubic, 0).toFixed(2)} m³)
@@ -507,12 +530,14 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         return (
                                                             <TableRow
                                                                 key={tx.id}
-                                                                className={`text-xs cursor-pointer ${selectedTxIds.has(tx.id) ? "bg-blue-50" : ""}`}
-                                                                onClick={() => toggleTx(tx.id)}
+                                                                className={`text-xs ${canManage ? "cursor-pointer" : ""} ${selectedTxIds.has(tx.id) ? "bg-blue-50" : ""}`}
+                                                                onClick={() => canManage && toggleTx(tx.id)}
                                                             >
-                                                                <TableCell className="px-3">
-                                                                    <input type="checkbox" checked={selectedTxIds.has(tx.id)} onChange={() => toggleTx(tx.id)} className="rounded" onClick={e => e.stopPropagation()} />
-                                                                </TableCell>
+                                                                {canManage && (
+                                                                    <TableCell className="px-3">
+                                                                        <input type="checkbox" checked={selectedTxIds.has(tx.id)} onChange={() => toggleTx(tx.id)} className="rounded" onClick={e => e.stopPropagation()} />
+                                                                    </TableCell>
+                                                                )}
                                                                 <TableCell className="whitespace-nowrap">{fmtDate(tx.date)}</TableCell>
                                                                 <TableCell>
                                                                     <div className="font-medium text-slate-800">{tx.project?.customer?.customer_name}</div>
@@ -549,7 +574,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             )}
 
                             {/* Sticky bottom bar */}
-                            {selectedTxIds.size > 0 && (
+                            {canManage && selectedTxIds.size > 0 && (
                                 <div className="sticky bottom-0 bg-blue-700 text-white px-4 py-3 flex items-center justify-between rounded-b-lg">
                                     <span className="text-sm font-medium">
                                         ☑ {selectedTxIds.size} transaksi dipilih &nbsp;·&nbsp; {selectedVolume.toFixed(2)} m³
@@ -749,7 +774,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                     <TableHead className="text-xs">Customer / Proyek</TableHead>
                                                     <TableHead className="text-xs text-right">Total Setor</TableHead>
                                                     <TableHead className="text-xs text-right">Sisa</TableHead>
-                                                    <TableHead className="w-24"></TableHead>
+                                                    {canManage && <TableHead className="w-24"></TableHead>}
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
@@ -763,12 +788,14 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         <TableCell className={`text-right font-bold ${dep.totalDeposited > 0 ? 'text-green-700' : 'text-red-600'}`}>
                                                             {fmt(dep.totalDeposited)}
                                                         </TableCell>
-                                                        <TableCell>
-                                                            <Button size="sm" variant="outline" className="h-7 text-xs"
-                                                                onClick={() => { setDepositTarget(dep); setShowDepositDialog(true) }}>
-                                                                <Plus className="w-3 h-3 mr-1" /> Setor
-                                                            </Button>
-                                                        </TableCell>
+                                                        {canManage && (
+                                                            <TableCell>
+                                                                <Button size="sm" variant="outline" className="h-7 text-xs"
+                                                                    onClick={() => { setDepositTarget(dep); setShowDepositDialog(true) }}>
+                                                                    <Plus className="w-3 h-3 mr-1" /> Setor
+                                                                </Button>
+                                                            </TableCell>
+                                                        )}
                                                     </TableRow>
                                                 ))}
                                             </TableBody>
@@ -1057,7 +1084,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         <div className="flex items-center gap-2 flex-shrink-0">
                                                             <span className={`font-bold whitespace-nowrap ${p.is_cancelled ? 'text-slate-400 line-through' : 'text-green-700'
                                                                 }`}>{fmt(p.amount)}</span>
-                                                            {!p.is_cancelled && invoiceDetail.status !== "CANCELLED" && (
+                                                            {!p.is_cancelled && invoiceDetail.status !== "CANCELLED" && canManage && (
                                                                 <button
                                                                     onClick={() => { setCancelPaymentTarget(p); setCancelPaymentReason("") }}
                                                                     className="text-red-400 hover:text-red-600 transition-colors"
@@ -1076,7 +1103,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
                             {/* Actions */}
                             <div className="flex gap-2 flex-wrap pt-2 border-t">
-                                {invoiceDetail.status !== "PAID" && invoiceDetail.status !== "CANCELLED" && (
+                                {canManage && invoiceDetail.status !== "PAID" && invoiceDetail.status !== "CANCELLED" && (
                                     <Button className="h-9" onClick={() => setShowPaymentDialog(true)}>
                                         <Plus className="w-4 h-4 mr-1.5" /> Catat Pembayaran
                                     </Button>
@@ -1084,7 +1111,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 <Button variant="outline" className="h-9" onClick={() => window.open(`/print/invoice/${invoiceDetail.id}`, "_blank")}>
                                     <Printer className="w-4 h-4 mr-1.5" /> Cetak
                                 </Button>
-                                {invoiceDetail.status !== "CANCELLED" && (
+                                {canManage && invoiceDetail.status !== "CANCELLED" && (
                                     <Button
                                         variant="outline"
                                         className="h-9 text-red-600 border-red-200 hover:bg-red-50"

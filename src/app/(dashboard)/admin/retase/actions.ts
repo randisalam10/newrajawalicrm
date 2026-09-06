@@ -5,6 +5,20 @@ import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
+function isCorporate(session: any): boolean {
+    if (!session?.user) return false
+    const role = session.user.role || ""
+    const scope = session.user.roleScope || ""
+    return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP", "Approver"].includes(role)
+}
+
+function canManageRetase(session: any): boolean {
+    if (!session?.user) return false
+    const role = session.user.role || ""
+    if (["CEO", "FVP", "Approver"].includes(role)) return false
+    return role === "SuperAdminBP" || role === "AdminBP"
+}
+
 // --- SETTINGS ---
 
 export async function getRetaseSettings() {
@@ -12,12 +26,10 @@ export async function getRetaseSettings() {
     if (!session?.user?.employeeId) return null
 
     let filter = {}
-    if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
+    if (!isCorporate(session) && session.user.locationId) {
         filter = { locationId: session.user.locationId }
     }
 
-    // For SuperAdmin, just fetch all settings to display or let them filter in UI
-    // Or simpler: We return the settings alongside the locations they map to
     const settings = await (prisma as any).retaseSetting.findMany({
         where: filter,
         include: { location: true }
@@ -37,6 +49,7 @@ const updateSettingSchema = z.object({
 export async function upsertRetaseSetting(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const parsed = updateSettingSchema.parse(Object.fromEntries(formData.entries()))
@@ -198,7 +211,7 @@ export async function getTransactions(status: "Pending" | "Confirmed") {
     if (!session?.user?.employeeId) return []
 
     let filter: any = { status }
-    if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
+    if (!isCorporate(session) && session.user.locationId) {
         filter.locationId = session.user.locationId
     }
 
@@ -220,6 +233,7 @@ export async function getTransactions(status: "Pending" | "Confirmed") {
 export async function confirmTransaction(transactionId: string, distance: number) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const transaction: any = await prisma.productionTransaction.findUnique({
@@ -279,6 +293,7 @@ export async function confirmTransaction(transactionId: string, distance: number
 export async function deleteConfirmedTransaction(transactionId: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const transaction: any = await prisma.productionTransaction.findUnique({

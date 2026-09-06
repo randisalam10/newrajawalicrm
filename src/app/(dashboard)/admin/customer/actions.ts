@@ -5,11 +5,18 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
-function isUserSuperAdmin(session: any): boolean {
+function isCorporate(session: any): boolean {
     if (!session?.user) return false
     const role = session.user.role || ""
     const scope = session.user.roleScope || ""
-    return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP"].includes(role)
+    return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP", "Approver"].includes(role)
+}
+
+function canManageCustomer(session: any): boolean {
+    if (!session?.user) return false
+    const role = session.user.role || ""
+    if (["CEO", "FVP", "Approver"].includes(role)) return false
+    return role === "SuperAdminBP" || role === "AdminBP"
 }
 
 const projectSchema = z.object({
@@ -35,7 +42,7 @@ export async function getCustomers() {
         const session = await auth()
         if (!session?.user?.employeeId) return []
 
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = isCorporate(session)
         const userLocId = session.user.locationId
 
         const filter = isSuperAdmin
@@ -63,6 +70,7 @@ export async function getCustomers() {
 export async function createCustomer(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     const data = {
         ...Object.fromEntries(formData.entries()),
@@ -75,7 +83,7 @@ export async function createCustomer(formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = session.user.role === "SuperAdminBP"
         const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
 
         if (!finalLocationId) {
@@ -108,6 +116,7 @@ export async function createCustomer(formData: FormData) {
 export async function updateCustomer(id: string, formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     const data = {
         ...Object.fromEntries(formData.entries()),
@@ -120,7 +129,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = session.user.role === "SuperAdminBP"
         const existing = await prisma.customer.findUnique({ where: { id } })
 
         // Verify ownership if not SuperAdmin
@@ -160,9 +169,10 @@ export async function updateCustomer(id: string, formData: FormData) {
 export async function deleteCustomer(id: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = session.user.role === "SuperAdminBP"
         const existing = await prisma.customer.findUnique({ where: { id } })
 
         // Verify ownership if not SuperAdmin
@@ -186,7 +196,7 @@ export async function getCustomersWithProjects() {
         const session = await auth()
         if (!session?.user?.employeeId) return []
 
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = isCorporate(session)
         const userLocId = session.user.locationId
 
         const filter = isSuperAdmin
@@ -224,6 +234,7 @@ export async function getCustomersWithProjects() {
 export async function createProject(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     const data = {
         ...Object.fromEntries(formData.entries()),
@@ -259,6 +270,7 @@ export async function createProject(formData: FormData) {
 export async function updateProject(id: string, formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     const data = {
         ...Object.fromEntries(formData.entries()),
@@ -295,6 +307,7 @@ export async function updateProject(id: string, formData: FormData) {
 export async function deleteProject(id: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         await prisma.project.delete({ where: { id } })
@@ -309,6 +322,8 @@ export async function deleteProject(id: string) {
 export async function upsertProjectPrice(projectId: string, qualityId: string, price: number) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+
     try {
         await prisma.projectPrice.upsert({
             where: { projectId_qualityId: { projectId, qualityId } },
@@ -326,6 +341,8 @@ export async function upsertProjectPrice(projectId: string, qualityId: string, p
 export async function deleteProjectPrice(projectId: string, qualityId: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+
     try {
         await prisma.projectPrice.delete({
             where: { projectId_qualityId: { projectId, qualityId } },
@@ -343,7 +360,7 @@ export async function getConcreteQualitiesForLocation() {
         const session = await auth()
         if (!session?.user?.employeeId) return []
 
-        const isSuperAdmin = isUserSuperAdmin(session)
+        const isSuperAdmin = isCorporate(session)
         const userLocId = session.user.locationId
 
         const filter = isSuperAdmin

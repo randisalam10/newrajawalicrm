@@ -17,6 +17,12 @@ const itemSchema = z.object({
     reason: z.string().optional(),
 })
 
+function canManageMasterBarang(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP" || user.role === "AdminLogistik"
+}
+
 export async function getMasterItems() {
     return await prisma.masterItem.findMany({
         include: {
@@ -40,12 +46,16 @@ export async function getMasterItems() {
 }
 
 export async function createMasterItem(formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageMasterBarang(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola master barang" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = itemSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
-    const session = await auth()
-    const userId = session?.user?.id
+    const userId = session.user.id
 
     try {
         const { reason, ...itemData } = parsed.data
@@ -73,12 +83,16 @@ export async function createMasterItem(formData: FormData) {
 }
 
 export async function updateMasterItem(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageMasterBarang(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola master barang" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = itemSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
-    const session = await auth()
-    const userId = session?.user?.id
+    const userId = session.user.id
 
     try {
         const currentItem = await prisma.masterItem.findUnique({ where: { id } })
@@ -122,7 +136,10 @@ export async function updateMasterItem(id: string, formData: FormData) {
 
 export async function quickUpdateItemPrice(masterItemId: string, newPrice: number, reason?: string) {
     const session = await auth()
-    const userId = session?.user?.id
+    if (!session?.user || !canManageMasterBarang(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengubah harga barang" }
+    }
+    const userId = session.user.id
 
     try {
         const currentItem = await prisma.masterItem.findUnique({ where: { id: masterItemId } })
@@ -162,6 +179,11 @@ export async function quickUpdateItemPrice(masterItemId: string, newPrice: numbe
 }
 
 export async function deleteMasterItem(id: string) {
+    const session = await auth()
+    if (!session?.user || !canManageMasterBarang(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola master barang" }
+    }
+
     try {
         await prisma.masterItem.delete({ where: { id } })
         revalidatePath("/logistik/master-barang")

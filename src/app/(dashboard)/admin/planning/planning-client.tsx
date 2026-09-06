@@ -338,12 +338,13 @@ function PlanFormDialog({
 // ─── Plan Card (list view) ────────────────────────────────────────────────────
 
 function PlanCard({
-    plan, onEdit, onDelete, onStatusChange,
+    plan, onEdit, onDelete, onStatusChange, canManage = true,
 }: {
     plan: Plan
     onEdit: (p: Plan) => void
     onDelete: (p: Plan) => void
     onStatusChange: (id: string, status: PlanStatus) => void
+    canManage?: boolean
 }) {
     const [isPending, startTransition] = useTransition()
     const dateObj = new Date(plan.date)
@@ -381,22 +382,28 @@ function PlanCard({
                     )}
                 </div>
                 <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                    <Select value={plan.status} onValueChange={v => startTransition(() => onStatusChange(plan.id, v as PlanStatus))} disabled={isPending}>
-                        <SelectTrigger className="h-7 text-[11px] w-[130px] border-slate-200"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {(Object.keys(STATUS_CONFIG) as PlanStatus[]).map(s => (
-                                <SelectItem key={s} value={s} className="text-xs">{STATUS_CONFIG[s].label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600" onClick={() => onEdit(plan)}>
-                            <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => onDelete(plan)}>
-                            <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                    </div>
+                    {canManage ? (
+                        <Select value={plan.status} onValueChange={v => startTransition(() => onStatusChange(plan.id, v as PlanStatus))} disabled={isPending}>
+                            <SelectTrigger className="h-7 text-[11px] w-[130px] border-slate-200"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {(Object.keys(STATUS_CONFIG) as PlanStatus[]).map(s => (
+                                    <SelectItem key={s} value={s} className="text-xs">{STATUS_CONFIG[s].label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    ) : (
+                        <StatusBadge status={plan.status} />
+                    )}
+                    {canManage && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600" onClick={() => onEdit(plan)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-600" onClick={() => onDelete(plan)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -411,12 +418,14 @@ function CalendarView({
     onEditPlan,
     onDeletePlan,
     onStatusChange,
+    canManage = true,
 }: {
     plans: Plan[]
     onDayClick: (dateStr: string) => void
     onEditPlan: (p: Plan) => void
     onDeletePlan: (p: Plan) => void
     onStatusChange: (id: string, status: PlanStatus) => void
+    canManage?: boolean
 }) {
     const [currentMonth, setCurrentMonth] = useState(new Date())
     const [selectedDay, setSelectedDay] = useState<string | null>(
@@ -572,7 +581,7 @@ function CalendarView({
                                     : "Belum ada planning"}
                             </div>
                         </div>
-                        {selectedDay && (
+                        {selectedDay && canManage && (
                             <Button size="sm" className="h-8 gap-1 text-xs" onClick={() => onDayClick(selectedDay)}>
                                 <Plus className="h-3.5 w-3.5" /> Tambah
                             </Button>
@@ -583,7 +592,7 @@ function CalendarView({
                         <div className="border border-dashed rounded-xl h-40 flex flex-col items-center justify-center text-slate-400 gap-2">
                             <CalendarClock className="w-8 h-8 opacity-20" />
                             <p className="text-xs">Klik tanggal lain atau</p>
-                            {selectedDay && (
+                            {selectedDay && canManage && (
                                 <Button variant="outline" size="sm" className="text-xs h-7 gap-1"
                                     onClick={() => onDayClick(selectedDay)}>
                                     <Plus className="w-3 h-3" /> Tambah Planning
@@ -596,16 +605,18 @@ function CalendarView({
                                 <div key={plan.id} className="group border rounded-xl p-3 bg-white shadow-sm hover:shadow-md transition-all">
                                     <div className="flex items-start justify-between gap-2 mb-2">
                                         <StatusBadge status={plan.status} />
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-blue-600"
-                                                onClick={() => onEditPlan(plan)}>
-                                                <Pencil className="h-3 w-3" />
-                                            </Button>
-                                            <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-600"
-                                                onClick={() => onDeletePlan(plan)}>
-                                                <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                        </div>
+                                        {canManage && (
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-blue-600"
+                                                    onClick={() => onEditPlan(plan)}>
+                                                    <Pencil className="h-3 w-3" />
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-600"
+                                                    onClick={() => onDeletePlan(plan)}>
+                                                    <Trash2 className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="font-semibold text-xs text-slate-800">{plan.project.customer.customer_name}</div>
                                     <div className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
@@ -625,21 +636,23 @@ function CalendarView({
                                     {plan.notes && <p className="text-[10px] text-slate-400 mt-1.5 italic">{plan.notes}</p>}
 
                                     {/* Quick status change */}
-                                    <div className="mt-2 pt-2 border-t border-slate-50">
-                                        <Select value={plan.status}
-                                            onValueChange={v => onStatusChange(plan.id, v as PlanStatus)}>
-                                            <SelectTrigger className="h-6 text-[10px] w-full border-slate-200">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {(Object.keys(STATUS_CONFIG) as PlanStatus[]).map(s => (
-                                                    <SelectItem key={s} value={s} className="text-xs">
-                                                        {STATUS_CONFIG[s].label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                    {canManage && (
+                                        <div className="mt-2 pt-2 border-t border-slate-50">
+                                            <Select value={plan.status}
+                                                onValueChange={v => onStatusChange(plan.id, v as PlanStatus)}>
+                                                <SelectTrigger className="h-6 text-[10px] w-full border-slate-200">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {(Object.keys(STATUS_CONFIG) as PlanStatus[]).map(s => (
+                                                        <SelectItem key={s} value={s} className="text-xs">
+                                                            {STATUS_CONFIG[s].label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -655,9 +668,11 @@ function CalendarView({
 export function PlanningClient({
     plans: initialPlans,
     masters,
+    canManage = true,
 }: {
     plans: Plan[]
     masters: Masters
+    canManage?: boolean
 }) {
     const { toast } = useToast()
     const [plans] = useState<Plan[]>(initialPlans)
@@ -790,13 +805,15 @@ export function PlanningClient({
                                     <LayoutList className="w-3.5 h-3.5" /> List
                                 </Button>
                             </div>
-                            <Button
-                                onClick={() => { setEditTarget(null); setDefaultFormDate(""); setShowForm(true) }}
-                                className="gap-1.5 h-9 text-sm"
-                            >
-                                <Plus className="h-4 w-4" />
-                                Tambah
-                            </Button>
+                            {canManage && (
+                                <Button
+                                    onClick={() => { setEditTarget(null); setDefaultFormDate(""); setShowForm(true) }}
+                                    className="gap-1.5 h-9 text-sm"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    Tambah
+                                </Button>
+                            )}
                         </div>
                     </div>
                 </CardHeader>
@@ -848,6 +865,7 @@ export function PlanningClient({
                             onEditPlan={openEdit}
                             onDeletePlan={setDeleteTarget}
                             onStatusChange={handleStatusChange}
+                            canManage={canManage}
                         />
                     )}
 
@@ -857,9 +875,11 @@ export function PlanningClient({
                             <div className="flex flex-col items-center justify-center h-40 text-slate-400 gap-2">
                                 <CalendarClock className="w-10 h-10 opacity-30" />
                                 <p className="text-sm">Belum ada planning ditemukan</p>
-                                <Button variant="outline" size="sm" onClick={() => setShowForm(true)} className="mt-1 gap-1">
-                                    <Plus className="w-3.5 h-3.5" /> Tambah Planning Pertama
-                                </Button>
+                                {canManage && (
+                                    <Button variant="outline" size="sm" onClick={() => setShowForm(true)} className="mt-1 gap-1">
+                                        <Plus className="w-3.5 h-3.5" /> Tambah Planning Pertama
+                                    </Button>
+                                )}
                             </div>
                         ) : (
                             <div className="space-y-6">
@@ -882,6 +902,7 @@ export function PlanningClient({
                                                     onEdit={openEdit}
                                                     onDelete={setDeleteTarget}
                                                     onStatusChange={handleStatusChange}
+                                                    canManage={canManage}
                                                 />
                                             ))}
                                         </div>

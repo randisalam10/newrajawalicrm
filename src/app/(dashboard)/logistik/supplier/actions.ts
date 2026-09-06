@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { auth } from "@/auth"
 import { z } from "zod"
 
 const supplierSchema = z.object({
@@ -10,11 +11,22 @@ const supplierSchema = z.object({
     contact: z.string().optional(),
 })
 
+function canManageSupplier(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP" || user.role === "AdminLogistik"
+}
+
 export async function getSuppliers() {
     return await prisma.supplier.findMany({ orderBy: { name: 'asc' } })
 }
 
 export async function createSupplier(formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageSupplier(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data toko/supplier" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = supplierSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -29,6 +41,11 @@ export async function createSupplier(formData: FormData) {
 }
 
 export async function updateSupplier(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !canManageSupplier(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data toko/supplier" }
+    }
+
     const data = Object.fromEntries(formData.entries())
     const parsed = supplierSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
@@ -43,6 +60,11 @@ export async function updateSupplier(id: string, formData: FormData) {
 }
 
 export async function deleteSupplier(id: string) {
+    const session = await auth()
+    if (!session?.user || !canManageSupplier(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data toko/supplier" }
+    }
+
     try {
         await prisma.supplier.delete({ where: { id } })
         revalidatePath("/logistik/supplier")

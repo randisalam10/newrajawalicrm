@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
+import { isCorporateUser } from "@/lib/rbac"
 
 const workItemSchema = z.object({
     id: z.string().optional(),
@@ -11,12 +12,18 @@ const workItemSchema = z.object({
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
+function canManageWorkItem(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+}
+
 export async function getWorkItems() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    if (!session?.user) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const isCorp = isCorporateUser(session.user)
+    const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     return await prisma.workItem.findMany({
         where: filter,
@@ -27,7 +34,9 @@ export async function getWorkItems() {
 
 export async function createWorkItem(formData: FormData) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageWorkItem(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data item pekerjaan" }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = workItemSchema.safeParse(data)
@@ -59,7 +68,9 @@ export async function createWorkItem(formData: FormData) {
 
 export async function updateWorkItem(id: string, formData: FormData) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageWorkItem(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data item pekerjaan" }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = workItemSchema.safeParse({
@@ -101,7 +112,9 @@ export async function updateWorkItem(id: string, formData: FormData) {
 
 export async function deleteWorkItem(id: string) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user || !canManageWorkItem(session.user)) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data item pekerjaan" }
+    }
 
     try {
         const isSuperAdmin = session.user.role === 'SuperAdminBP'

@@ -72,6 +72,7 @@ export function POListClient({
     const [detailError, setDetailError] = useState<string | null>(null)
 
     const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik', 'Approver'].includes(userRole)
+    const canManagePo = !['CEO', 'FVP', 'Approver'].includes(userRole) && ['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole)
 
     const fetchData = async (
         p: number, 
@@ -231,13 +232,15 @@ export function POListClient({
                     </Select>
 
                     {/* Buat PO Baru */}
-                    <div className="ml-auto shrink-0">
-                        <Link href="/logistik/po/create">
-                            <Button size="sm" className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs font-medium">
-                                <span>+ Buat PO Baru</span>
-                            </Button>
-                        </Link>
-                    </div>
+                    {canManagePo && (
+                        <div className="ml-auto shrink-0">
+                            <Link href="/logistik/po/create">
+                                <Button size="sm" className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs font-medium">
+                                    <span>+ Buat PO Baru</span>
+                                </Button>
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 {/* Baris 2: Filter Tanggal & Reset */}
@@ -527,7 +530,7 @@ export function POListClient({
                                                 )}
 
                                                 {/* Submit / Ajukan Button for DRAFT */}
-                                                {po.status === "DRAFT" && (
+                                                {canManagePo && po.status === "DRAFT" && (
                                                     <Button
                                                         variant="ghost" 
                                                         size="icon" 
@@ -548,7 +551,7 @@ export function POListClient({
                                                 )}
 
                                                 {/* Edit Button */}
-                                                {(po.status === "DRAFT" || po.status === "SUBMITTED") && (
+                                                {canManagePo && (po.status === "DRAFT" || po.status === "SUBMITTED") && (
                                                     <Link href={`/logistik/po/${po.id}/edit`}>
                                                         <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-600 hover:text-blue-600 hover:bg-blue-50" title="Edit PO">
                                                             <Pencil className="w-3.5 h-3.5 text-blue-600" />

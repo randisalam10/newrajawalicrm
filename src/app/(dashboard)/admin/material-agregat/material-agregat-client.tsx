@@ -45,6 +45,9 @@ type Props = {
     initialData: any[]
     locations: { id: string; name: string }[]
     userRole: string
+    isCorporate?: boolean
+    canManage?: boolean
+    isReadOnly?: boolean
 }
 
 const MATERIAL_COLORS: Record<string, string> = {
@@ -54,7 +57,14 @@ const MATERIAL_COLORS: Record<string, string> = {
     Other: "bg-slate-50 text-slate-700 ring-slate-600/20",
 }
 
-export function MaterialAgregatClient({ initialData, locations, userRole }: Props) {
+export function MaterialAgregatClient({
+    initialData,
+    locations,
+    userRole,
+    isCorporate = false,
+    canManage = true,
+    isReadOnly = false,
+}: Props) {
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingData, setEditingData] = useState<AggregateInRow | null>(null)
 
@@ -92,11 +102,13 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
     }, [formattedData])
 
     const handleEdit = (row: AggregateInRow) => {
+        if (!canManage) return
         setEditingData(row)
         setIsFormOpen(true)
     }
 
     const handleDelete = async (row: AggregateInRow) => {
+        if (!canManage) return
         if (
             confirm(
                 `Yakin ingin menghapus data ${row.aggregateLabel} dari ${row.driver_name} (${row.plate_number})?`
@@ -123,26 +135,37 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
         loadLedger(val)
     }
 
+    const showCabang = userRole === "SuperAdminBP" || isCorporate
+
     return (
         <div className="space-y-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Material Agregat</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-bold tracking-tight">Material Agregat</h1>
+                        {isReadOnly && (
+                            <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
+                                Mode Pemantauan (Hanya Lihat)
+                            </Badge>
+                        )}
+                    </div>
                     <p className="text-muted-foreground">
                         Pencatatan material masuk (batu split, pasir) per batching plant.
                     </p>
                 </div>
-                <Button
-                    onClick={() => {
-                        setEditingData(null)
-                        setIsFormOpen(true)
-                    }}
-                    className="gap-2"
-                >
-                    <Plus className="h-4 w-4" />
-                    Tambah Data
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={() => {
+                            setEditingData(null)
+                            setIsFormOpen(true)
+                        }}
+                        className="gap-2"
+                    >
+                        <Plus className="h-4 w-4" />
+                        Tambah Data
+                    </Button>
+                )}
             </div>
 
             {/* Summary Cards */}
@@ -201,7 +224,7 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                     onSort={toggleSort}
                                                 />
                                             </TableHead>
-                                            {userRole === "SuperAdminBP" && (
+                                            {showCabang && (
                                                 <TableHead>
                                                     <SortableHeader<AggregateInRow>
                                                         label="Cabang"
@@ -245,16 +268,18 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                     onSort={toggleSort}
                                                 />
                                             </TableHead>
-                                            <TableHead className="w-[90px] text-right text-xs uppercase font-semibold">
-                                                Aksi
-                                            </TableHead>
+                                            {canManage && (
+                                                <TableHead className="w-[90px] text-right text-xs uppercase font-semibold">
+                                                    Aksi
+                                                </TableHead>
+                                            )}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {items.length === 0 && (
                                             <TableRow>
                                                 <TableCell
-                                                    colSpan={userRole === "SuperAdminBP" ? 9 : 8}
+                                                    colSpan={showCabang ? (canManage ? 9 : 8) : (canManage ? 8 : 7)}
                                                     className="h-24 text-center text-muted-foreground"
                                                 >
                                                     Belum ada data material masuk.
@@ -264,7 +289,7 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                         {items.map((item) => (
                                             <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <TableCell className="text-sm">{item.date}</TableCell>
-                                                {userRole === "SuperAdminBP" && (
+                                                {showCabang && (
                                                     <TableCell>
                                                         <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
                                                             {item.locationName}
@@ -296,26 +321,28 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                 <TableCell className="font-bold text-sm">
                                                     {item.volume_cubic.toLocaleString("id-ID", { maximumFractionDigits: 2 })}
                                                 </TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8"
-                                                            onClick={() => handleEdit(item)}
-                                                        >
-                                                            <Edit className="h-4 w-4 text-slate-500" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-8 w-8"
-                                                            onClick={() => handleDelete(item)}
-                                                        >
-                                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
+                                                {canManage && (
+                                                    <TableCell>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8"
+                                                                onClick={() => handleEdit(item)}
+                                                            >
+                                                                <Edit className="h-4 w-4 text-slate-500" />
+                                                            </Button>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                className="h-8 w-8"
+                                                                onClick={() => handleDelete(item)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4 text-red-500" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -374,7 +401,7 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                             onSort={toggleSort}
                                                         />
                                                     </TableHead>
-                                                    {userRole === "SuperAdminBP" && (
+                                                    {showCabang && (
                                                         <TableHead>Cabang</TableHead>
                                                     )}
                                                     <TableHead>Tipe</TableHead>
@@ -410,7 +437,7 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                 {items.length === 0 && (
                                                     <TableRow>
                                                         <TableCell
-                                                            colSpan={userRole === "SuperAdminBP" ? 8 : 7}
+                                                            colSpan={showCabang ? 8 : 7}
                                                             className="h-24 text-center text-muted-foreground"
                                                         >
                                                             Belum ada mutasi stok untuk material ini.
@@ -422,7 +449,7 @@ export function MaterialAgregatClient({ initialData, locations, userRole }: Prop
                                                     return (
                                                         <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                             <TableCell className="text-xs whitespace-nowrap">{item.formattedDate}</TableCell>
-                                                            {userRole === "SuperAdminBP" && (
+                                                            {showCabang && (
                                                                 <TableCell>
                                                                     <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
                                                                         {item.locationName}

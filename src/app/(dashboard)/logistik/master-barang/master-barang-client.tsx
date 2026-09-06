@@ -16,7 +16,17 @@ import { createMasterItem, updateMasterItem, deleteMasterItem } from "./actions"
 
 const PAGE_SIZE = 20
 
-export function MasterBarangClient({ initialData, suppliers, categories }: { initialData: any[], suppliers: any[], categories: any[] }) {
+export function MasterBarangClient({
+    initialData,
+    suppliers,
+    categories,
+    canManage = true,
+}: {
+    initialData: any[]
+    suppliers: any[]
+    categories: any[]
+    canManage?: boolean
+}) {
     const [search, setSearch] = useState("")
     const [filterCategory, setFilterCategory] = useState("all")
     const [page, setPage] = useState(1)
@@ -88,9 +98,11 @@ export function MasterBarangClient({ initialData, suppliers, categories }: { ini
                         />
                     </div>
                 </div>
-                <Button onClick={() => { setEditData(null); setDialogOpen(true) }}>
-                    <Plus className="w-4 h-4 mr-2" /> Tambah Barang
-                </Button>
+                {canManage && (
+                    <Button onClick={() => { setEditData(null); setDialogOpen(true) }}>
+                        <Plus className="w-4 h-4 mr-2" /> Tambah Barang
+                    </Button>
+                )}
             </div>
 
             {/* Table */}
@@ -173,24 +185,28 @@ export function MasterBarangClient({ initialData, suppliers, categories }: { ini
                                                 >
                                                     <History className="w-3.5 h-3.5" />
                                                 </Button>
-                                                <Button
-                                                    variant="ghost" size="icon" className="h-7 w-7"
-                                                    title="Edit Barang"
-                                                    onClick={() => { setEditData(item); setDialogOpen(true) }}
-                                                >
-                                                    <Pencil className="w-3.5 h-3.5 text-slate-600" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost" size="icon" className="h-7 w-7"
-                                                    title="Hapus Barang"
-                                                    onClick={async () => {
-                                                        if (!confirm(`Hapus barang "${item.name}"?`)) return
-                                                        const r = await deleteMasterItem(item.id)
-                                                        if (!r.success) alert(r.error)
-                                                    }}
-                                                >
-                                                    <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                                </Button>
+                                                {canManage && (
+                                                    <>
+                                                        <Button
+                                                            variant="ghost" size="icon" className="h-7 w-7"
+                                                            title="Edit Barang"
+                                                            onClick={() => { setEditData(item); setDialogOpen(true) }}
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5 text-slate-600" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost" size="icon" className="h-7 w-7"
+                                                            title="Hapus Barang"
+                                                            onClick={async () => {
+                                                                if (!confirm(`Hapus barang "${item.name}"?`)) return
+                                                                const r = await deleteMasterItem(item.id)
+                                                                if (!r.success) alert(r.error)
+                                                            }}
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>

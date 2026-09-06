@@ -6,6 +6,7 @@ import { redirect } from "next/navigation"
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { PusherListener } from "@/components/PusherListener"
+import { WebPushManager } from "@/components/WebPushManager"
 import { NotificationBell } from "@/components/NotificationBell"
 
 export default async function DashboardLayout({
@@ -73,6 +74,7 @@ export default async function DashboardLayout({
             <Toaster />
             <SonnerToaster position="top-right" richColors />
             <PusherListener />
+            <WebPushManager />
         </SidebarProvider>
     )
 }

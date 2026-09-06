@@ -13,7 +13,7 @@ import {
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { createPoCategory, updatePoCategory, deletePoCategory } from "./actions"
 
-export function KategoriClient({ initialData }: { initialData: any[] }) {
+export function KategoriClient({ initialData, canManage = true }: { initialData: any[], canManage?: boolean }) {
     const [dialogOpen, setDialogOpen] = useState(false)
     const [editData, setEditData] = useState<any>(null)
 
@@ -27,11 +27,13 @@ export function KategoriClient({ initialData }: { initialData: any[] }) {
 
     return (
         <div className="space-y-4 p-4">
-            <div className="flex justify-end">
-                <Button onClick={() => { setEditData(null); setDialogOpen(true) }}>
-                    <Plus className="w-4 h-4 mr-2" /> Tambah Kategori
-                </Button>
-            </div>
+            {canManage && (
+                <div className="flex justify-end">
+                    <Button onClick={() => { setEditData(null); setDialogOpen(true) }}>
+                        <Plus className="w-4 h-4 mr-2" /> Tambah Kategori
+                    </Button>
+                </div>
+            )}
 
             <div className="rounded-md border bg-white overflow-hidden">
                 <Table>
@@ -40,13 +42,13 @@ export function KategoriClient({ initialData }: { initialData: any[] }) {
                             <TableHead>Nama Kategori</TableHead>
                             <TableHead>Kode (Untuk PO)</TableHead>
                             <TableHead>Wajib KM/HM</TableHead>
-                            <TableHead className="w-[100px] text-center">Aksi</TableHead>
+                            {canManage && <TableHead className="w-[100px] text-center">Aksi</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {initialData.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={4} className="text-center text-muted-foreground h-24">
+                                <TableCell colSpan={canManage ? 4 : 3} className="text-center text-muted-foreground h-24">
                                     Belum ada kategori.
                                 </TableCell>
                             </TableRow>
@@ -64,26 +66,28 @@ export function KategoriClient({ initialData }: { initialData: any[] }) {
                                         ? <span className="text-red-600 text-xs font-bold">Ya</span>
                                         : <span className="text-slate-500 text-xs">Tidak</span>}
                                 </TableCell>
-                                <TableCell>
-                                    <div className="flex items-center gap-1">
-                                        <Button
-                                            variant="ghost" size="icon" className="h-8 w-8"
-                                            onClick={() => { setEditData(cat); setDialogOpen(true) }}
-                                        >
-                                            <Pencil className="w-4 h-4 text-slate-500" />
-                                        </Button>
-                                        <Button
-                                            variant="ghost" size="icon" className="h-8 w-8"
-                                            onClick={async () => {
-                                                if (!confirm(`Hapus kategori "${cat.name}"?`)) return
-                                                const r = await deletePoCategory(cat.id)
-                                                if (!r.success) alert(r.error)
-                                            }}
-                                        >
-                                            <Trash2 className="w-4 h-4 text-red-500" />
-                                        </Button>
-                                    </div>
-                                </TableCell>
+                                {canManage && (
+                                    <TableCell>
+                                        <div className="flex items-center gap-1">
+                                            <Button
+                                                variant="ghost" size="icon" className="h-8 w-8"
+                                                onClick={() => { setEditData(cat); setDialogOpen(true) }}
+                                            >
+                                                <Pencil className="w-4 h-4 text-slate-500" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost" size="icon" className="h-8 w-8"
+                                                onClick={async () => {
+                                                    if (!confirm(`Hapus kategori "${cat.name}"?`)) return
+                                                    const r = await deletePoCategory(cat.id)
+                                                    if (!r.success) alert(r.error)
+                                                }}
+                                            >
+                                                <Trash2 className="w-4 h-4 text-red-500" />
+                                            </Button>
+                                        </div>
+                                    </TableCell>
+                                )}
                             </TableRow>
                         ))}
                     </TableBody>

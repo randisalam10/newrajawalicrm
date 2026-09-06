@@ -2,19 +2,22 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { prisma } from "@/lib/prisma"
 import { BillingReportClient } from "./billing-client"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 
 export default async function BillingReportPage() {
     const session = await auth()
     if (!session?.user) redirect("/login")
 
     const role = session.user.role
-    if (role !== 'AdminBP' && role !== 'SuperAdminBP') redirect("/login")
+    const canView = hasPermission(session.user, "REPORT_REKAP_TAGIHAN", "VIEW") ||
+        ["AdminBP", "SuperAdminBP", "CEO", "FVP"].includes(role ?? "")
+    if (!canView) redirect("/admin")
 
     // Fetch master data for filters
     let locations: any[] = []
     let customers: any[] = []
 
-    if (role === 'SuperAdminBP') {
+    if (isCorporateUser(session.user)) {
         locations = await (prisma as any).location.findMany({ orderBy: { name: 'asc' } })
         customers = await (prisma as any).customer.findMany({ orderBy: { customer_name: 'asc' } })
     } else if (session.user.locationId) {

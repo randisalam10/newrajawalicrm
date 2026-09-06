@@ -40,15 +40,32 @@ export async function requirePermission(module: string, action: string): Promise
 }
 
 /**
+ * Checks if user is corporate-level (not bound to a single branch).
+ */
+export function isCorporateUser(user: SessionUser | any): boolean {
+    if (!user) return false
+    return (
+        user.role === "SuperAdminBP" ||
+        user.roleScope === "ALL_BRANCHES" ||
+        ["CEO", "FVP", "Approver"].includes(user.role || "")
+    )
+}
+
+/**
  * Helper to get branch/location scoping filter for database queries.
- * If user has ALL_BRANCHES scope (like SuperAdmin, CEO, FVP):
+ * If user has corporate / ALL_BRANCHES scope (like SuperAdmin, CEO, FVP, Approver):
  *   Allows optional filtering by any requestedLocationId.
  * If user has OWN_BRANCH scope (like Admin Cabang):
  *   Strictly forces locationId to user.locationId.
  */
-export function getLocationFilter(user: SessionUser, requestedLocationId?: string) {
-    if (user.role === "SuperAdminBP" || user.roleScope === "ALL_BRANCHES") {
-        return requestedLocationId ? { locationId: requestedLocationId } : {}
+export function getLocationFilter(user: SessionUser | any, requestedLocationId?: string) {
+    if (isCorporateUser(user)) {
+        return requestedLocationId && requestedLocationId !== "all"
+            ? { locationId: requestedLocationId }
+            : {}
     }
-    return { locationId: user.locationId || undefined }
+    if (user?.locationId) {
+        return { locationId: user.locationId }
+    }
+    return {}
 }

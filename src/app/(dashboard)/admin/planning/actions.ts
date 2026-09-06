@@ -4,13 +4,20 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { startOfDay, endOfDay } from "date-fns"
+import { isCorporateUser } from "@/lib/rbac"
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 async function getSessionWithLocation() {
     const session = await auth()
-    if (!session?.user?.employeeId) return null
+    if (!session?.user) return null
     return session
+}
+
+function canManagePlanning(user: any) {
+    if (!user) return false
+    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
+    return user.role === "SuperAdminBP" || user.role === "AdminBP"
 }
 
 // ─── QUERIES ─────────────────────────────────────────────────────────────────
@@ -19,10 +26,10 @@ export async function getPlanMasters() {
     const session = await getSessionWithLocation()
     if (!session) return null
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const isCorp = isCorporateUser(session.user)
     const locationId = session.user.locationId
 
-    const locationFilter = (!isSuperAdmin && locationId) ? { locationId } : {}
+    const locationFilter = (!isCorp && locationId) ? { locationId } : {}
 
     const [projects, qualities, workItems] = await Promise.all([
         prisma.project.findMany({
@@ -47,9 +54,9 @@ export async function getPlans(filter?: { dateFrom?: string; dateTo?: string }) 
     const session = await getSessionWithLocation()
     if (!session) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const isCorp = isCorporateUser(session.user)
     const locationId = session.user.locationId
-    const locationFilter = (!isSuperAdmin && locationId) ? { locationId } : {}
+    const locationFilter = (!isCorp && locationId) ? { locationId } : {}
 
     const dateFilter: any = {}
     if (filter?.dateFrom) dateFilter.gte = startOfDay(new Date(filter.dateFrom))
@@ -76,9 +83,9 @@ export async function getTodayPlans() {
     const session = await getSessionWithLocation()
     if (!session) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
+    const isCorp = isCorporateUser(session.user)
     const locationId = session.user.locationId
-    const locationFilter = (!isSuperAdmin && locationId) ? { locationId } : {}
+    const locationFilter = (!isCorp && locationId) ? { locationId } : {}
 
     const now = new Date()
     return prisma.concretePlan.findMany({
@@ -106,7 +113,9 @@ export async function createPlan(data: {
     notes?: string
 }) {
     const session = await getSessionWithLocation()
-    if (!session) throw new Error("Unauthorized")
+    if (!session || !canManagePlanning(session.user)) {
+        throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
+    }
 
     const isSuperAdmin = session.user.role === 'SuperAdminBP'
     const locationId = session.user.locationId
@@ -150,7 +159,9 @@ export async function updatePlan(id: string, data: {
     status?: 'Planned' | 'OnGoing' | 'Done' | 'Cancelled'
 }) {
     const session = await getSessionWithLocation()
-    if (!session) throw new Error("Unauthorized")
+    if (!session || !canManagePlanning(session.user)) {
+        throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
+    }
 
     const updateData: any = {}
     if (data.date !== undefined) updateData.date = new Date(data.date)
@@ -172,7 +183,9 @@ export async function updatePlan(id: string, data: {
 
 export async function deletePlan(id: string) {
     const session = await getSessionWithLocation()
-    if (!session) throw new Error("Unauthorized")
+    if (!session || !canManagePlanning(session.user)) {
+        throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
+    }
 
     await prisma.concretePlan.delete({ where: { id } })
 

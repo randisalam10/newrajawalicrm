@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { getMaterialUsageData } from "./actions"
 import { MaterialUsageClient } from "./usage-client"
 import { getLocations } from "../cabang/actions"
+import { isCorporateUser } from "@/lib/rbac"
 
 export default async function MaterialUsagePage() {
     const session = await auth()
@@ -10,6 +11,8 @@ export default async function MaterialUsagePage() {
     if (!session?.user) {
         redirect("/login")
     }
+
+    const isCorp = isCorporateUser(session.user)
 
     const [transactions, locations] = await Promise.all([
         getMaterialUsageData(),
@@ -21,6 +24,7 @@ export default async function MaterialUsagePage() {
             initialData={transactions}
             locations={locations}
             userRole={session.user.role as string}
+            isCorporate={isCorp}
         />
     )
 }

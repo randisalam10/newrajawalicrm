@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { isCorporateUser, getLocationFilter } from "@/lib/rbac"
 
 const aggregateSchema = z.object({
     date: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Tanggal tidak valid" }),
@@ -22,10 +23,7 @@ export async function getAggregateIncomings() {
     const session = await auth()
     if (!session?.user) return []
 
-    const filter: any = {}
-    if (session.user.role === "AdminBP") {
-        filter.locationId = session.user.locationId
-    }
+    const filter = getLocationFilter(session.user)
 
     return await prisma.aggregateIncoming.findMany({
         where: filter,
@@ -39,6 +37,15 @@ export async function createAggregateIncoming(formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
         const rawData = {
             date: formData.get("date"),
             no_bon: formData.get("no_bon"),
@@ -49,10 +56,7 @@ export async function createAggregateIncoming(formData: FormData) {
             source_type: formData.get("source_type"),
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
-            locationId:
-                session.user.role === "SuperAdminBP"
-                    ? formData.get("locationId")
-                    : session.user.locationId,
+            locationId: targetLocationId,
         }
 
         const data = aggregateSchema.parse(rawData)
@@ -87,6 +91,15 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
         const rawData = {
             date: formData.get("date"),
             no_bon: formData.get("no_bon"),
@@ -97,10 +110,7 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             source_type: formData.get("source_type"),
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
-            locationId:
-                session.user.role === "SuperAdminBP"
-                    ? formData.get("locationId")
-                    : session.user.locationId,
+            locationId: targetLocationId,
         }
 
         const data = aggregateSchema.parse(rawData)
@@ -133,11 +143,18 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
 
 export async function deleteAggregateIncoming(id: string) {
     try {
+        const session = await auth()
+        if (!session?.user) throw new Error("Unauthorized")
+
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        }
+
         await prisma.aggregateIncoming.delete({ where: { id } })
         revalidatePath("/admin/material-agregat")
         return { success: true }
     } catch (error: any) {
-        return { error: "Gagal menghapus data" }
+        return { error: error.message || "Gagal menghapus data" }
     }
 }
 
@@ -154,10 +171,12 @@ export async function getAggregateStockLedger(aggregateType: string, locationId?
     const session = await auth()
     if (!session?.user) return []
 
-    const locFilter =
-        session.user.role === "AdminBP" ? session.user.locationId : locationId
+    const isCorp = isCorporateUser(session.user)
+    const locFilter = isCorp
+        ? (locationId && locationId !== "all" ? locationId : undefined)
+        : session.user.locationId
 
-    const locWhere = locFilter && locFilter !== "all" ? { locationId: locFilter } : {}
+    const locWhere = locFilter ? { locationId: locFilter } : {}
 
     // 1. Fetch INCOMING
     const incomings = await prisma.aggregateIncoming.findMany({

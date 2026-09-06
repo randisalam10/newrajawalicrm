@@ -16,10 +16,10 @@ const karyawanSchema = z.object({
 
 export async function getKaryawans() {
     const session = await auth()
-    if (!session?.user?.employeeId || (!session.user.locationId && session.user.role !== 'SuperAdminBP')) return []
+    if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === 'SuperAdminBP'
-    const filter = isSuperAdmin ? {} : { locationId: session.user.locationId! }
+    const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ["CEO", "FVP", "Approver"].includes(session.user.role || "")
+    const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     return await prisma.employee.findMany({
         where: filter,
@@ -31,6 +31,9 @@ export async function getKaryawans() {
 export async function createKaryawan(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = karyawanSchema.safeParse(data)
@@ -69,6 +72,9 @@ export async function createKaryawan(formData: FormData) {
 export async function updateKaryawan(id: string, formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    }
 
     const data = Object.fromEntries(formData.entries())
     const parsed = karyawanSchema.safeParse({
@@ -117,6 +123,9 @@ export async function updateKaryawan(id: string, formData: FormData) {
 export async function deleteKaryawan(id: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    }
 
     try {
         const isSuperAdmin = session.user.role === 'SuperAdminBP'

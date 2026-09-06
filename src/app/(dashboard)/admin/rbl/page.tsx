@@ -49,6 +49,14 @@ export default async function RblPage({
         ? allLocations
         : allLocations.filter(loc => loc.id === session.user.locationId)
 
+    const user = session.user
+    const isSuperAdminBP = user.role === "SuperAdminBP"
+    const canCreate = isSuperAdminBP || hasPermission(user, "RBL", "CREATE") || user.role === "AdminBP"
+    const canEdit = isSuperAdminBP || hasPermission(user, "RBL", "EDIT") || user.role === "AdminBP"
+    const canDelete = isSuperAdminBP || hasPermission(user, "RBL", "DELETE") || user.role === "AdminBP"
+    const canClose = isSuperAdminBP || hasPermission(user, "RBL", "CLOSE") || user.role === "AdminBP"
+    const canExport = isSuperAdminBP || hasPermission(user, "RBL", "EXPORT") || ["AdminBP", "CEO", "FVP"].includes(user.role ?? "")
+
     return (
         <div className="space-y-6">
             <RblClient
@@ -59,6 +67,11 @@ export default async function RblPage({
                 userRole={session.user.role || ""}
                 userLocationId={session.user.locationId || ""}
                 isSuperAdmin={isCorporate}
+                canCreate={Boolean(canCreate)}
+                canEdit={Boolean(canEdit)}
+                canDelete={Boolean(canDelete)}
+                canClose={Boolean(canClose)}
+                canExport={Boolean(canExport)}
             />
         </div>
     )

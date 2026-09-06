@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { InvoiceStatus } from "@prisma/client"
+import { isCorporateUser } from "@/lib/rbac"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -81,10 +82,10 @@ export async function getUnbilledTransactions(filters: {
     const session = await auth()
     if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP"
-    const locationFilter = isSuperAdmin
-        ? filters.locationId ? { locationId: filters.locationId } : {}
-        : { locationId: session.user.locationId! }
+    const isCorp = isCorporateUser(session.user)
+    const locationFilter = isCorp
+        ? (filters.locationId && filters.locationId !== "all" ? { locationId: filters.locationId } : {})
+        : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     return prisma.productionTransaction.findMany({
         where: {
@@ -117,10 +118,10 @@ export async function getInvoicesGroupedByCustomer(filters: {
     const session = await auth()
     if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP"
-    const locationFilter = isSuperAdmin
-        ? filters.locationId ? { locationId: filters.locationId } : {}
-        : { locationId: session.user.locationId! }
+    const isCorp = isCorporateUser(session.user)
+    const locationFilter = isCorp
+        ? (filters.locationId && filters.locationId !== "all" ? { locationId: filters.locationId } : {})
+        : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     const invoices = await prisma.invoice.findMany({
         where: {
@@ -213,12 +214,13 @@ export async function getDepositSummary(filters: { locationId?: string }) {
     const session = await auth()
     if (!session?.user?.employeeId) return []
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP"
+    const isCorp = isCorporateUser(session.user)
+    const custLocFilter = isCorp
+        ? (filters.locationId && filters.locationId !== "all" ? { customer: { locationId: filters.locationId } } : {})
+        : (session.user.locationId ? { customer: { locationId: session.user.locationId } } : {})
 
     const projects = await prisma.project.findMany({
-        where: isSuperAdmin
-            ? filters.locationId ? { customer: { locationId: filters.locationId } } : {}
-            : { customer: { locationId: session.user.locationId! } },
+        where: custLocFilter,
         include: {
             customer: true,
             deposits: { orderBy: { date: "asc" } },
@@ -525,8 +527,10 @@ export async function getBillingPageData(filters: { locationId?: string } = {}) 
     const session = await auth()
     if (!session?.user?.employeeId) return null
 
-    const isSuperAdmin = session.user.role === "SuperAdminBP"
-    const locationId = isSuperAdmin ? filters.locationId : session.user.locationId!
+    const isCorp = isCorporateUser(session.user)
+    const locationId = isCorp
+        ? (filters.locationId && filters.locationId !== "all" ? filters.locationId : undefined)
+        : (session.user.locationId || undefined)
 
     const [unbilled, grouped, deposits] = await Promise.all([
         getUnbilledTransactions({ locationId }),
@@ -534,5 +538,5 @@ export async function getBillingPageData(filters: { locationId?: string } = {}) 
         getDepositSummary({ locationId }),
     ])
 
-    return { unbilled, grouped, deposits, isSuperAdmin, userLocationId: session.user.locationId }
+    return { unbilled, grouped, deposits, isSuperAdmin: isCorp, userLocationId: session.user.locationId }
 }

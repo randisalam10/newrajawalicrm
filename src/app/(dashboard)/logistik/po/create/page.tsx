@@ -1,9 +1,14 @@
 import { getPoFormData } from "../actions"
 import { POCreateClient } from "./po-create-client"
 import { auth } from "@/auth"
+import { redirect } from "next/navigation"
 
 export default async function POCreatePage() {
     const session = await auth()
+    const role = session?.user?.role || ""
+    if (["CEO", "FVP", "Approver"].includes(role)) {
+        redirect("/logistik/approval")
+    }
     const { companies, categories, suppliers, items, signers } = await getPoFormData()
 
     return (

@@ -2,23 +2,19 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { getLocationFilter } from "@/lib/rbac"
 
 export async function getMaterialUsageData() {
     const session = await auth()
     if (!session?.user) return []
 
-    // Base filter: only Confirmed transactions
-    const baseFilter: any = {
-        status: "Confirmed"
-    }
-
-    // Role isolation: AdminBP only sees their own branch data
-    if (session.user.role === "AdminBP") {
-        baseFilter.locationId = session.user.locationId
-    }
+    const locationFilter = getLocationFilter(session.user)
 
     const transactions = await prisma.productionTransaction.findMany({
-        where: baseFilter,
+        where: {
+            status: "Confirmed",
+            ...locationFilter
+        },
         include: {
             concreteQuality: true,
             vehicle: true,

@@ -1,6 +1,8 @@
 import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { MaterialAgregatClient } from "./material-agregat-client"
+import { isCorporateUser, getLocationFilter, hasPermission } from "@/lib/rbac"
+import { redirect } from "next/navigation"
 
 export const metadata = {
     title: "Material Agregat | BP ERP System",
@@ -9,10 +11,19 @@ export const metadata = {
 
 export default async function MaterialAgregatPage() {
     const session = await auth()
-    const userRole = session?.user?.role ?? "AdminBP"
+    if (!session?.user) {
+        redirect("/login")
+    }
 
-    const locationFilter: any =
-        userRole === "AdminBP" ? { locationId: session?.user?.locationId } : {}
+    const isCorp = isCorporateUser(session.user)
+    const isReadOnly = ["CEO", "FVP", "Approver"].includes(session.user.role || "")
+    const canManage = !isReadOnly && (
+        session.user.role === "SuperAdminBP" ||
+        hasPermission(session.user, "MATERIAL_AGREGAT", "CREATE") ||
+        hasPermission(session.user, "MATERIAL_AGREGAT", "EDIT")
+    )
+
+    const locationFilter = getLocationFilter(session.user)
 
     const [data, locations] = await Promise.all([
         prisma.aggregateIncoming.findMany({
@@ -28,7 +39,10 @@ export default async function MaterialAgregatPage() {
             <MaterialAgregatClient
                 initialData={JSON.parse(JSON.stringify(data))}
                 locations={locations}
-                userRole={userRole}
+                userRole={session.user.role as string}
+                isCorporate={isCorp}
+                canManage={canManage}
+                isReadOnly={isReadOnly}
             />
         </div>
     )

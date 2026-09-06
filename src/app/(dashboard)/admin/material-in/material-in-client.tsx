@@ -25,12 +25,18 @@ export function MaterialInClient({
     initialData,
     initialLedger,
     locations,
-    userRole
+    userRole,
+    isCorporate = false,
+    canManage = true,
+    isReadOnly = false,
 }: {
     initialData: any[]
     initialLedger: any[]
     locations: any[]
     userRole: string
+    isCorporate?: boolean
+    canManage?: boolean
+    isReadOnly?: boolean
 }) {
     // ----------------------------------------------------
     // STATE: Semen Masuk
@@ -57,11 +63,13 @@ export function MaterialInClient({
     }, [initialLedger])
 
     const handleEdit = (row: MaterialInRow) => {
+        if (!canManage) return
         setEditingData(row)
         setIsFormOpen(true)
     }
 
     const handleDelete = async (row: MaterialInRow) => {
+        if (!canManage) return
         if (confirm(`Apakah Anda yakin ingin menghapus data Semen Masuk "${row.name}" dari ${row.supplier}?`)) {
             try {
                 await import('./actions').then(m => m.deleteIncomingMaterial(row.id))
@@ -71,19 +79,30 @@ export function MaterialInClient({
         }
     }
 
+    const showCabang = userRole === "SuperAdminBP" || isCorporate
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Semen Masuk & Stok</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-3xl font-bold tracking-tight">Semen Masuk & Stok</h1>
+                        {isReadOnly && (
+                            <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
+                                Mode Pemantauan (Hanya Lihat)
+                            </Badge>
+                        )}
+                    </div>
                     <p className="text-muted-foreground">Kelola penerimaan semen dan pantau sisa stok berdasarkan pemakaian produksi.</p>
                 </div>
-                <div className="flex items-center gap-2">
-                    <Button onClick={() => { setEditingData(null); setIsFormOpen(true) }} className="gap-2">
-                        <Plus className="h-4 w-4" />
-                        Tambah Data
-                    </Button>
-                </div>
+                {canManage && (
+                    <div className="flex items-center gap-2">
+                        <Button onClick={() => { setEditingData(null); setIsFormOpen(true) }} className="gap-2">
+                            <Plus className="h-4 w-4" />
+                            Tambah Data
+                        </Button>
+                    </div>
+                )}
             </div>
 
             <Tabs defaultValue="masuk" className="space-y-4">
@@ -107,7 +126,7 @@ export function MaterialInClient({
                                             <TableHead>
                                                 <SortableHeader<MaterialInRow> label="Tanggal" sortKey="date" sortConfig={sortConfig} onSort={toggleSort} />
                                             </TableHead>
-                                            {userRole === "SuperAdminBP" && (
+                                            {showCabang && (
                                                 <TableHead>
                                                     <SortableHeader<MaterialInRow> label="Cabang" sortKey="locationName" sortConfig={sortConfig} onSort={toggleSort} />
                                                 </TableHead>
@@ -124,13 +143,15 @@ export function MaterialInClient({
                                             <TableHead>
                                                 <SortableHeader<MaterialInRow> label="No Bon" sortKey="delivery_note" sortConfig={sortConfig} onSort={toggleSort} />
                                             </TableHead>
-                                            <TableHead className="w-[100px] text-right text-xs uppercase font-semibold">Aksi</TableHead>
+                                            {canManage && (
+                                                <TableHead className="w-[100px] text-right text-xs uppercase font-semibold">Aksi</TableHead>
+                                            )}
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {items.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={userRole === "SuperAdminBP" ? 7 : 6} className="h-24 text-center text-muted-foreground">
+                                                <TableCell colSpan={showCabang ? (canManage ? 7 : 6) : (canManage ? 6 : 5)} className="h-24 text-center text-muted-foreground">
                                                     Belum ada data Semen Masuk.
                                                 </TableCell>
                                             </TableRow>
@@ -138,7 +159,7 @@ export function MaterialInClient({
                                         {items.map((item) => (
                                             <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                 <TableCell className="text-sm">{item.date}</TableCell>
-                                                {userRole === "SuperAdminBP" && (
+                                                {showCabang && (
                                                     <TableCell>
                                                         <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
                                                             {item.locationName}
@@ -149,16 +170,18 @@ export function MaterialInClient({
                                                 <TableCell className="text-sm">{item.supplier}</TableCell>
                                                 <TableCell className="font-bold text-sm">{item.tonnage.toLocaleString('id-ID')}</TableCell>
                                                 <TableCell className="text-sm text-slate-500">{item.delivery_note}</TableCell>
-                                                <TableCell>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(item)}>
-                                                            <Edit className="h-4 w-4 text-slate-500" />
-                                                        </Button>
-                                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(item)}>
-                                                            <Trash2 className="h-4 w-4 text-red-500" />
-                                                        </Button>
-                                                    </div>
-                                                </TableCell>
+                                                {canManage && (
+                                                    <TableCell>
+                                                        <div className="flex items-center justify-end gap-1">
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(item)}>
+                                                                <Edit className="h-4 w-4 text-slate-500" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(item)}>
+                                                                <Trash2 className="h-4 w-4 text-red-500" />
+                                                            </Button>
+                                                        </div>
+                                                    </TableCell>
+                                                )}
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -183,7 +206,7 @@ export function MaterialInClient({
                                             <TableHead>
                                                 <SortableHeader label="Tanggal / Jam" sortKey="formattedDate" sortConfig={sortConfig} onSort={toggleSort} />
                                             </TableHead>
-                                            {userRole === "SuperAdminBP" && (
+                                            {showCabang && (
                                                 <TableHead>
                                                     <SortableHeader label="Cabang" sortKey="locationName" sortConfig={sortConfig} onSort={toggleSort} />
                                                 </TableHead>
@@ -211,7 +234,7 @@ export function MaterialInClient({
                                     <TableBody>
                                         {items.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={userRole === "SuperAdminBP" ? 8 : 7} className="h-24 text-center text-muted-foreground">
+                                                <TableCell colSpan={showCabang ? 8 : 7} className="h-24 text-center text-muted-foreground">
                                                     Belum ada rincian mutasi stok.
                                                 </TableCell>
                                             </TableRow>
@@ -221,7 +244,7 @@ export function MaterialInClient({
                                             return (
                                                 <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
                                                     <TableCell className="text-xs whitespace-nowrap">{item.formattedDate}</TableCell>
-                                                    {userRole === "SuperAdminBP" && (
+                                                    {showCabang && (
                                                         <TableCell>
                                                             <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
                                                                 {item.locationName}

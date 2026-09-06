@@ -4,6 +4,7 @@ import { verifyMobileToken } from '@/lib/auth-mobile'
 import { revalidatePath } from 'next/cache'
 import { pusherServer, getChannelName } from '@/lib/pusher'
 import { sendPushNotification } from '@/lib/firebase/admin'
+import { sendWebPushToUsers } from '@/lib/web-push'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
     const authResult = verifyMobileToken(req)
@@ -41,13 +42,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                 where: {
                     OR: [
                         { id: { in: targetedIds } },
-                        { role: 'SuperAdminBP' }
-                    ],
-                    fcmToken: { not: null }
+                        { role: { in: ['SuperAdminBP', 'CEO', 'FVP', 'Approver'] } }
+                    ]
                 },
-                select: { fcmToken: true }
+                select: { id: true, fcmToken: true }
             })
 
+            // 1. Mobile Push
             const tokens = approverUsers.map(u => u.fcmToken).filter(Boolean) as string[]
             if (tokens.length > 0) {
                 await sendPushNotification(
@@ -57,8 +58,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
                     { poId: updated.id, type: "PO_APPROVAL" }
                 )
             }
+
+            // 2. Browser Web Push
+            const approverUserIds = approverUsers.map(u => u.id)
+            if (approverUserIds.length > 0) {
+                await sendWebPushToUsers(approverUserIds, {
+                    title: "PO Baru Memerlukan Persetujuan",
+                    body: `PO ${updated.po_number} telah diajukan oleh ${user.username || 'Admin'} dan membutuhkan persetujuan Anda.`,
+                    url: "/logistik/approval",
+                    tag: `po-submit-${updated.id}`
+                })
+            }
         } catch (fcmErr) {
-            console.error("FCM Error on PO Submit:", fcmErr)
+            console.error("Push Notification Error on PO Submit:", fcmErr)
         }
 
         // Trigger Pusher

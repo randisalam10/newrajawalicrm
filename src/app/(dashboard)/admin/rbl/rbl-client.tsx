@@ -80,6 +80,11 @@ interface RblClientProps {
     userRole: string
     userLocationId: string
     isSuperAdmin: boolean
+    canCreate?: boolean
+    canEdit?: boolean
+    canDelete?: boolean
+    canClose?: boolean
+    canExport?: boolean
 }
 
 // ─── Client-side Image Compression Helper ────────────────────────────────────
@@ -155,6 +160,11 @@ export function RblClient({
     userRole,
     userLocationId,
     isSuperAdmin,
+    canCreate = true,
+    canEdit = true,
+    canDelete = true,
+    canClose = true,
+    canExport = true,
 }: RblClientProps) {
     const [activeBudget, setActiveBudget] = useState<any>(initialActiveBudget)
     const [history, setHistory] = useState<any[]>(initialHistory)
@@ -176,7 +186,7 @@ export function RblClient({
     const [isDetailOpen, setIsDetailOpen] = useState(false)
     const [isLoadingDetail, setIsLoadingDetail] = useState(false)
     const [selectedDetailBudget, setSelectedDetailBudget] = useState<any>(null)
-    const [activeTab, setActiveTab] = useState<string>("input-batch")
+    const [activeTab, setActiveTab] = useState<string>(canEdit ? "input-batch" : "daily-list")
 
     // Form: Create Budget
     const [budgetForm, setBudgetForm] = useState({
@@ -651,7 +661,7 @@ export function RblClient({
                         )}
 
                         {/* Action: Open New Budget */}
-                        {!activeBudget && (
+                        {!activeBudget && canCreate && (
                             <Button
                                 onClick={() => {
                                     setBudgetForm(prev => ({
@@ -668,7 +678,7 @@ export function RblClient({
                         )}
 
                         {/* Action: Close Current Active Budget */}
-                        {activeBudget && (
+                        {activeBudget && canClose && (
                             <Button
                                 variant="outline"
                                 onClick={() => setIsCloseBudgetOpen(true)}
@@ -806,15 +816,17 @@ export function RblClient({
             {/* ─── MAIN TABS ─────────────────────────────────────────────────────────── */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
                 <TabsList className="bg-slate-100 p-1 rounded-lg">
-                    <TabsTrigger value="input-batch" className="gap-2 text-xs">
-                        <Plus className="h-3.5 w-3.5" />
-                        Input RBL
-                        {!activeBudget && (
-                            <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium flex items-center gap-0.5">
-                                <Lock className="h-2.5 w-2.5" /> Terkunci
-                            </span>
-                        )}
-                    </TabsTrigger>
+                    {canEdit && (
+                        <TabsTrigger value="input-batch" className="gap-2 text-xs">
+                            <Plus className="h-3.5 w-3.5" />
+                            Input RBL
+                            {!activeBudget && (
+                                <span className="ml-1 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded-full font-medium flex items-center gap-0.5">
+                                    <Lock className="h-2.5 w-2.5" /> Terkunci
+                                </span>
+                            )}
+                        </TabsTrigger>
+                    )}
                     <TabsTrigger value="daily-list" className="gap-2 text-xs">
                         <FileText className="h-3.5 w-3.5" />
                         Daftar Pengeluaran ({activeBudget?.expenses?.length || 0})
@@ -1308,28 +1320,32 @@ export function RblClient({
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex items-center justify-end gap-1">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => {
-                                                                setEditingExpense({
-                                                                    ...item,
-                                                                    date: format(new Date(item.date), "yyyy-MM-dd")
-                                                                })
-                                                                setIsEditExpenseOpen(true)
-                                                            }}
-                                                            className="h-7 w-7 text-slate-500 hover:text-blue-600"
-                                                        >
-                                                            <Edit2 className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            onClick={() => handleDeleteExpense(item.id)}
-                                                            className="h-7 w-7 text-slate-400 hover:text-rose-600"
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" />
-                                                        </Button>
+                                                        {canEdit && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => {
+                                                                    setEditingExpense({
+                                                                        ...item,
+                                                                        date: format(new Date(item.date), "yyyy-MM-dd")
+                                                                    })
+                                                                    setIsEditExpenseOpen(true)
+                                                                }}
+                                                                className="h-7 w-7 text-slate-500 hover:text-blue-600"
+                                                            >
+                                                                <Edit2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
+                                                        {canDelete && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                onClick={() => handleDeleteExpense(item.id)}
+                                                                className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                                                            >
+                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                            </Button>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -1388,28 +1404,32 @@ export function RblClient({
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex items-center justify-end gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => {
-                                                            setEditingExpense({
-                                                                ...item,
-                                                                date: format(new Date(item.date), "yyyy-MM-dd")
-                                                            })
-                                                            setIsEditExpenseOpen(true)
-                                                        }}
-                                                        className="h-7 w-7 text-slate-500 hover:text-blue-600"
-                                                    >
-                                                        <Edit2 className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleDeleteExpense(item.id)}
-                                                        className="h-7 w-7 text-slate-400 hover:text-rose-600"
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                    </Button>
+                                                    {canEdit && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => {
+                                                                setEditingExpense({
+                                                                    ...item,
+                                                                    date: format(new Date(item.date), "yyyy-MM-dd")
+                                                                })
+                                                                setIsEditExpenseOpen(true)
+                                                            }}
+                                                            className="h-7 w-7 text-slate-500 hover:text-blue-600"
+                                                        >
+                                                            <Edit2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
+                                                    {canDelete && (
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => handleDeleteExpense(item.id)}
+                                                            className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -1470,35 +1490,37 @@ export function RblClient({
                             ) : (
                                 <>
                                     {/* Dropzone Upload */}
-                                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                                        <input
-                                            ref={fileInputRef}
-                                            type="file"
-                                            multiple
-                                            accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
-                                            onChange={handleFilesSelected}
-                                            className="hidden"
-                                            id="bulk-receipt-upload"
-                                        />
-                                        <label
-                                            htmlFor="bulk-receipt-upload"
-                                            className="cursor-pointer flex flex-col items-center space-y-2"
-                                        >
-                                            <div className="p-3 bg-blue-50 text-blue-600 rounded-full">
-                                                {isCompressing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
-                                            </div>
-                                            <div className="text-sm font-semibold text-slate-800">
-                                                {isCompressing ? "Mengompresi Gambar..." : "Klik untuk Pilih Banyak Foto Sekaligus"}
-                                            </div>
-                                            <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                                                <Sparkles className="h-3.5 w-3.5 text-amber-500" />
-                                                <span>Kompresi pintar otomatis: Ukuran hemat hingga 95%, teks nota tetap 100% terbaca jelas.</span>
-                                            </div>
-                                        </label>
-                                    </div>
+                                    {canEdit && (
+                                        <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
+                                            <input
+                                                ref={fileInputRef}
+                                                type="file"
+                                                multiple
+                                                accept="image/jpeg,image/png,image/webp,image/jpg,application/pdf"
+                                                onChange={handleFilesSelected}
+                                                className="hidden"
+                                                id="bulk-receipt-upload"
+                                            />
+                                            <label
+                                                htmlFor="bulk-receipt-upload"
+                                                className="cursor-pointer flex flex-col items-center space-y-2"
+                                            >
+                                                <div className="p-3 bg-blue-50 text-blue-600 rounded-full">
+                                                    {isCompressing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Upload className="h-6 w-6" />}
+                                                </div>
+                                                <div className="text-sm font-semibold text-slate-800">
+                                                    {isCompressing ? "Mengompresi Gambar..." : "Klik untuk Pilih Banyak Foto Sekaligus"}
+                                                </div>
+                                                <div className="text-xs text-slate-400 flex items-center gap-1.5">
+                                                    <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                                                    <span>Kompresi pintar otomatis: Ukuran hemat hingga 95%, teks nota tetap 100% terbaca jelas.</span>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    )}
 
                                     {/* Staged files waiting to be uploaded */}
-                                    {stagedFiles.length > 0 && (
+                                    {canEdit && stagedFiles.length > 0 && (
                                         <div className="space-y-3 p-4 bg-blue-50/60 rounded-xl border border-blue-100">
                                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                                                 <div>
@@ -1511,36 +1533,44 @@ export function RblClient({
                                                         </span>
                                                     )}
                                                 </div>
-                                                <Button
-                                                    onClick={handleExecuteBulkUpload}
-                                                    disabled={isUploading}
-                                                    size="sm"
-                                                    className="bg-blue-600 hover:bg-blue-700 text-white h-8 text-xs gap-1.5 shadow-xs"
-                                                >
-                                                    {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                                                    Simpan {stagedFiles.length} Foto ke Budget Ini
-                                                </Button>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => setStagedFiles([])}
+                                                        className="h-7 text-xs text-slate-500"
+                                                    >
+                                                        Batal
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={handleExecuteBulkUpload}
+                                                        disabled={isUploading}
+                                                        className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white gap-1.5"
+                                                    >
+                                                        {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                                                        Upload {stagedFiles.length} Foto
+                                                    </Button>
+                                                </div>
                                             </div>
 
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 pt-1">
-                                                {stagedFiles.map((item, i) => (
-                                                    <div key={i} className="relative group border rounded-lg overflow-hidden bg-white p-1 text-[10px]">
-                                                        <div className="aspect-square bg-slate-100 rounded overflow-hidden">
-                                                            <img
-                                                                src={item.previewUrl}
-                                                                alt={item.name}
-                                                                className="w-full h-full object-cover"
-                                                            />
-                                                        </div>
-                                                        <div className="mt-1 truncate font-medium text-slate-700" title={item.name}>
-                                                            {item.name}
-                                                        </div>
-                                                        <div className="text-slate-400 text-[9px]">
-                                                            {formatFileSize(item.compressedSize)}
-                                                        </div>
+                                            {/* Preview Staged File Chips */}
+                                            <div className="flex flex-wrap gap-2 pt-1">
+                                                {stagedFiles.map((sf, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        className="flex items-center gap-1.5 bg-white pl-2 pr-1.5 py-1 rounded-lg border text-xs shadow-2xs"
+                                                    >
+                                                        <span className="truncate max-w-[120px] font-medium text-slate-700" title={sf.name}>
+                                                            {sf.name}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400 font-mono">
+                                                            ({formatFileSize(sf.compressedSize)})
+                                                        </span>
                                                         <button
-                                                            onClick={() => handleRemoveStagedFile(i)}
-                                                            className="absolute top-2 right-2 p-1 bg-rose-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            type="button"
+                                                            onClick={() => setStagedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                            className="text-slate-400 hover:text-rose-600 p-0.5 rounded-sm"
                                                         >
                                                             <X className="h-3 w-3" />
                                                         </button>
@@ -1550,33 +1580,31 @@ export function RblClient({
                                         </div>
                                     )}
 
-                                    {/* Existing Uploaded Gallery for this Active Budget */}
-                                    <div className="space-y-2 pt-2">
-                                        <div className="flex items-center justify-between">
-                                            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                                Foto Nota Tersimpan pada Budget {activeBudget.code} ({activeBudget.attachments?.length || 0})
-                                            </h4>
+                                    {/* Gallery of already uploaded attachments */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                                            <span>Lampiran Nota Tersimpan ({activeBudget.attachments?.length || 0})</span>
                                         </div>
 
-                                        {(!activeBudget.attachments || activeBudget.attachments.length === 0) ? (
-                                            <div className="text-xs text-slate-400 text-center py-8 border rounded-lg bg-white">
-                                                Belum ada foto nota yang diunggah untuk budget aktif ini.
+                                        {!activeBudget.attachments || activeBudget.attachments.length === 0 ? (
+                                            <div className="p-8 text-center bg-slate-50/50 rounded-xl border border-dashed text-slate-400 text-xs">
+                                                Belum ada foto nota yang diunggah untuk budget ini.
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                                                 {activeBudget.attachments.map((att: any) => (
                                                     <div
                                                         key={att.id}
-                                                        className="group relative border rounded-xl overflow-hidden bg-white shadow-2xs hover:shadow-md transition-all"
+                                                        className="group relative rounded-xl border bg-white overflow-hidden shadow-2xs hover:shadow-xs transition-all"
                                                     >
                                                         <div
-                                                            className="aspect-square bg-slate-100 flex items-center justify-center cursor-pointer overflow-hidden relative"
+                                                            className="h-28 bg-slate-100 relative overflow-hidden cursor-pointer flex items-center justify-center"
                                                             onClick={() => setPreviewImage({ url: att.fileUrl, name: att.fileName })}
                                                         >
                                                             <img
                                                                 src={att.fileUrl}
                                                                 alt={att.fileName}
-                                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                                                             />
                                                             <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                                                                 <Eye className="h-5 w-5" />
@@ -1588,13 +1616,15 @@ export function RblClient({
                                                             </div>
                                                             <div className="flex items-center justify-between text-slate-400">
                                                                 <span>{att.fileSize ? formatFileSize(att.fileSize) : "-"}</span>
-                                                                <button
-                                                                    onClick={() => handleDeleteAttachment(att.id)}
-                                                                    className="text-slate-400 hover:text-rose-600 p-0.5"
-                                                                    title="Hapus foto"
-                                                                >
-                                                                    <Trash2 className="h-3 w-3" />
-                                                                </button>
+                                                                {canDelete && (
+                                                                    <button
+                                                                        onClick={() => handleDeleteAttachment(att.id)}
+                                                                        className="text-slate-400 hover:text-rose-600 p-0.5"
+                                                                        title="Hapus foto"
+                                                                    >
+                                                                        <Trash2 className="h-3 w-3" />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>

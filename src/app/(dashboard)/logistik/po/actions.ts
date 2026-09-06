@@ -5,8 +5,9 @@ import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { PoPaymentMethod } from "@prisma/client"
-import { pusherServer } from "@/lib/pusher"
+import { pusherServer, getChannelName } from "@/lib/pusher"
 import { sendPushNotification } from "@/lib/firebase/admin"
+import { sendWebPushToUsers } from "@/lib/web-push"
 
 const poItemSchema = z.object({
     masterItemId: z.string(),
@@ -351,7 +352,10 @@ export async function createPurchaseOrder(data: {
     isDraft?: boolean
 }) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+    if (["CEO", "FVP", "Approver"].includes(session.user.role)) {
+        return { success: false, error: "Akses ditolak: Role Approver / Corporate tidak diizinkan membuat PO." }
+    }
 
     const { items, jabatan_kepala } = data
 
@@ -454,13 +458,13 @@ export async function createPurchaseOrder(data: {
                     where: {
                         OR: [
                             { id: { in: targetedIds } },
-                            { role: 'SuperAdminBP' }
-                        ],
-                        fcmToken: { not: null }
+                            { role: { in: ['SuperAdminBP', 'CEO', 'FVP', 'Approver'] } }
+                        ]
                     },
-                    select: { fcmToken: true }
+                    select: { id: true, fcmToken: true }
                 })
 
+                // 1. Mobile Push (FCM)
                 const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
                 if (tokens.length > 0) {
                     await sendPushNotification(
@@ -469,6 +473,26 @@ export async function createPurchaseOrder(data: {
                         `PO ${po_number} telah diajukan oleh Logistik.`,
                         { poId: created.id, type: "PO_APPROVAL" }
                     )
+                }
+
+                // 2. Browser Web Push Notification (VAPID / Service Worker)
+                const approverUserIds = admins.map(u => u.id)
+                if (approverUserIds.length > 0) {
+                    await sendWebPushToUsers(approverUserIds, {
+                        title: "PO Baru Memerlukan Persetujuan",
+                        body: `PO ${po_number} telah diajukan oleh ${session.user.username || 'Admin'} dan menunggu persetujuan Anda.`,
+                        url: "/logistik/approval",
+                        tag: `po-create-${created.id}`
+                    })
+                }
+
+                // 3. In-App Real-time (Pusher)
+                if (pusherServer) {
+                    await pusherServer.trigger(getChannelName('logistik-channel'), 'po-updated', {
+                        message: `PO ${po_number} telah diajukan untuk persetujuan.`,
+                        poId: created.id,
+                        status: 'SUBMITTED'
+                    })
                 }
             }
             // -------------------------
@@ -530,13 +554,13 @@ export async function submitPurchaseOrder(id: string) {
             where: {
                 OR: [
                     { id: { in: targetedIds } },
-                    { role: 'SuperAdminBP' }
-                ],
-                fcmToken: { not: null }
+                    { role: { in: ['SuperAdminBP', 'CEO', 'FVP', 'Approver'] } }
+                ]
             },
-            select: { fcmToken: true }
+            select: { id: true, fcmToken: true }
         })
 
+        // 1. Mobile Push (FCM)
         const tokens = approvers.map(u => u.fcmToken).filter(Boolean) as string[]
         if (tokens.length > 0) {
             await sendPushNotification(
@@ -547,8 +571,20 @@ export async function submitPurchaseOrder(id: string) {
             )
         }
 
+        // 2. Browser Web Push Notification (VAPID / Service Worker)
+        const approverUserIds = approvers.map(u => u.id)
+        if (approverUserIds.length > 0) {
+            await sendWebPushToUsers(approverUserIds, {
+                title: "PO Baru Memerlukan Persetujuan",
+                body: `PO ${updated.po_number} telah diajukan oleh ${session.user.username || 'Admin'} dan menunggu persetujuan Anda.`,
+                url: "/logistik/approval",
+                tag: `po-submit-${updated.id}`
+            })
+        }
+
+        // 3. In-App Real-time (Pusher)
         if (pusherServer) {
-            await pusherServer.trigger('logistik-channel', 'po-updated', {
+            await pusherServer.trigger(getChannelName('logistik-channel'), 'po-updated', {
                 message: `PO ${updated.po_number} telah diajukan untuk persetujuan.`,
                 poId: updated.id,
                 status: 'SUBMITTED'
@@ -674,7 +710,7 @@ export async function updatePoStatus(
         
         try {
             if (pusherServer) {
-                await pusherServer.trigger('logistik-channel', 'po-updated', {
+                await pusherServer.trigger(getChannelName('logistik-channel'), 'po-updated', {
                     message: `PO ${po.po_number} telah di-${newStatus === 'APPROVED' ? 'setujui' : (status === 'CANCELLED' ? 'batalkan' : 'proses')}`,
                 })
             }
@@ -696,23 +732,34 @@ export async function updatePoStatus(
             select: { fcmToken: true }
         })
 
+        let notifTitle = "Info PO"
+        let notifBody = ""
+
+        if (status === 'CANCELLED') {
+            notifTitle = "PO Dibatalkan"
+            notifBody = `PO ${po.po_number} telah dibatalkan oleh ${session.user.username || 'System'}.`
+        } else if (newStatus === 'APPROVED') {
+            notifTitle = "PO Disetujui Penuh"
+            notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
+        } else {
+            notifTitle = "PO Disetujui Parsial"
+            notifBody = `PO ${po.po_number} telah disetujui oleh ${session.user.username || 'System'}. Menunggu persetujuan selanjutnya.`
+        }
+
         const tokens = admins.map(u => u.fcmToken).filter(Boolean) as string[]
         if (tokens.length > 0) {
-            let notifTitle = "Info PO"
-            let notifBody = ""
-
-            if (status === 'CANCELLED') {
-                notifTitle = "PO Dibatalkan"
-                notifBody = `PO ${po.po_number} telah dibatalkan oleh ${session.user.username || 'System'}.`
-            } else if (newStatus === 'APPROVED') {
-                notifTitle = "PO Disetujui Penuh"
-                notifBody = `PO ${po.po_number} telah disetujui sepenuhnya dan siap diproses.`
-            } else {
-                notifTitle = "PO Disetujui Parsial"
-                notifBody = `PO ${po.po_number} telah disetujui oleh ${session.user.username || 'System'}. Menunggu persetujuan selanjutnya.`
-            }
-
             await sendPushNotification(tokens, notifTitle, notifBody, { poId: po.id, type: "PO_UPDATE" })
+        }
+
+        // Web Push ke pembuat PO dan pihak terkait
+        const webPushUserIds = [po.submittedById, po.ceoId, po.fvpId].filter(Boolean) as string[]
+        if (webPushUserIds.length > 0) {
+            await sendWebPushToUsers(webPushUserIds, {
+                title: notifTitle,
+                body: notifBody,
+                url: "/logistik/po",
+                tag: `po-update-${po.id}`
+            })
         }
         // -------------------------
 

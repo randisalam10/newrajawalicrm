@@ -7,7 +7,7 @@ import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 
 // ─── Helpers & Permission Guards ──────────────────────────────────────────────
-export function isCorporateOrSuperAdmin(session: any): boolean {
+function isCorporateOrSuperAdmin(session: any): boolean {
     if (!session?.user) return false
     return session.user.role === "SuperAdminBP" ||
         session.user.roleScope === "ALL_BRANCHES" ||

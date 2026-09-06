@@ -41,7 +41,24 @@ type DialogMode = "customerNew" | "customerEdit" | "projectNew" | "projectEdit" 
 type SortKey = "customer_name" | "address" | "location"
 type SortDir = "asc" | "desc"
 
-export function CustomerClient({ initialData, locations, userRole, qualities = [] }: { initialData: any[], locations: any[], userRole: string, qualities?: any[] }) {
+export function CustomerClient({
+    initialData,
+    locations,
+    userRole,
+    qualities = [],
+    canCreate = true,
+    canEdit = true,
+    canDelete = true,
+}: {
+    initialData: any[]
+    locations: any[]
+    userRole: string
+    qualities?: any[]
+    canCreate?: boolean
+    canEdit?: boolean
+    canDelete?: boolean
+}) {
+    const isCorporate = userRole === "SuperAdminBP" || ["CEO", "FVP", "Approver"].includes(userRole)
     const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null)
     const [expandedProject, setExpandedProject] = useState<string | null>(null)
     const [dialogMode, setDialogMode] = useState<DialogMode>(null)
@@ -197,9 +214,11 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
             {/* ── Header ──────────────────────────────────────────── */}
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold tracking-tight">Daftar Customer & Proyek</h2>
-                <Button onClick={() => { setEditData(null); setDialogMode("customerNew") }}>
-                    <Plus className="w-4 h-4 mr-2" /> Tambah Customer
-                </Button>
+                {canCreate && (
+                    <Button onClick={() => { setEditData(null); setDialogMode("customerNew") }}>
+                        <Plus className="w-4 h-4 mr-2" /> Tambah Customer
+                    </Button>
+                )}
             </div>
 
             {/* ── Search ──────────────────────────────────────────── */}
@@ -224,7 +243,7 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                     <TableHeader>
                         <TableRow className="bg-slate-50/50">
                             <TableHead className="w-8"></TableHead>
-                            {userRole === "SuperAdminBP" && (
+                            {isCorporate && (
                                 <TableHead>
                                     <SortableHead label="Cabang" k="location" />
                                 </TableHead>
@@ -236,13 +255,13 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                 <SortableHead label="Alamat Tagih" k="address" />
                             </TableHead>
                             <TableHead>Proyek</TableHead>
-                            <TableHead className="w-[120px]">Aksi</TableHead>
+                            {(canCreate || canEdit || canDelete) && <TableHead className="w-[120px]">Aksi</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {paginated.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={userRole === "SuperAdminBP" ? 6 : 5} className="text-center text-muted-foreground h-24">
+                                <TableCell colSpan={(isCorporate ? 1 : 0) + (canCreate || canEdit || canDelete ? 1 : 0) + 4} className="text-center text-muted-foreground h-24">
                                     {searchQuery ? "Tidak ada data yang cocok dengan pencarian." : "Belum ada customer."}
                                 </TableCell>
                             </TableRow>
@@ -259,7 +278,7 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                             ? <ChevronDown className="w-4 h-4 text-slate-400" />
                                             : <ChevronRight className="w-4 h-4 text-slate-400" />}
                                     </TableCell>
-                                    {userRole === "SuperAdminBP" && (
+                                    {isCorporate && (
                                         <TableCell>
                                             <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
                                                 {cust.location?.name || "N/A"}
@@ -278,55 +297,65 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                     <TableCell>
                                         <Badge variant="secondary">{cust.projects?.length ?? 0} proyek</Badge>
                                     </TableCell>
-                                    <TableCell onClick={(e) => e.stopPropagation()}>
-                                        <div className="flex items-center gap-1">
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8"
-                                                title="Tambah Proyek"
-                                                onClick={() => {
-                                                    setParentCustomer(cust)
-                                                    setEditData(null)
-                                                    setExpandedCustomer(cust.id)
-                                                    setDialogMode("projectNew")
-                                                }}
-                                            >
-                                                <FolderOpen className="w-4 h-4 text-green-600" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8"
-                                                onClick={() => { setEditData(cust); setDialogMode("customerEdit") }}
-                                            >
-                                                <Pencil className="w-4 h-4 text-slate-500" />
-                                            </Button>
-                                            <Button
-                                                variant="ghost" size="icon" className="h-8 w-8"
-                                                onClick={() => handleCustomerDelete(cust.id)}
-                                            >
-                                                <Trash2 className="w-4 h-4 text-red-500" />
-                                            </Button>
-                                        </div>
-                                    </TableCell>
+                                    {(canCreate || canEdit || canDelete) && (
+                                        <TableCell onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center gap-1">
+                                                {canCreate && (
+                                                    <Button
+                                                        variant="ghost" size="icon" className="h-8 w-8"
+                                                        title="Tambah Proyek"
+                                                        onClick={() => {
+                                                            setParentCustomer(cust)
+                                                            setEditData(null)
+                                                            setExpandedCustomer(cust.id)
+                                                            setDialogMode("projectNew")
+                                                        }}
+                                                    >
+                                                        <FolderOpen className="w-4 h-4 text-green-600" />
+                                                    </Button>
+                                                )}
+                                                {canEdit && (
+                                                    <Button
+                                                        variant="ghost" size="icon" className="h-8 w-8"
+                                                        onClick={() => { setEditData(cust); setDialogMode("customerEdit") }}
+                                                    >
+                                                        <Pencil className="w-4 h-4 text-slate-500" />
+                                                    </Button>
+                                                )}
+                                                {canDelete && (
+                                                    <Button
+                                                        variant="ghost" size="icon" className="h-8 w-8"
+                                                        onClick={() => handleCustomerDelete(cust.id)}
+                                                    >
+                                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    )}
                                 </TableRow>
 
                                 {/* Expanded Project Sub-list */}
                                 {expandedCustomer === cust.id && (
                                     <TableRow key={`${cust.id}-projects`} className="bg-slate-50/80 border-t-0">
-                                        <TableCell colSpan={userRole === "SuperAdminBP" ? 6 : 5} className="p-0">
+                                        <TableCell colSpan={(isCorporate ? 1 : 0) + (canCreate || canEdit || canDelete ? 1 : 0) + 4} className="p-0">
                                             <div className="px-10 py-3 border-l-4 border-blue-200 bg-blue-50/30">
                                                 <div className="flex justify-between items-center mb-2">
                                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                                                         Proyek milik <span className="text-blue-700">{cust.customer_name}</span>
                                                     </p>
-                                                    <Button
-                                                        size="sm" variant="outline" className="h-7 text-xs"
-                                                        onClick={() => {
-                                                            setParentCustomer(cust)
-                                                            setEditData(null)
-                                                            setDialogMode("projectNew")
-                                                        }}
-                                                    >
-                                                        <Plus className="w-3 h-3 mr-1" /> Tambah Proyek
-                                                    </Button>
+                                                    {canCreate && (
+                                                        <Button
+                                                            size="sm" variant="outline" className="h-7 text-xs"
+                                                            onClick={() => {
+                                                                setParentCustomer(cust)
+                                                                setEditData(null)
+                                                                setDialogMode("projectNew")
+                                                            }}
+                                                        >
+                                                            <Plus className="w-3 h-3 mr-1" /> Tambah Proyek
+                                                        </Button>
+                                                    )}
                                                 </div>
                                                 {(!cust.projects || cust.projects.length === 0) ? (
                                                     <p className="text-sm text-slate-400 italic py-2">Belum ada proyek untuk customer ini.</p>
@@ -338,7 +367,7 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                                                 <th className="text-left py-1 pr-4 font-medium text-slate-600 text-xs">Lokasi Pengecoran</th>
                                                                 <th className="text-left py-1 pr-4 font-medium text-slate-600 text-xs">Jarak (KM)</th>
                                                                 <th className="text-left py-1 font-medium text-slate-600 text-xs">PPN (%)</th>
-                                                                <th className="w-[80px]"></th>
+                                                                {(canEdit || canDelete) && <th className="w-[80px]"></th>}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
@@ -371,26 +400,32 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                                                         <td className="py-2 pr-4 text-slate-500 text-xs">{proj.address}</td>
                                                                         <td className="py-2 pr-4 text-xs">{proj.default_distance} km</td>
                                                                         <td className="py-2 text-xs">{proj.tax_ppn}%</td>
-                                                                        <td className="py-2">
-                                                                            <div className="flex gap-1">
-                                                                                <Button
-                                                                                    variant="ghost" size="icon" className="h-7 w-7"
-                                                                                    onClick={() => {
-                                                                                        setParentCustomer(cust)
-                                                                                        setEditData(proj)
-                                                                                        setDialogMode("projectEdit")
-                                                                                    }}
-                                                                                >
-                                                                                    <Pencil className="w-3 h-3 text-slate-500" />
-                                                                                </Button>
-                                                                                <Button
-                                                                                    variant="ghost" size="icon" className="h-7 w-7"
-                                                                                    onClick={() => handleProjectDelete(proj.id)}
-                                                                                >
-                                                                                    <Trash2 className="w-3 h-3 text-red-500" />
-                                                                                </Button>
-                                                                            </div>
-                                                                        </td>
+                                                                        {(canEdit || canDelete) && (
+                                                                            <td className="py-2">
+                                                                                <div className="flex gap-1">
+                                                                                    {canEdit && (
+                                                                                        <Button
+                                                                                            variant="ghost" size="icon" className="h-7 w-7"
+                                                                                            onClick={() => {
+                                                                                                setParentCustomer(cust)
+                                                                                                setEditData(proj)
+                                                                                                setDialogMode("projectEdit")
+                                                                                            }}
+                                                                                        >
+                                                                                            <Pencil className="w-3 h-3 text-slate-500" />
+                                                                                        </Button>
+                                                                                    )}
+                                                                                    {canDelete && (
+                                                                                        <Button
+                                                                                            variant="ghost" size="icon" className="h-7 w-7"
+                                                                                            onClick={() => handleProjectDelete(proj.id)}
+                                                                                        >
+                                                                                            <Trash2 className="w-3 h-3 text-red-500" />
+                                                                                        </Button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                        )}
                                                                     </tr>
                                                                     {/* ── Pricing Sub-row ── */}
                                                                     {expandedProject === proj.id && (
@@ -408,15 +443,17 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                                                                                 <div key={p.qualityId} className="flex items-center gap-1.5 bg-slate-50 border rounded-md px-2.5 py-1.5 text-xs">
                                                                                                     <span className="font-semibold text-slate-700">{p.concreteQuality?.name}</span>
                                                                                                     <span className="text-slate-500">Rp {Number(p.price).toLocaleString('id-ID')}</span>
-                                                                                                    <button
-                                                                                                        className="text-red-400 hover:text-red-600 ml-1"
-                                                                                                        onClick={async () => {
-                                                                                                            await deleteProjectPrice(proj.id, p.qualityId)
-                                                                                                        }}
-                                                                                                        title="Hapus harga ini"
-                                                                                                    >
-                                                                                                        ×
-                                                                                                    </button>
+                                                                                                    {canDelete && (
+                                                                                                        <button
+                                                                                                            className="text-red-400 hover:text-red-600 ml-1"
+                                                                                                            onClick={async () => {
+                                                                                                                await deleteProjectPrice(proj.id, p.qualityId)
+                                                                                                            }}
+                                                                                                            title="Hapus harga ini"
+                                                                                                        >
+                                                                                                            ×
+                                                                                                        </button>
+                                                                                                    )}
                                                                                                 </div>
                                                                                             ))}
                                                                                         </div>
@@ -424,7 +461,7 @@ export function CustomerClient({ initialData, locations, userRole, qualities = [
                                                                                         <p className="text-xs text-slate-400 italic">Belum ada harga. Tambahkan di bawah.</p>
                                                                                     )}
                                                                                     {/* Add price form */}
-                                                                                    {qualities.length > 0 && (() => {
+                                                                                    {canCreate && qualities.length > 0 && (() => {
                                                                                         const existingQualityIds = (proj.prices || []).map((p: any) => p.qualityId)
                                                                                         const availableQualities = qualities.filter((q: any) => !existingQualityIds.includes(q.id))
                                                                                         if (availableQualities.length === 0) return null
