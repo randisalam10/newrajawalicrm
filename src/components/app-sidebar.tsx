@@ -161,17 +161,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }, [pathname])
 
     if (!mounted) {
-        return <Sidebar variant="inset" />
+        return <Sidebar variant="sidebar" className="border-r border-slate-200/80" />
     }
 
     return (
-        <Sidebar variant="inset">
-            <SidebarHeader className="h-16 flex justify-center border-b pt-4 px-4 overflow-hidden">
-                <div className="flex items-center gap-3 font-semibold text-primary">
-                    <div className="p-1.5 bg-primary rounded-xl">
-                        <Factory className="h-5 w-5 text-primary-foreground" />
+        <Sidebar variant="sidebar" className="border-r border-slate-200/80">
+            <SidebarHeader className="h-14 flex flex-row items-center border-b border-slate-200/80 px-4 overflow-hidden bg-white">
+                <div className="flex items-center gap-2.5 font-semibold text-primary">
+                    <div className="p-1.5 bg-primary rounded-lg">
+                        <Factory className="h-4 w-4 text-primary-foreground" />
                     </div>
-                    <span className="truncate text-base tracking-tight">BP ERP System</span>
+                    <span className="truncate text-sm font-bold tracking-tight">BP ERP System</span>
                 </div>
             </SidebarHeader>
 

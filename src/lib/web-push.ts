@@ -1,12 +1,25 @@
 import webpush from 'web-push'
 import { prisma } from '@/lib/prisma'
 
-const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-const privateKey = process.env.VAPID_PRIVATE_KEY
-const subject = process.env.VAPID_SUBJECT || 'mailto:admin@rajawalimix.com'
+const cleanStr = (val?: string) => {
+    if (!val) return undefined
+    let s = val.trim()
+    while ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        s = s.slice(1, -1).trim()
+    }
+    return s
+}
+const publicKey = cleanStr(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY)
+const privateKey = cleanStr(process.env.VAPID_PRIVATE_KEY)
+const subject = cleanStr(process.env.VAPID_SUBJECT) || 'mailto:rsi.rajawali@gmail.com'
 
 if (publicKey && privateKey) {
-    webpush.setVapidDetails(subject, publicKey, privateKey)
+    try {
+        webpush.setVapidDetails(subject, publicKey, privateKey)
+        console.log('[WebPush] VAPID details configured successfully.')
+    } catch (err: any) {
+        console.error('[WebPush] Failed to set VAPID details:', err.message)
+    }
 } else {
     console.warn('Web Push VAPID keys not configured in environment variables.')
 }

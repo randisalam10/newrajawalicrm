@@ -17,7 +17,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import {
     Select,
@@ -81,44 +80,43 @@ export function ItemPekerjaanClient({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold tracking-tight">Daftar Item Pekerjaan</h2>
+            <div className="flex justify-end items-center">
                 {canManage && (
-                    <Dialog open={open} onOpenChange={setOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Item</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>{editData ? 'Edit Item Pekerjaan' : 'Tambah Item Pekerjaan Baru'}</DialogTitle>
-                            </DialogHeader>
-                            <form key={editData?.id || 'new'} action={handleSubmit} className="space-y-4 mt-4">
-                                {editData && <input type="hidden" name="id" value={editData.id} />}
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Nama Item Pekerjaan *</Label>
-                                    <Input id="name" name="name" placeholder="Misal: Rigid, Kolom, Sloof" defaultValue={editData?.name} required />
-                                </div>
-                                {userRole === "SuperAdminBP" && (
+                    <>
+                        <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Item</Button>
+                        <Dialog open={open} onOpenChange={setOpen}>
+                            <DialogContent className="sm:max-w-[425px]">
+                                <DialogHeader>
+                                    <DialogTitle>{editData ? 'Edit Item Pekerjaan' : 'Tambah Item Pekerjaan Baru'}</DialogTitle>
+                                </DialogHeader>
+                                <form key={editData?.id || 'new'} action={handleSubmit} className="space-y-4 mt-4">
+                                    {editData && <input type="hidden" name="id" value={editData.id} />}
                                     <div className="space-y-2">
-                                        <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
-                                        <Select name="locationId" defaultValue={editData?.locationId || ""}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Pilih Cabang" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {locations.map((loc: any) => (
-                                                    <SelectItem key={loc.id} value={loc.id}>
-                                                        {loc.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <Label htmlFor="name">Nama Item Pekerjaan *</Label>
+                                        <Input id="name" name="name" placeholder="Misal: Rigid, Kolom, Sloof" defaultValue={editData?.name} required />
                                     </div>
-                                )}
-                                <Button type="submit" className="w-full mt-4">Simpan</Button>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
+                                    {userRole === "SuperAdminBP" && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
+                                            <Select name="locationId" defaultValue={editData?.locationId || ""}>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Pilih Cabang" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {locations.map((loc: any) => (
+                                                        <SelectItem key={loc.id} value={loc.id}>
+                                                            {loc.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    )}
+                                    <Button type="submit" className="w-full mt-4">Simpan</Button>
+                                </form>
+                            </DialogContent>
+                        </Dialog>
+                    </>
                 )}
             </div>
 

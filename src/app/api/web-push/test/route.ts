@@ -6,7 +6,7 @@ export async function POST(req: Request) {
     try {
         const session = await auth()
         if (!session?.user?.id) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+            return NextResponse.json({ error: 'Unauthorized: Silakan login terlebih dahulu' }, { status: 401 })
         }
 
         const res = await sendWebPushToUsers([session.user.id], {
@@ -22,9 +22,10 @@ export async function POST(req: Request) {
             failed: res.failed,
             message: res.sent > 0 
                 ? 'Notifikasi uji coba berhasil dikirim ke perangkat Anda!' 
-                : 'Belum ada browser terdaftar untuk akun ini. Pastikan Anda sudah mengizinkan notifikasi.'
+                : 'Belum ada browser terdaftar untuk akun ini. Pastikan Anda sudah mengizinkan notifikasi di browser Anda.'
         })
     } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 })
+        console.error('[WebPush Test Error]:', e)
+        return NextResponse.json({ error: e.message || 'Internal Server Error' }, { status: 500 })
     }
 }

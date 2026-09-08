@@ -37,6 +37,14 @@ DO $$ BEGIN
 EXCEPTION WHEN others THEN null;
 END $$;
 
+-- Enums updates
+ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'SUBMITTED';
+ALTER TYPE "PurchaseOrderStatus" ADD VALUE IF NOT EXISTS 'REJECTED';
+ALTER TYPE "Position" ADD VALUE IF NOT EXISTS 'Approver';
+
+-- User Table Updates
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "signatureUrl" TEXT;
+
 -- 3. Alter PurchaseOrder & PoCompanyGroup
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovedAt" TIMESTAMP(3);
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoId" TEXT;
@@ -49,6 +57,49 @@ ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovedById" TEXT;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoApprovalChannel" TEXT;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpApprovedById" TEXT;
 ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpApprovalChannel" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3);
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "submittedById" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpSignatureUrl" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "fvpNotes" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoSignatureUrl" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "ceoNotes" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectionReason" TEXT;
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectedAt" TIMESTAMP(3);
+ALTER TABLE "PurchaseOrder" ADD COLUMN IF NOT EXISTS "rejectedById" TEXT;
+
+DO $$ BEGIN
+    ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_submittedById_fkey" FOREIGN KEY ("submittedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_rejectedById_fkey" FOREIGN KEY ("rejectedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "PurchaseOrder_submittedAt_idx" ON "PurchaseOrder"("submittedAt");
+CREATE INDEX IF NOT EXISTS "PurchaseOrder_status_submittedAt_idx" ON "PurchaseOrder"("status", "submittedAt");
+
+-- WebPushSubscription (Tabel Notifikasi Browser Web Push)
+CREATE TABLE IF NOT EXISTS "WebPushSubscription" (
+    "id" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "endpoint" TEXT NOT NULL,
+    "p256dh" TEXT NOT NULL,
+    "auth" TEXT NOT NULL,
+    "userAgent" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "WebPushSubscription_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "WebPushSubscription_endpoint_key" ON "WebPushSubscription"("endpoint");
+CREATE INDEX IF NOT EXISTS "WebPushSubscription_userId_idx" ON "WebPushSubscription"("userId");
+
+DO $$ BEGIN
+    ALTER TABLE "WebPushSubscription" ADD CONSTRAINT "WebPushSubscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 ALTER TABLE "PoCompanyGroup" ADD COLUMN IF NOT EXISTS "defaultCeoId" TEXT;
 ALTER TABLE "PoCompanyGroup" ADD COLUMN IF NOT EXISTS "defaultFvpId" TEXT;

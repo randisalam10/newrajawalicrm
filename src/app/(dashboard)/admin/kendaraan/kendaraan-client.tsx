@@ -17,7 +17,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import {
     Select,
@@ -81,14 +80,12 @@ export function KendaraanClient({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold tracking-tight">Daftar Kendaraan</h2>
+            <div className="flex justify-end items-center">
                 {canManage && (
-                    <Dialog open={open} onOpenChange={setOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Kendaraan</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
+                    <>
+                        <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Kendaraan</Button>
+                        <Dialog open={open} onOpenChange={setOpen}>
+                            <DialogContent className="sm:max-w-[425px]">
                             <DialogHeader>
                                 <DialogTitle>{editData ? 'Edit Kendaraan' : 'Tambah Kendaraan Baru'}</DialogTitle>
                             </DialogHeader>
@@ -140,7 +137,8 @@ export function KendaraanClient({
                                 <Button type="submit" className="w-full mt-4">Simpan</Button>
                             </form>
                         </DialogContent>
-                    </Dialog>
+                        </Dialog>
+                    </>
                 )}
             </div>
 

@@ -211,9 +211,7 @@ export function CustomerClient({
 
     return (
         <div className="space-y-4">
-            {/* ── Header ──────────────────────────────────────────── */}
-            <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold tracking-tight">Daftar Customer & Proyek</h2>
+            <div className="flex justify-end items-center">
                 {canCreate && (
                     <Button onClick={() => { setEditData(null); setDialogMode("customerNew") }}>
                         <Plus className="w-4 h-4 mr-2" /> Tambah Customer

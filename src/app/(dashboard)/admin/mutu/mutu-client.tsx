@@ -17,7 +17,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import {
     Select,
@@ -81,14 +80,12 @@ export function MutuClient({
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold tracking-tight">Daftar Mutu Beton</h2>
+            <div className="flex justify-end items-center">
                 {canManage && (
-                    <Dialog open={open} onOpenChange={setOpen}>
-                        <DialogTrigger asChild>
-                            <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Mutu</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[500px]">
+                    <>
+                        <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Mutu</Button>
+                        <Dialog open={open} onOpenChange={setOpen}>
+                            <DialogContent className="sm:max-w-[500px]">
                             <DialogHeader>
                                 <DialogTitle>{editData ? 'Edit Mutu Beton' : 'Tambah Mutu Beton Baru'}</DialogTitle>
                             </DialogHeader>
@@ -147,7 +144,8 @@ export function MutuClient({
                             </form>
                         </DialogContent>
                     </Dialog>
-                )}
+                </>
+            )}
             </div>
 
             <SimpleDataTable

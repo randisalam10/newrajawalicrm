@@ -17,7 +17,6 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog"
 import { Plus, Pencil, Trash2 } from "lucide-react"
 import { createLocation, updateLocation, deleteLocation } from "./actions"
@@ -62,12 +61,9 @@ export function CabangClient({ initialData }: { initialData: any[] }) {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold tracking-tight">Daftar Cabang</h2>
+            <div className="flex justify-end items-center">
+                <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Cabang</Button>
                 <Dialog open={open} onOpenChange={setOpen}>
-                    <DialogTrigger asChild>
-                        <Button onClick={handleOpenNew}><Plus className="w-4 h-4 mr-2" /> Tambah Cabang</Button>
-                    </DialogTrigger>
                     <DialogContent className="sm:max-w-[425px]">
                         <DialogHeader>
                             <DialogTitle>{editData ? 'Edit Cabang' : 'Tambah Cabang Baru'}</DialogTitle>

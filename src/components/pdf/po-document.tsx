@@ -66,119 +66,238 @@ const fmtDate = (d: Date | string) =>
 
 // ─── Local styles ─────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
+    page: {
+        paddingTop: 18,
+        paddingBottom: 22,
+        paddingHorizontal: 22,
+        fontSize: 6.5,
+        fontFamily: "Helvetica",
+        color: COLORS.dark,
+        backgroundColor: COLORS.white,
+    },
+    // ── KOP SURAT ──
     kopRow: {
         flexDirection: "row",
         justifyContent: "space-between",
-        borderBottomWidth: 2.5,
+        alignItems: "flex-start",
+        borderBottomWidth: 1,
         borderBottomColor: COLORS.primary,
-        paddingBottom: 10,
-        marginBottom: 14,
+        paddingBottom: 4,
+        marginBottom: 5,
     },
     kopLeft: {
         flex: 1,
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 8,
+    },
+    logo: {
+        width: 36,
+        height: 36,
+        objectFit: "contain",
+    },
+    companyName: {
+        fontSize: 10.5,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.primary,
+        lineHeight: 1.1,
+    },
+    companySub: {
+        fontSize: 6.5,
+        color: COLORS.mid,
+        marginTop: 1.5,
+        lineHeight: 1.15,
     },
     kopRight: {
         alignItems: "flex-end",
-        justifyContent: "flex-end",
+        justifyContent: "flex-start",
     },
     poTitle: {
-        fontSize: 20,
-        fontFamily: "Helvetica-Bold",
-        color: COLORS.primary,
-        textTransform: "uppercase",
-    },
-    poNum: {
-        fontSize: 9,
-        fontFamily: "Helvetica",
-        color: COLORS.muted,
-        marginTop: 2,
-    },
-    poDate: {
-        fontSize: 8,
-        color: COLORS.muted,
-        marginTop: 3,
-    },
-    addressGrid: {
-        flexDirection: "row",
-        gap: 16,
-        marginBottom: 14,
-    },
-    addressBox: {
-        flex: 1,
-    },
-    addressTitle: {
-        fontSize: 7,
-        fontFamily: "Helvetica-Bold",
-        color: COLORS.muted,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-        marginBottom: 4,
-        borderBottomWidth: 0.5,
-        borderBottomColor: COLORS.border,
-        paddingBottom: 3,
-    },
-    addressLine: {
-        fontSize: 8,
-        color: COLORS.dark,
-        marginTop: 2,
-    },
-    addressBold: {
-        fontSize: 9,
-        fontFamily: "Helvetica-Bold",
-        color: COLORS.dark,
-    },
-    metaBadge: {
-        fontSize: 7,
-        backgroundColor: COLORS.primaryLight,
-        color: COLORS.primary,
-        padding: "2 7",
-        borderRadius: 3,
-        marginRight: 6,
-        marginBottom: 4,
-    },
-    metaRow: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        marginBottom: 12,
-    },
-    totalBox: {
-        alignSelf: "flex-end",
-        marginTop: 4,
-        marginBottom: 14,
-        minWidth: 220,
-        borderWidth: 0.5,
-        borderColor: COLORS.border,
-        borderRadius: 4,
-    },
-    totalRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        padding: "5 10",
-        borderBottomWidth: 0.5,
-        borderBottomColor: COLORS.border,
-    },
-    totalRowFinal: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        padding: "7 10",
-        backgroundColor: COLORS.primaryLight,
-    },
-    totalLabel: { fontSize: 8, color: COLORS.muted },
-    totalValue: { fontSize: 8, color: COLORS.dark },
-    totalValueBold: {
         fontSize: 11,
         fontFamily: "Helvetica-Bold",
         color: COLORS.primary,
+        textTransform: "uppercase",
+        letterSpacing: 0.8,
     },
-    noteBox: {
-        backgroundColor: COLORS.bg,
-        borderRadius: 4,
-        padding: 8,
-        marginBottom: 12,
+    poNum: {
+        fontSize: 7.5,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.dark,
+        marginTop: 2,
+    },
+    poDate: {
+        fontSize: 6.5,
+        color: COLORS.muted,
+        marginTop: 1,
+    },
+    // ── INFO GRID (2 Kolom Terintegrasi) ──
+    infoGrid: {
+        flexDirection: "row",
         borderWidth: 0.5,
         borderColor: COLORS.border,
+        borderRadius: 2.5,
+        backgroundColor: "#fcfdfe",
+        marginBottom: 4,
+        padding: "3 6",
+        gap: 10,
     },
-    noteText: { fontSize: 8, color: COLORS.mid },
+    infoCol: {
+        flex: 1,
+    },
+    infoSectionTitle: {
+        fontSize: 6.5,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.primary,
+        textTransform: "uppercase",
+        letterSpacing: 0.4,
+        marginBottom: 2,
+        borderBottomWidth: 0.4,
+        borderBottomColor: COLORS.border,
+        paddingBottom: 1,
+    },
+    infoRow: {
+        flexDirection: "row",
+        marginTop: 1,
+    },
+    infoLabel: {
+        width: 58,
+        fontSize: 6.2,
+        color: COLORS.muted,
+    },
+    infoValue: {
+        flex: 1,
+        fontSize: 6.5,
+        color: COLORS.dark,
+    },
+    infoValueBold: {
+        flex: 1,
+        fontSize: 6.8,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.dark,
+    },
+    // ── TABEL BARANG (Ultra Compact) ──
+    table: {
+        width: "100%",
+        borderWidth: 0.5,
+        borderColor: COLORS.border,
+        marginBottom: 4,
+    },
+    tableHead: {
+        flexDirection: "row",
+        backgroundColor: COLORS.primary,
+        borderBottomWidth: 0.5,
+        borderBottomColor: COLORS.primary,
+    },
+    tableHeadCell: {
+        fontSize: 6.2,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.white,
+        padding: "2.2 3",
+        textTransform: "uppercase",
+        letterSpacing: 0.3,
+    },
+    tableRow: {
+        flexDirection: "row",
+        borderBottomWidth: 0.3,
+        borderBottomColor: COLORS.border,
+    },
+    tableRowAlt: {
+        flexDirection: "row",
+        borderBottomWidth: 0.3,
+        borderBottomColor: COLORS.border,
+        backgroundColor: "#f8fafc",
+    },
+    tableCell: {
+        fontSize: 6.2,
+        color: COLORS.dark,
+        padding: "1.8 3",
+        lineHeight: 1.15,
+    },
+    tableCellBold: {
+        fontSize: 6.2,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.dark,
+        padding: "1.8 3",
+        lineHeight: 1.15,
+    },
+    tableTotalRow: {
+        flexDirection: "row",
+        backgroundColor: COLORS.primaryLight,
+        borderTopWidth: 0.8,
+        borderTopColor: COLORS.primary,
+    },
+    tableTotalCell: {
+        fontSize: 6.8,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.primary,
+        padding: "2 3",
+    },
+    bypassNote: {
+        fontSize: 5.8,
+        color: COLORS.muted,
+        fontFamily: "Helvetica-Oblique",
+        marginTop: 2,
+        marginBottom: 2,
+    },
+    // ── CATATAN ──
+    noteBox: {
+        backgroundColor: "#f8fafc",
+        borderRadius: 2,
+        padding: "2.5 5",
+        borderWidth: 0.4,
+        borderColor: COLORS.border,
+        marginBottom: 3,
+    },
+    noteText: {
+        fontSize: 6.2,
+        color: COLORS.mid,
+        lineHeight: 1.15,
+    },
+    // ── TANDA TANGAN ──
+    signRow: {
+        flexDirection: "row",
+        marginTop: 6,
+        gap: 12,
+    },
+    signBox: {
+        flex: 1,
+        alignItems: "center",
+    },
+    signLabel: {
+        fontSize: 6.5,
+        color: COLORS.muted,
+        marginBottom: 1,
+    },
+    signArea: {
+        height: 28,
+        justifyContent: "center",
+        alignItems: "center",
+        marginVertical: 1,
+    },
+    signImage: {
+        width: 65,
+        height: 26,
+        objectFit: "contain",
+    },
+    signLine: {
+        width: "75%",
+        borderBottomWidth: 0.8,
+        borderBottomColor: COLORS.primary,
+    },
+    signName: {
+        fontSize: 7,
+        fontFamily: "Helvetica-Bold",
+        color: COLORS.dark,
+        marginTop: 2,
+        textAlign: "center",
+    },
+    signTitle: {
+        fontSize: 6.2,
+        fontFamily: "Helvetica",
+        color: COLORS.muted,
+        marginTop: 1,
+        textAlign: "center",
+    },
 })
 
 // ─── Document ─────────────────────────────────────────────────────────────────
@@ -187,185 +306,183 @@ export function PODocument({ po }: { po: POData }) {
 
     return (
         <Document title={`PO ${po.po_number}`} author={po.perusahaan_nama}>
-            <Page size="A4" style={shared.page}>
+            <Page size="A4" style={s.page}>
 
                 {/* ── KOP SURAT ──────────────────────────────────────────────────── */}
                 <View style={s.kopRow}>
-                    <View style={[s.kopLeft, { flexDirection: "row", alignItems: "flex-start", gap: 10 }]}>
+                    <View style={s.kopLeft}>
                         {po.perusahaan_logo && (
                             <Image
                                 src={po.perusahaan_logo}
-                                style={{ width: 56, height: 56, objectFit: "contain" }}
+                                style={s.logo}
                             />
                         )}
                         <View style={{ flex: 1 }}>
-                            <Text style={[shared.companyName, { fontSize: 13, lineHeight: 1 }]}>{po.perusahaan_nama}</Text>
+                            <Text style={s.companyName}>{po.perusahaan_nama}</Text>
                             {po.perusahaan_alamat && (
-                                <Text style={shared.companySub}>{po.perusahaan_alamat}</Text>
+                                <Text style={s.companySub}>{po.perusahaan_alamat}</Text>
                             )}
                             {po.perusahaan_telepon && (
-                                <Text style={shared.companySub}>Email: {po.perusahaan_telepon}</Text>
+                                <Text style={s.companySub}>Email/Telp: {po.perusahaan_telepon}</Text>
                             )}
                         </View>
                     </View>
                     <View style={s.kopRight}>
-                        <Text style={s.poTitle}>Purchase Order</Text>
+                        <Text style={s.poTitle}>PURCHASE ORDER</Text>
                         <Text style={s.poNum}>No. PO: {po.po_number}</Text>
                         <Text style={s.poDate}>Tanggal: {fmtDate(po.tanggal_terbit)}</Text>
                     </View>
                 </View>
 
-                {/* ── META BADGES ────────────────────────────────────────────────── */}
-                <View style={s.metaRow}>
-                    <Text style={s.metaBadge}>Kategori: {po.kategori_nama}</Text>
-                    <Text style={s.metaBadge}>Pembayaran: {po.metode_pembayaran}</Text>
-                    {po.proyek_kode && <Text style={s.metaBadge}>Kode Proyek: {po.proyek_kode}</Text>}
-                </View>
-
-                {/* ── ADDRESS GRID ───────────────────────────────────────────────── */}
-                <View style={s.addressGrid}>
-                    <View style={s.addressBox}>
-                        <Text style={s.addressTitle}>Kepada (Supplier / Toko)</Text>
-                        <Text style={s.addressBold}>{po.supplier_nama}</Text>
+                {/* ── INFO GRID: 2 KOLOM TERINTEGRASI ─────────────────────────────── */}
+                <View style={s.infoGrid}>
+                    {/* Kolom Kiri: Rekanan / Supplier */}
+                    <View style={s.infoCol}>
+                        <Text style={s.infoSectionTitle}>Kepada (Supplier / Rekanan)</Text>
+                        <View style={s.infoRow}>
+                            <Text style={s.infoValueBold}>{po.supplier_nama}</Text>
+                        </View>
                         {po.supplier_alamat && (
-                            <Text style={s.addressLine}>{po.supplier_alamat}</Text>
+                            <View style={s.infoRow}>
+                                <Text style={s.infoValue}>{po.supplier_alamat}</Text>
+                            </View>
+                        )}
+                        <View style={s.infoRow}>
+                            <Text style={s.infoLabel}>Kategori</Text>
+                            <Text style={s.infoValue}>: {po.kategori_nama}</Text>
+                        </View>
+                    </View>
+
+                    {/* Kolom Kanan: Tujuan & Ketentuan */}
+                    <View style={s.infoCol}>
+                        <Text style={s.infoSectionTitle}>Tujuan & Pengiriman</Text>
+                        <View style={s.infoRow}>
+                            <Text style={s.infoLabel}>Proyek / Lokasi</Text>
+                            <Text style={s.infoValueBold}>: {po.proyek_nama} {po.proyek_kode ? `(${po.proyek_kode})` : ""}</Text>
+                        </View>
+                        <View style={s.infoRow}>
+                            <Text style={s.infoLabel}>Pembayaran</Text>
+                            <Text style={s.infoValue}>: {po.metode_pembayaran}</Text>
+                        </View>
+                        {(po.pic_name || po.pic_phone) && (
+                            <View style={s.infoRow}>
+                                <Text style={s.infoLabel}>PIC Proyek</Text>
+                                <Text style={s.infoValue}>: {[po.pic_name, po.pic_phone].filter(Boolean).join(" - ")}</Text>
+                            </View>
                         )}
                     </View>
-                    <View style={s.addressBox}>
-                        <Text style={s.addressTitle}>Tujuan / Lokasi Pengiriman</Text>
-                        <Text style={s.addressBold}>{po.proyek_nama}</Text>
-                    </View>
                 </View>
 
-                {/* ── TABEL BARANG ───────────────────────────────────────────────── */}
-                <Text style={shared.sectionTitle}>Rincian Barang Pesanan</Text>
-                <View style={shared.table}>
-                    <View style={shared.tableHead}>
-                        <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>No</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 2 }]}>Nama Barang</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>Part / Merk</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.6 }]}>Keterangan</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.5, textAlign: "center" }]}>Qty</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.6, textAlign: "center" }]}>Satuan</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1, textAlign: "right" }]}>Harga Sat.</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.1, textAlign: "right" }]}>Total</Text>
+                {/* ── TABEL BARANG (ULTRA COMPACT) ────────────────────────────────── */}
+                <View style={s.table}>
+                    <View style={s.tableHead} fixed>
+                        <Text style={[s.tableHeadCell, { width: 20, textAlign: "center" }]}>No</Text>
+                        <Text style={[s.tableHeadCell, { flex: 2.2 }]}>Nama Barang</Text>
+                        <Text style={[s.tableHeadCell, { flex: 1.1 }]}>Part / Merk</Text>
+                        <Text style={[s.tableHeadCell, { flex: 1.3 }]}>Keterangan</Text>
+                        <Text style={[s.tableHeadCell, { width: 28, textAlign: "center" }]}>Qty</Text>
+                        <Text style={[s.tableHeadCell, { width: 34, textAlign: "center" }]}>Satuan</Text>
+                        <Text style={[s.tableHeadCell, { width: 68, textAlign: "right" }]}>Harga Sat.</Text>
+                        <Text style={[s.tableHeadCell, { width: 78, textAlign: "right" }]}>Total</Text>
                     </View>
 
                     {po.items.map((item, i) => (
-                        <View key={item.id} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
-                            <Text style={[shared.tableCell, { flex: 0.4 }]}>{i + 1}</Text>
-                            <Text style={[shared.tableCellBold, { flex: 2 }]}>{item.name}</Text>
-                            <Text style={[shared.tableCell, { flex: 1.2, color: COLORS.muted }]}>
+                        <View key={item.id} style={i % 2 === 0 ? s.tableRow : s.tableRowAlt}>
+                            <Text style={[s.tableCell, { width: 20, textAlign: "center" }]}>{i + 1}</Text>
+                            <Text style={[s.tableCellBold, { flex: 2.2 }]}>{item.name}</Text>
+                            <Text style={[s.tableCell, { flex: 1.1, color: COLORS.muted }]}>
                                 {[item.part_number, item.merk].filter(Boolean).join(" / ") || "-"}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 1.6, color: COLORS.mid }]}>
+                            <Text style={[s.tableCell, { flex: 1.3, color: COLORS.mid }]}>
                                 {item.keterangan || "-"}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 0.5, textAlign: "center" }]}>
+                            <Text style={[s.tableCell, { width: 28, textAlign: "center" }]}>
                                 {item.quantity}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 0.6, textAlign: "center" }]}>
+                            <Text style={[s.tableCell, { width: 34, textAlign: "center" }]}>
                                 {item.satuan}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 1, textAlign: "right" }]}>
+                            <Text style={[s.tableCell, { width: 68, textAlign: "right" }]}>
                                 {fmt(item.harga)}
                             </Text>
-                            <Text style={[shared.tableCellBold, { flex: 1.1, textAlign: "right" }]}>
+                            <Text style={[s.tableCellBold, { width: 78, textAlign: "right" }]}>
                                 {fmt(item.harga * item.quantity)}
                             </Text>
                         </View>
                     ))}
 
-                    <View style={shared.tableTotalRow}>
-                        <Text style={[shared.tableTotalCell, { flex: 0.4 + 2 + 1.2 + 1.6 + 0.5 + 0.6 + 1, textAlign: "right" }]}>
-                            TOTAL HARGA
+                    <View style={s.tableTotalRow} wrap={false}>
+                        <Text style={[s.tableTotalCell, { flex: 1, textAlign: "right" }]}>
+                            TOTAL HARGA :
                         </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.1, textAlign: "right" }]}>
+                        <Text style={[s.tableTotalCell, { width: 78, textAlign: "right" }]}>
                             {fmt(totalBarang)}
                         </Text>
                     </View>
                 </View>
 
-                {/* ── META INFO & CATATAN ────────────────────────────────────────────────────── */}
-                <View style={{ marginBottom: 12 }}>
-                    {(po.pic_name || po.pic_phone) && (
-                        <View style={[s.noteBox, { marginBottom: po.catatan ? 6 : 0 }]}>
-                            <Text style={s.noteText}>
-                                <Text style={{ fontFamily: "Helvetica-Bold" }}>Penanggungjawab (PIC): </Text>
-                                {[po.pic_name, po.pic_phone].filter(Boolean).join(" - ")}
-                            </Text>
-                        </View>
-                    )}
-                    {po.catatan && (
-                        <View style={[s.noteBox, { marginBottom: 0 }]}>
-                            <Text style={s.noteText}>
-                                <Text style={{ fontFamily: "Helvetica-Bold" }}>Catatan: </Text>
-                                {po.catatan}
-                            </Text>
-                        </View>
-                    )}
-                </View>
+                {/* ── CATATAN PERSETUJUAN ADMINISTRATIF (JIKA BYPASSED) ──────────── */}
+                {po.is_bypassed && (
+                    <Text style={s.bypassNote}>
+                        * Catatan: Dokumen ini telah disetujui secara administratif{po.updatedAt ? ` pada ${format(new Date(po.updatedAt), "dd MMMM yyyy", { locale: idLocale })}` : ""}.
+                    </Text>
+                )}
 
-                {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
-                <View style={shared.signRow}>
+                {/* ── CATATAN ────────────────────────────────────────────────────── */}
+                {po.catatan && (
+                    <View style={s.noteBox}>
+                        <Text style={s.noteText}>
+                            <Text style={{ fontFamily: "Helvetica-Bold" }}>Catatan: </Text>
+                            {po.catatan}
+                        </Text>
+                    </View>
+                )}
+
+                {/* ── TANDA TANGAN (Wrap false agar tidak terpisah antar halaman) ─── */}
+                <View style={s.signRow} wrap={false}>
                     {/* MENYETUJUI (KIRI) - PIMPINAN / CEO */}
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Menyetujui,</Text>
-                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
+                    <View style={s.signBox}>
+                        <Text style={s.signLabel}>Menyetujui,</Text>
+                        <View style={s.signArea}>
                             {po.ceo_signature_url ? (
-                                <Image src={po.ceo_signature_url} style={{ width: 80, height: 40, objectFit: 'contain' }} />
-                            ) : po.is_bypassed ? (
-                                <View style={{ alignItems: 'center' }}>
-                                    <Text style={{ fontSize: 6.5, color: COLORS.muted, fontFamily: 'Helvetica-Bold' }}>
-                                        [ Disetujui Administratif ]
-                                    </Text>
-                                    {po.updatedAt && (
-                                        <Text style={{ fontSize: 5.5, color: COLORS.muted, marginTop: 1 }}>
-                                            {format(new Date(po.updatedAt), "dd MMM yyyy", { locale: idLocale })}
-                                        </Text>
-                                    )}
-                                </View>
+                                <Image src={po.ceo_signature_url} style={s.signImage} />
                             ) : null}
                         </View>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pimpinan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                        <View style={s.signLine} />
+                        <Text style={s.signName}>{po.pimpinan}</Text>
+                        <Text style={s.signTitle}>
                             Pemilik Perusahaan
                         </Text>
                     </View>
 
                     {/* MENGETAHUI (TENGAH) - FVP / APPROVER */}
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Mengetahui,</Text>
-                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
+                    <View style={s.signBox}>
+                        <Text style={s.signLabel}>Mengetahui,</Text>
+                        <View style={s.signArea}>
                             {po.fvp_signature_url ? (
-                                <Image src={po.fvp_signature_url} style={{ width: 80, height: 40, objectFit: 'contain' }} />
+                                <Image src={po.fvp_signature_url} style={s.signImage} />
                             ) : null}
                         </View>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.kepala_peralatan}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                        <View style={s.signLine} />
+                        <Text style={s.signName}>{po.kepala_peralatan}</Text>
+                        <Text style={s.signTitle}>
                             {po.jabatan_kepala || "Yang Mengajukan"}
                         </Text>
                     </View>
 
                     {/* DIBUAT OLEH (KANAN) - ADMIN */}
-                    <View style={shared.signBox}>
-                        <Text style={shared.signLabel}>Dibuat oleh,</Text>
-                        <View style={{ height: 42, justifyContent: 'center', alignItems: 'center', marginVertical: 2 }}>
-                            {/* Empty space for admin signature or stamp */}
+                    <View style={s.signBox}>
+                        <Text style={s.signLabel}>Dibuat oleh,</Text>
+                        <View style={s.signArea}>
+                            {/* Ruang stempel / paraf */}
                         </View>
-                        <View style={shared.signLine} />
-                        <Text style={shared.signName}>{po.pembuat}</Text>
-                        <Text style={[shared.signName, { fontFamily: "Helvetica", color: COLORS.muted }]}>
+                        <View style={s.signLine} />
+                        <Text style={s.signName}>{po.pembuat}</Text>
+                        <Text style={s.signTitle}>
                             Admin
                         </Text>
                     </View>
                 </View>
-
-                <Text style={shared.pageNumber} render={({ pageNumber, totalPages }) =>
-                    `Halaman ${pageNumber} dari ${totalPages}`
-                } fixed />
 
             </Page>
         </Document>

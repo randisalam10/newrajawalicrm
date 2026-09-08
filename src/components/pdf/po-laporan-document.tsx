@@ -83,11 +83,11 @@ const s = StyleSheet.create({
     grandLabel: { fontSize: 8, fontFamily: "Helvetica-Bold", color: "#93c5fd" },
     grandValue: { fontSize: 12, fontFamily: "Helvetica-Bold", color: "#86efac" },
     // TTD
-    ttdRow: { flexDirection: "row", marginTop: 20, gap: 0 },
+    ttdRow: { flexDirection: "row", marginTop: 10, gap: 0 },
     ttdBox: { flex: 1, alignItems: "center" },
-    ttdTitle: { fontSize: 7, color: COLORS.muted, marginBottom: 22 },
+    ttdTitle: { fontSize: 7, color: COLORS.muted, marginBottom: 14 },
     ttdLine: { width: "70%", borderBottomWidth: 1, borderBottomColor: COLORS.primary },
-    ttdName: { fontSize: 7, fontFamily: "Helvetica-Bold", color: COLORS.dark, marginTop: 3 },
+    ttdName: { fontSize: 7, fontFamily: "Helvetica-Bold", color: COLORS.dark, marginTop: 2 },
     ttdJabatan: { fontSize: 6.5, color: COLORS.muted },
 })
 
@@ -199,13 +199,13 @@ export function LaporanPODocument({ data }: { data: LaporanPOData }) {
                 ))}
 
                 {/* Grand Total — hanya 1 */}
-                <View style={s.grandTotalBox}>
+                <View style={s.grandTotalBox} wrap={false}>
                     <Text style={s.grandLabel}>GRAND TOTAL — {data.totalPO} Purchase Order</Text>
                     <Text style={s.grandValue}>{fmt(data.grandTotal)}</Text>
                 </View>
 
                 {/* TTD Admin */}
-                <View style={s.ttdRow}>
+                <View style={s.ttdRow} wrap={false}>
                     <View style={{ flex: 2 }} />
                     <View style={s.ttdBox}>
                         <Text style={s.ttdTitle}>Mengetahui,</Text>
