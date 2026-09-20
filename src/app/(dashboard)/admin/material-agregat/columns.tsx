@@ -12,6 +12,15 @@ export type AggregateInRow = {
     notes: string | null
     locationName: string
     locationId: string
+    vehicleId?: string | null
+    driverId?: string | null
+    dump_truck_size?: string | null
+    distance_km?: number | null
+    rate_price?: number | null
+    retase_amount?: number | null
+    is_retase_paid?: boolean
+    vehicle?: any
+    driver?: any
 }
 
 export type AggregateLedgerRow = {

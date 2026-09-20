@@ -1,6 +1,6 @@
 "use client"
 // PDF Template: Retase Sopir (Driver Commission Slip)
-// Data source: aggregated retase records per driver per month
+// Data source: aggregated retase records per driver per month (Mixer or Dump Truck)
 
 import {
     Document, Page, Text, View, StyleSheet
@@ -14,6 +14,7 @@ export type RetaseRecord = {
     id: string
     date: Date | string
     volume_cubic: number
+    // Mixer fields
     project?: {
         name: string
         customer?: { customer_name: string }
@@ -24,10 +25,20 @@ export type RetaseRecord = {
         price_per_cubic_km: number
         income_amount: number
     }
+    // Dump Truck fields
+    no_bon?: string
+    aggregate_type?: string
+    dump_truck_size?: string
+    plate_number?: string
+    vehicleCode?: string
+    distance_km?: number
+    rate_price?: number
+    retase_amount?: number
 }
 
 export type RetaseDriverData = {
     driverId: string
+    driverType?: "MIXER" | "DUMP_TRUCK"
     name: string
     vehicleCode: string
     totalTrip: number
@@ -107,6 +118,7 @@ export function RetaseDocument({
 }) {
     const monthName = MONTH_NAMES[month - 1]
     const cetakDate = format(new Date(), "dd MMMM yyyy", { locale: idLocale })
+    const isDumpTruck = driver.driverType === "DUMP_TRUCK"
 
     return (
         <Document title={`Slip Retase — ${driver.name} — ${monthName} ${year}`} author="PT. Rajawali Mix">
@@ -116,7 +128,9 @@ export function RetaseDocument({
                 <View style={shared.headerRow}>
                     <View>
                         <Text style={shared.companyName}>PT. RAJAWALI MIX</Text>
-                        <Text style={shared.companySub}>Rekap Gaji Retase Supir</Text>
+                        <Text style={shared.companySub}>
+                            Rekap Gaji Retase Supir {isDumpTruck ? "(Dump Truck)" : "(Mixer)"}
+                        </Text>
                         <Text style={shared.companySub}>{locationName}</Text>
                     </View>
                     <View style={shared.docTitleBox}>
@@ -128,7 +142,9 @@ export function RetaseDocument({
 
                 {/* ── IDENTITAS SOPIR ────────────────────────────────────────────── */}
                 <Text style={s.driverName}>{driver.name}</Text>
-                <Text style={s.driverInfo}>No. Kendaraan: {driver.vehicleCode}   |   Periode: {monthName} {year}</Text>
+                <Text style={s.driverInfo}>
+                    Kategori: {isDumpTruck ? "Sopir Dump Truck" : "Sopir Truk Mixer"}   |   Armada: {driver.vehicleCode}   |   Periode: {monthName} {year}
+                </Text>
 
                 {/* ── STAT SUMMARY ───────────────────────────────────────────────── */}
                 <View style={s.statGrid}>
@@ -151,64 +167,131 @@ export function RetaseDocument({
                 </View>
 
                 {/* ── TABEL DETAIL ───────────────────────────────────────────────── */}
-                <Text style={shared.sectionTitle}>Rincian Perjalanan</Text>
-                <View style={shared.table}>
-                    <View style={shared.tableHead}>
-                        <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>#</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.8 }]}>Tanggal</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.5 }]}>Customer</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.6 }]}>Proyek</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.7 }]}>Mutu</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.6, textAlign: "right" }]}>Vol (m³)</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.6, textAlign: "right" }]}>Jarak</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Komisi</Text>
-                    </View>
+                <Text style={shared.sectionTitle}>
+                    {isDumpTruck ? "Rincian Pengangkutan Material Agregat" : "Rincian Perjalanan Pengiriman Beton"}
+                </Text>
 
-                    {driver.records.map((tx, i) => (
-                        <View key={tx.id} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
-                            <Text style={[shared.tableCell, { flex: 0.4 }]}>{i + 1}</Text>
-                            <Text style={[shared.tableCell, { flex: 0.8 }]}>
-                                {format(new Date(tx.date), "dd MMM", { locale: idLocale })}
+                {isDumpTruck ? (
+                    /* DUMP TRUCK TABLE */
+                    <View style={shared.table}>
+                        <View style={shared.tableHead}>
+                            <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>#</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.9 }]}>Tanggal</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.1 }]}>No. Bon</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.1 }]}>Armada & Plat</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.8 }]}>Tipe DT</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.1 }]}>Material</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.7, textAlign: "right" }]}>Vol (m³)</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.7, textAlign: "right" }]}>Jarak</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Tarif</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.1, textAlign: "right" }]}>Komisi</Text>
+                        </View>
+
+                        {driver.records.map((tx, i) => (
+                            <View key={tx.id || i} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
+                                <Text style={[shared.tableCell, { flex: 0.4 }]}>{i + 1}</Text>
+                                <Text style={[shared.tableCell, { flex: 0.9 }]}>
+                                    {format(new Date(tx.date), "dd MMM", { locale: idLocale })}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 1.1 }]}>{tx.no_bon || "-"}</Text>
+                                <Text style={[shared.tableCell, { flex: 1.1 }]}>{tx.plate_number || tx.vehicleCode || "-"}</Text>
+                                <Text style={[shared.tableCell, { flex: 0.8 }]}>{tx.dump_truck_size === "BESAR" ? "DT Besar" : "DT Kecil"}</Text>
+                                <Text style={[shared.tableCell, { flex: 1.1 }]}>{tx.aggregate_type || "-"}</Text>
+                                <Text style={[shared.tableCell, { flex: 0.7, textAlign: "right" }]}>
+                                    {Number(tx.volume_cubic || 0).toFixed(2)}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.7, textAlign: "right" }]}>
+                                    {Number(tx.distance_km || 0).toFixed(0)} km
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.9, textAlign: "right" }]}>
+                                    {Number(tx.rate_price || 0).toLocaleString("id-ID")}
+                                </Text>
+                                <Text style={[shared.tableCellBold, { flex: 1.1, textAlign: "right", color: COLORS.success }]}>
+                                    {Number(tx.retase_amount || 0).toLocaleString("id-ID")}
+                                </Text>
+                            </View>
+                        ))}
+
+                        {/* Total row */}
+                        <View style={shared.tableTotalRow}>
+                            <Text style={[shared.tableTotalCell, { flex: 0.4 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.9 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.1 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.1 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.8 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.1, textAlign: "right" }]}>TOTAL</Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>
+                                {driver.totalVolume.toFixed(1)}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 1.5 }]}>
-                                {tx.project?.customer?.customer_name ?? "-"}
+                            <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>
+                                {driver.totalKm.toFixed(0)} km
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 1.6 }]}>
-                                {tx.project?.name ?? "-"}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.7 }]}>
-                                {tx.concreteQuality?.name ?? "-"}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.6, textAlign: "right" }]}>
-                                {tx.volume_cubic.toFixed(2)}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.6, textAlign: "right" }]}>
-                                {tx.retase?.calculated_distance.toFixed(0) ?? "-"}
-                            </Text>
-                            <Text style={[shared.tableCellBold, { flex: 0.9, textAlign: "right", color: COLORS.success }]}>
-                                {tx.retase?.income_amount.toLocaleString("id-ID") ?? "-"}
+                            <Text style={[shared.tableTotalCell, { flex: 0.9 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.1, textAlign: "right" }]}>
+                                Rp {driver.totalIncome.toLocaleString("id-ID")}
                             </Text>
                         </View>
-                    ))}
-
-                    {/* Total row */}
-                    <View style={shared.tableTotalRow}>
-                        <Text style={[shared.tableTotalCell, { flex: 0.4 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.8 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.5 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.6 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>TOTAL</Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.6, textAlign: "right" }]}>
-                            {driver.totalVolume.toFixed(1)}
-                        </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.6, textAlign: "right" }]}>
-                            {driver.totalKm.toFixed(0)}
-                        </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>
-                            Rp {driver.totalIncome.toLocaleString("id-ID")}
-                        </Text>
                     </View>
-                </View>
+                ) : (
+                    /* MIXER TABLE */
+                    <View style={shared.table}>
+                        <View style={shared.tableHead}>
+                            <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>#</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.8 }]}>Tanggal</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.5 }]}>Customer</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.6 }]}>Proyek</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.7 }]}>Mutu</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.6, textAlign: "right" }]}>Vol (m³)</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.6, textAlign: "right" }]}>Jarak</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Komisi</Text>
+                        </View>
+
+                        {driver.records.map((tx, i) => (
+                            <View key={tx.id || i} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
+                                <Text style={[shared.tableCell, { flex: 0.4 }]}>{i + 1}</Text>
+                                <Text style={[shared.tableCell, { flex: 0.8 }]}>
+                                    {format(new Date(tx.date), "dd MMM", { locale: idLocale })}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 1.5 }]}>
+                                    {tx.project?.customer?.customer_name ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 1.6 }]}>
+                                    {tx.project?.name ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.7 }]}>
+                                    {tx.concreteQuality?.name ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.6, textAlign: "right" }]}>
+                                    {tx.volume_cubic.toFixed(2)}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.6, textAlign: "right" }]}>
+                                    {tx.retase?.calculated_distance ? `${tx.retase.calculated_distance.toFixed(0)} km` : "-"}
+                                </Text>
+                                <Text style={[shared.tableCellBold, { flex: 0.9, textAlign: "right", color: COLORS.success }]}>
+                                    {tx.retase?.income_amount ? `Rp ${tx.retase.income_amount.toLocaleString("id-ID")}` : "-"}
+                                </Text>
+                            </View>
+                        ))}
+
+                        {/* Total row */}
+                        <View style={shared.tableTotalRow}>
+                            <Text style={[shared.tableTotalCell, { flex: 0.4 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.8 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.5 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.6 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>TOTAL</Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.6, textAlign: "right" }]}>
+                                {driver.totalVolume.toFixed(1)}
+                            </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.6, textAlign: "right" }]}>
+                                {driver.totalKm.toFixed(0)} km
+                            </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>
+                                Rp {driver.totalIncome.toLocaleString("id-ID")}
+                            </Text>
+                        </View>
+                    </View>
+                )}
 
                 {/* ── TANDA TANGAN ───────────────────────────────────────────────── */}
                 <View style={shared.signRow}>

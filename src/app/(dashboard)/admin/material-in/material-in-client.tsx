@@ -82,26 +82,20 @@ export function MaterialInClient({
     const showCabang = userRole === "SuperAdminBP" || isCorporate
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-3xl font-bold tracking-tight">Semen Masuk & Stok</h1>
-                        {isReadOnly && (
-                            <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
-                                Mode Pemantauan (Hanya Lihat)
-                            </Badge>
-                        )}
-                    </div>
-                    <p className="text-muted-foreground">Kelola penerimaan semen dan pantau sisa stok berdasarkan pemakaian produksi.</p>
+        <div className="space-y-4">
+            <div className="flex justify-between items-center gap-2">
+                <div className="flex items-center gap-2">
+                    {isReadOnly && (
+                        <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
+                            Mode Pemantauan (Hanya Lihat)
+                        </Badge>
+                    )}
                 </div>
                 {canManage && (
-                    <div className="flex items-center gap-2">
-                        <Button onClick={() => { setEditingData(null); setIsFormOpen(true) }} className="gap-2">
-                            <Plus className="h-4 w-4" />
-                            Tambah Data
-                        </Button>
-                    </div>
+                    <Button onClick={() => { setEditingData(null); setIsFormOpen(true) }} size="sm" className="h-8 gap-1.5 text-xs">
+                        <Plus className="h-4 w-4" />
+                        Tambah Data
+                    </Button>
                 )}
             </div>
 

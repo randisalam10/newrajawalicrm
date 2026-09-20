@@ -189,36 +189,59 @@ model Employee {
   driver_transactions   ProductionTransaction[] @relation("SopirRelation")
   operator_transactions ProductionTransaction[] @relation("OperatorRelation")
   retase_commissions    Retase[]                @relation("DriverRetase")
+  driver_aggregate_incomings AggregateIncoming[] @relation("DriverAggregate")
 }
 
 model Location {
-  id                 String                  @id @default(uuid())
-  name               String                  @unique
-  employees          Employee[]
-  vehicles           Vehicle[]
-  customers          Customer[]              @relation("CustomerOwner") // Changed
-  workItems          WorkItem[]
-  concreteQualities  ConcreteQuality[]
-  transactions       ProductionTransaction[]
-  materialIncomings  MaterialIncoming[]
-  aggregateIncomings AggregateIncoming[]
-  retaseSetting      RetaseSetting?
-  invoices           Invoice[]
-  concretePlans      ConcretePlan[]
-  sharedCustomers    Customer[]              @relation("CustomerSharedLocations") // Added
-  sharedProjects     Project[]               @relation("ProjectSharedLocations") // Added
-  purchaseOrders     PurchaseOrder[]
-  rblBudgets         RblBudget[]
+  id                     String                  @id @default(uuid())
+  name                   String                  @unique
+  employees              Employee[]
+  vehicles               Vehicle[]
+  customers              Customer[]              @relation("CustomerOwner") // Changed
+  workItems              WorkItem[]
+  concreteQualities      ConcreteQuality[]
+  transactions           ProductionTransaction[]
+  materialIncomings      MaterialIncoming[]
+  aggregateIncomings     AggregateIncoming[]
+  retaseSetting          RetaseSetting?
+  aggregateRetaseSetting AggregateRetaseSetting?
+  invoices               Invoice[]
+  concretePlans          ConcretePlan[]
+  sharedCustomers        Customer[]              @relation("CustomerSharedLocations") // Added
+  sharedProjects         Project[]               @relation("ProjectSharedLocations") // Added
+  purchaseOrders         PurchaseOrder[]
+  rblBudgets             RblBudget[]
 }
 
 model Vehicle {
-  id           String                  @id @default(uuid())
-  plate_number String                  @unique
-  vehicle_type VehicleType
-  code         String
-  transactions ProductionTransaction[]
-  location     Location                @relation(fields: [locationId], references: [id])
-  locationId   String
+  id                 String                  @id @default(uuid())
+  plate_number       String                  @unique
+  vehicle_type       VehicleType
+  code               String
+  categoryId         String?
+  category           VehicleCategory?        @relation(fields: [categoryId], references: [id])
+  transactions       ProductionTransaction[]
+  location           Location                @relation(fields: [locationId], references: [id])
+  locationId         String
+  rblExpenses        RblExpense[]
+
+  // Dump Truck specifications
+  dump_truck_size    String?                 // "BESAR" | "KECIL"
+  capacity_cubic     Float?                  // Kapasitas bak (m³) spesifikasi referensi
+  aggregateIncomings AggregateIncoming[]
+
+  @@index([categoryId])
+}
+
+model VehicleCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  code        String?
+  description String?
+  isSystem    Boolean   @default(false)
+  vehicles    Vehicle[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Customer {
@@ -339,23 +362,37 @@ model MaterialIncoming {
 }
 
 model AggregateIncoming {
-  id             String              @id @default(uuid())
-  date           DateTime
-  no_bon         String // No Bon / Surat Jalan
-  driver_name    String // Nama Sopir
-  plate_number   String // Plat Nomor Kendaraan
-  volume_cubic   Float // Jumlah dalam m³
-  aggregate_type AggregateType
-  source_type    AggregateSourceType
-  supplier       String? // Nama supplier (jika External)
-  notes          String?
-  location       Location            @relation(fields: [locationId], references: [id])
-  locationId     String
-  createdAt      DateTime            @default(now())
+  id              String              @id @default(uuid())
+  date            DateTime
+  no_bon          String // No Bon / Surat Jalan
+  driver_name     String // Nama Sopir (snapshot teks)
+  plate_number    String // Plat Nomor Kendaraan (snapshot teks)
+  volume_cubic    Float // Jumlah kubikasi riil dalam m³ (diinput manual)
+  aggregate_type  AggregateType
+  source_type     AggregateSourceType
+  supplier        String? // Nama supplier (jika External)
+  notes           String?
+  location        Location            @relation(fields: [locationId], references: [id])
+  locationId      String
+
+  // Link to internal vehicle & driver for retase calculation (Internal only)
+  vehicleId       String?
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
+  driverId        String?
+  driver          Employee?           @relation("DriverAggregate", fields: [driverId], references: [id])
+  dump_truck_size String?             // "BESAR" | "KECIL" (snapshot saat transaksi)
+  distance_km     Float?              // Jarak tempuh (KM)
+  rate_price      Float?              // Tarif per m³.km yang digunakan (Rp)
+  retase_amount   Float?              // Total retase = volume_cubic * distance_km * rate_price
+  is_retase_paid  Boolean             @default(false)
+
+  createdAt       DateTime            @default(now())
 
   @@index([date])
   @@index([locationId, date])
   @@index([aggregate_type])
+  @@index([vehicleId])
+  @@index([driverId])
 }
 
 enum RetaseCalcMode {
@@ -386,6 +423,18 @@ model RetaseSetting {
   location           Location        @relation(fields: [locationId], references: [id])
   locationId         String          @unique // One setting per branch
   updatedAt          DateTime        @updatedAt
+}
+
+model AggregateRetaseSetting {
+  id                  String   @id @default(uuid())
+  price_dt_besar      Float    @default(0) // Tarif Rp / m³.km DT Besar
+  price_dt_kecil      Float    @default(0) // Tarif Rp / m³.km DT Kecil
+  default_distance_km Float    @default(0) // Default jarak Quarry ke BP (KM)
+  effective_from      DateTime @default(now())
+  location            Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  locationId          String   @unique // One setting per branch
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model AuditLog {
@@ -775,13 +824,21 @@ model RblExpense {
 
   date            DateTime
   itemDescription String
-  category        String?
+  
+  categoryId      String?
+  categoryRef     RblCategory? @relation(fields: [categoryId], references: [id])
+  category        String? // Snapshot nama kategori
+
   quantity        Float     @default(1)
   unit            String    @default("Pcs")
   unitPrice       Float     @default(0)
   amount          Float     // Total = quantity * unitPrice
   receiptNo       String?
   notes           String?
+
+  vehicleId       String?
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id])
+  kmMeter         Float?    // Catatan KM / HM saat pengisian
 
   createdById     String
   createdBy       User      @relation("RblExpenseCreatedBy", fields: [createdById], references: [id])
@@ -790,6 +847,8 @@ model RblExpense {
   updatedAt       DateTime  @updatedAt
 
   @@index([budgetId, date])
+  @@index([categoryId])
+  @@index([vehicleId])
 }
 
 model RblAttachment {
@@ -810,3 +869,16 @@ model RblAttachment {
 
   @@index([budgetId])
 }
+
+model RblCategory {
+  id               String       @id @default(uuid())
+  name             String       @unique
+  description      String?
+  requireVehicleKm Boolean      @default(false)
+  isSystem         Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  expenses         RblExpense[]
+}
+

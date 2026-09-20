@@ -186,6 +186,63 @@ CREATE TABLE IF NOT EXISTS "RblExpense" (
     CONSTRAINT "RblExpense_pkey" PRIMARY KEY ("id")
 );
 
+-- RBL Category Table
+CREATE TABLE IF NOT EXISTS "RblCategory" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "isSystem" BOOLEAN NOT NULL DEFAULT false,
+    "requireVehicleKm" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "RblCategory_pkey" PRIMARY KEY ("id")
+);
+
+-- Alter RblExpense to support CategoryId, VehicleId, and KM Odometer
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "categoryId" TEXT;
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "vehicleId" TEXT;
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "kmMeter" DOUBLE PRECISION;
+
+DO $$ BEGIN
+    ALTER TABLE "RblExpense" ADD CONSTRAINT "RblExpense_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "RblCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE "RblExpense" ADD CONSTRAINT "RblExpense_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "Vehicle"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+-- Seed default RBL Categories if not exists
+INSERT INTO "RblCategory" ("id", "name", "description", "isSystem", "requireVehicleKm", "updatedAt")
+VALUES
+    ('cat-bbm-solar', 'BBM / Solar', 'Bahan bakar minyak (Solar/Dexlite/Biosolar) kendaraan & alat berat', true, true, NOW()),
+    ('cat-pelumas-oli', 'Pelumas / Oli', 'Oli mesin, pelumas hidrolik, transmisi, & gemuk armada', true, true, NOW()),
+    ('cat-konsumsi', 'Konsumsi & Dapur', 'Konsumsi lembur, air minum galon, & kebutuhan dapur cabang', true, false, NOW()),
+    ('cat-pemeliharaan', 'Pemeliharaan & Sparepart', 'Perbaikan alat, servis ringan batching plant & armada', true, false, NOW()),
+    ('cat-atk', 'ATK & Keperluan Kantor', 'Kertas bon, printer, pulpen, & perlengkapan administrasi', true, false, NOW()),
+    ('cat-utilitas', 'Listrik, Air & Internet', 'Pembayaran token PLN, PDAM, pulsa/kuota internet kantor', true, false, NOW()),
+    ('cat-keamanan', 'Keamanan & Kebersihan', 'Retribusi lingkungan, uang jaga malam, & alat kebersihan', true, false, NOW()),
+    ('cat-umum', 'Operasional Umum', 'Biaya tak terduga dan operasional lapangan umum lainnya', true, false, NOW())
+ON CONFLICT ("name") DO UPDATE
+SET "requireVehicleKm" = EXCLUDED."requireVehicleKm",
+    "isSystem" = EXCLUDED."isSystem";
+
+-- Backfill categoryId on existing expenses
+UPDATE "RblExpense" e
+SET "categoryId" = c.id
+FROM "RblCategory" c
+WHERE e."categoryId" IS NULL
+  AND (
+      (e."category" ILIKE '%bbm%' OR e."category" ILIKE '%solar%' OR e."category" ILIKE '%bahan bakar%') AND c.name = 'BBM / Solar'
+      OR (e."category" ILIKE '%oli%' OR e."category" ILIKE '%pelumas%') AND c.name = 'Pelumas / Oli'
+      OR (e."category" ILIKE '%konsumsi%' OR e."category" ILIKE '%makan%' OR e."category" ILIKE '%dapur%') AND c.name = 'Konsumsi & Dapur'
+      OR (e."category" ILIKE '%sparepart%' OR e."category" ILIKE '%pemeliharaan%' OR e."category" ILIKE '%servis%') AND c.name = 'Pemeliharaan & Sparepart'
+      OR (e."category" ILIKE '%atk%' OR e."category" ILIKE '%kantor%') AND c.name = 'ATK & Keperluan Kantor'
+      OR (e."category" ILIKE '%listrik%' OR e."category" ILIKE '%air%' OR e."category" ILIKE '%internet%' OR e."category" ILIKE '%pln%') AND c.name = 'Listrik, Air & Internet'
+      OR (e."category" ILIKE '%keamanan%' OR e."category" ILIKE '%kebersihan%') AND c.name = 'Keamanan & Kebersihan'
+  );
+
 CREATE TABLE IF NOT EXISTS "RblAttachment" (
     "id" TEXT NOT NULL,
     "budgetId" TEXT NOT NULL,
@@ -203,10 +260,14 @@ CREATE TABLE IF NOT EXISTS "RblAttachment" (
 CREATE UNIQUE INDEX IF NOT EXISTS "Role_name_key" ON "Role"("name");
 CREATE UNIQUE INDEX IF NOT EXISTS "Permission_code_key" ON "Permission"("code");
 CREATE INDEX IF NOT EXISTS "Permission_module_idx" ON "Permission"("module");
+CREATE UNIQUE INDEX IF NOT EXISTS "RblCategory_name_key" ON "RblCategory"("name");
+CREATE INDEX IF NOT EXISTS "RblCategory_requireVehicleKm_idx" ON "RblCategory"("requireVehicleKm");
 CREATE UNIQUE INDEX IF NOT EXISTS "RblBudget_code_key" ON "RblBudget"("code");
 CREATE INDEX IF NOT EXISTS "RblBudget_locationId_status_idx" ON "RblBudget"("locationId", "status");
 CREATE INDEX IF NOT EXISTS "RblBudget_periodYear_periodMonth_idx" ON "RblBudget"("periodYear", "periodMonth");
 CREATE INDEX IF NOT EXISTS "RblExpense_budgetId_date_idx" ON "RblExpense"("budgetId", "date");
+CREATE INDEX IF NOT EXISTS "RblExpense_categoryId_idx" ON "RblExpense"("categoryId");
+CREATE INDEX IF NOT EXISTS "RblExpense_vehicleId_idx" ON "RblExpense"("vehicleId");
 CREATE INDEX IF NOT EXISTS "RblAttachment_budgetId_idx" ON "RblAttachment"("budgetId");
 
 -- Performance Booster Indexes
@@ -342,6 +403,7 @@ IMAGE_NAME="randisalam1007/rajawali-bp-erp:latest"
 docker run --rm --network host --env-file $ENV_FILE $IMAGE_NAME sh -c "
 npx prisma migrate resolve --applied 20260904000000_add_rbl_and_rbac_module 2>/dev/null || true
 npx prisma migrate resolve --applied 20260904120000_add_po_indexes 2>/dev/null || true
+npx prisma migrate resolve --applied 20260920000000_add_rbl_category_and_vehicle_km 2>/dev/null || true
 " || true
 
 echo -e "${CYAN}Memulai ulang container rajawali-app...${NC}"

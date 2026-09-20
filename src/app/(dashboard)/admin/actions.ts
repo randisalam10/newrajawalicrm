@@ -241,34 +241,244 @@ export async function getDashboardData() {
         orderBy: { createdAt: 'asc' },
     })
 
+    // ============================================
+    // 12. LOGISTIK & PENGADAAN (PO, Material Masuk)
+    // ============================================
+    const userRole = session.user.role || ""
+    const userName = (session.user as any).name || session.user.username || "Pengguna"
+    const isCorporate = isSuperAdmin || ["CEO", "FVP", "Approver"].includes(userRole)
+    let locationName = "Semua Cabang (Konsolidasi)"
+    if (userLocationId) {
+        const userLoc = await prisma.location.findUnique({ where: { id: userLocationId }, select: { name: true } })
+        if (userLoc) locationName = userLoc.name
+    }
+
+    const poLocationFilter = (!isCorporate && userLocationId) ? { locationId: userLocationId } : {}
+
+    const [posMonth, pendingPos, recentPos, aggregateIncomingAgg] = await Promise.all([
+        prisma.purchaseOrder.findMany({
+            where: {
+                ...poLocationFilter,
+                tanggal_terbit: { gte: monthStart, lte: monthEnd },
+                status: { not: "CANCELLED" }
+            },
+            include: {
+                items: true,
+                category: true,
+                companyGroup: true,
+                location: true,
+            },
+            orderBy: { tanggal_terbit: 'desc' }
+        }),
+        prisma.purchaseOrder.findMany({
+            where: {
+                ...poLocationFilter,
+                status: { in: ["DRAFT", "SUBMITTED"] }
+            },
+            include: {
+                items: true,
+                category: true,
+                companyGroup: true
+            },
+            orderBy: { tanggal_terbit: 'desc' },
+            take: 5
+        }),
+        prisma.purchaseOrder.findMany({
+            where: { ...poLocationFilter },
+            include: {
+                items: true,
+                category: true,
+                companyGroup: true,
+                location: true,
+            },
+            orderBy: { tanggal_terbit: 'desc' },
+            take: 5
+        }),
+        prisma.aggregateIncoming.aggregate({
+            where: {
+                ...locationFilter,
+                date: { gte: monthStart, lte: monthEnd }
+            },
+            _sum: { volume_cubic: true }
+        })
+    ])
+
+    let totalNilaiPoBulanIni = 0
+    let totalPoItemsBulanIni = 0
+    posMonth.forEach(po => {
+        const sum = po.items.reduce((acc, item) => acc + (item.subtotal || 0), 0)
+        totalNilaiPoBulanIni += sum
+        totalPoItemsBulanIni += po.items.length
+    })
+
+    const poPendingApprovalCount = pendingPos.length
+    const poApprovedCount = posMonth.filter(p => p.status === "APPROVED").length
+    const poDraftCount = posMonth.filter(p => p.status === "DRAFT").length
+    const totalAgregatMasukBulanIni = aggregateIncomingAgg._sum.volume_cubic || 0
+
+    // ============================================
+    // 13. KEUANGAN & BILLING (Unbilled Pool & A/R)
+    // ============================================
+    const [unbilledTx, activeInvoices] = await Promise.all([
+        prisma.productionTransaction.findMany({
+            where: {
+                ...locationFilter,
+                invoiceItem: null,
+            },
+            include: {
+                project: { include: { prices: true } },
+            }
+        }),
+        prisma.invoice.findMany({
+            where: {
+                ...locationFilter,
+                status: { not: "CANCELLED" },
+            },
+            select: {
+                id: true,
+                total_amount: true,
+                paid_amount: true,
+                status: true,
+                due_date: true
+            }
+        })
+    ])
+
+    const unbilledCount = unbilledTx.length
+    const unbilledVolumeTotal = unbilledTx.reduce((s, t) => s + (t.volume_cubic || 0), 0)
+    let unbilledEstimatedValue = 0
+    unbilledTx.forEach(t => {
+        const matchedPrice = t.project?.prices?.find((p: any) => p.qualityId === t.qualityId)?.price || 0
+        unbilledEstimatedValue += (t.volume_cubic * matchedPrice)
+    })
+
+    const totalInvoiced = activeInvoices.reduce((s, i) => s + (i.total_amount || 0), 0)
+    const totalInvoicePaid = activeInvoices.reduce((s, i) => s + (i.paid_amount || 0), 0)
+    const totalOutstandingReceivables = Math.max(0, totalInvoiced - totalInvoicePaid)
+
+    // ============================================
+    // 14. KAS OPERASIONAL RBL & PENGGUNAAN SOLAR
+    // ============================================
+    const activeBudget = await prisma.rblBudget.findFirst({
+        where: {
+            ...(userLocationId ? { locationId: userLocationId } : {}),
+            status: "OPEN"
+        },
+        include: {
+            location: true,
+            expenses: {
+                select: { amount: true, category: true, quantity: true }
+            }
+        }
+    })
+
+    const rblBudgetAmount = activeBudget?.amount || 0
+    const rblExpensesTotal = (activeBudget?.expenses || []).reduce((s, e) => s + (e.amount || 0), 0)
+    const rblRemainingBalance = rblBudgetAmount - rblExpensesTotal
+
+    let totalSolarLitersRbl = 0
+    let totalSolarCostRbl = 0
+    ;(activeBudget?.expenses || []).forEach(e => {
+        const cat = (e.category || "").toLowerCase()
+        if (cat.includes("bbm") || cat.includes("solar") || cat.includes("bakar")) {
+            totalSolarLitersRbl += (e.quantity || 0)
+            totalSolarCostRbl += (e.amount || 0)
+        }
+    })
+
+    // ============================================
+    // 15. ARMADA & KENDARAAN
+    // ============================================
+    const totalVehiclesCount = await prisma.vehicle.count({ where: locationFilter })
+
     return {
+        // User & Role Context
+        userContext: {
+            role: userRole,
+            name: userName,
+            locationId: userLocationId || "",
+            locationName,
+            isSuperAdmin,
+            isCorporate
+        },
         isSuperAdmin,
-        // Today
+
+        // 1. Operasional & Produksi
         todayVolumeTotal,
         todayTrips,
         todayPending,
         todayConfirmed,
         todayActiveVehicles,
         todayActiveDrivers,
-        // Month
         monthVolumeTotal,
         monthTrips,
         estimatedOmsetBulanIni,
-        // Stock
         estimasiStokSemen,
         stokStatus,
-        // Charts & Comparisons
         trendData,
         weekGrowthRate,
         mutuDistribution,
-        // Tables
         topCustomers,
         recentActivity,
-        // SuperAdmin extras
+        todayPlans,
         pendingCount,
         branchBreakdown,
         totalRetaseBulanIni,
-        // Planning
-        todayPlans,
+
+        // 2. Logistik & Pengadaan
+        logistik: {
+            totalPoBulanIni: posMonth.length,
+            totalNilaiPoBulanIni,
+            poPendingApprovalCount,
+            poApprovedCount,
+            poDraftCount,
+            recentPos: recentPos.map(p => ({
+                id: p.id,
+                po_number: p.po_number,
+                tanggal_terbit: p.tanggal_terbit,
+                status: p.status,
+                categoryName: p.category?.name || "General",
+                companyGroupName: p.companyGroup?.name || "-",
+                totalAmount: p.items.reduce((s, it) => s + (it.subtotal || 0), 0),
+                itemCount: p.items.length
+            })),
+            pendingPos: pendingPos.map(p => ({
+                id: p.id,
+                po_number: p.po_number,
+                tanggal_terbit: p.tanggal_terbit,
+                status: p.status,
+                categoryName: p.category?.name || "General",
+                companyGroupName: p.companyGroup?.name || "-",
+                totalAmount: p.items.reduce((s, it) => s + (it.subtotal || 0), 0)
+            })),
+            totalSemenMasukTon: totalSemenMasuk > 0 ? totalSemenMasuk / 1000 : 0,
+            totalAgregatMasukM3: totalAgregatMasukBulanIni,
+            estimatedMaterialConsumption: {
+                semenKg: totalSemenKeluar,
+                semenTon: totalSemenKeluar / 1000
+            }
+        },
+
+        // 3. Keuangan & Billing
+        keuangan: {
+            unbilledCount,
+            unbilledVolumeTotal,
+            unbilledEstimatedValue,
+            totalInvoiced,
+            totalInvoicePaid,
+            totalOutstandingReceivables,
+            rblBudgetAmount,
+            rblExpensesTotal,
+            rblRemainingBalance,
+            totalSolarLitersRbl,
+            totalSolarCostRbl,
+            hasActiveRbl: !!activeBudget
+        },
+
+        // 4. Armada
+        armada: {
+            totalVehiclesCount,
+            activeVehiclesToday: todayActiveVehicles
+        }
     }
 }

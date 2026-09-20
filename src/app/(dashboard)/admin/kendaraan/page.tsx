@@ -1,4 +1,4 @@
-import { getKendaraan } from "./actions"
+import { getKendaraan, getVehicleCategories } from "./actions"
 import { KendaraanClient } from "./kendaraan-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
@@ -7,9 +7,10 @@ import { Eye } from "lucide-react"
 
 export default async function KendaraanPage() {
     const session = await auth()
-    const [data, locations] = await Promise.all([
+    const [data, locations, categories] = await Promise.all([
         getKendaraan(),
-        getLocations()
+        getLocations(),
+        getVehicleCategories(),
     ])
     const userRole = session?.user?.role || "OperatorBP"
     const isCorporate = isCorporateUser(session?.user)
@@ -20,7 +21,7 @@ export default async function KendaraanPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex flex-col space-y-1">
                     <h1 className="text-3xl font-bold tracking-tight">Data Kendaraan</h1>
-                    <p className="text-slate-500">Kelola master data armada (Truk Mixer & Loader).</p>
+                    <p className="text-slate-500">Kelola master data armada, truk mixer, loader, dan kategori alat.</p>
                 </div>
                 {!canManage && (
                     <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-medium w-fit">
@@ -33,6 +34,7 @@ export default async function KendaraanPage() {
             <KendaraanClient
                 initialData={data}
                 locations={locations}
+                initialCategories={categories}
                 userRole={userRole}
                 canManage={canManage}
                 isCorporate={isCorporate}

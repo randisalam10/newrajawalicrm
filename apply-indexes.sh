@@ -188,8 +188,100 @@ CREATE TABLE IF NOT EXISTS "WebPushSubscription" (
 CREATE UNIQUE INDEX IF NOT EXISTS "WebPushSubscription_endpoint_key" ON "WebPushSubscription"("endpoint");
 CREATE INDEX IF NOT EXISTS "WebPushSubscription_userId_idx" ON "WebPushSubscription"("userId");
 
+-- 15. RblCategory & RblExpense Vehicle Tracking
+CREATE TABLE IF NOT EXISTS "RblCategory" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "description" TEXT,
+    "requireVehicleKm" BOOLEAN NOT NULL DEFAULT false,
+    "isSystem" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "RblCategory_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "RblCategory_name_key" ON "RblCategory"("name");
+
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "categoryId" TEXT;
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "vehicleId" TEXT;
+ALTER TABLE "RblExpense" ADD COLUMN IF NOT EXISTS "kmMeter" DOUBLE PRECISION;
+
+CREATE INDEX IF NOT EXISTS "RblExpense_categoryId_idx" ON "RblExpense"("categoryId");
+CREATE INDEX IF NOT EXISTS "RblExpense_vehicleId_idx" ON "RblExpense"("vehicleId");
+
 DO $$ BEGIN
-    ALTER TABLE "WebPushSubscription" ADD CONSTRAINT "WebPushSubscription_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+    ALTER TABLE "RblExpense" ADD CONSTRAINT "RblExpense_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "RblCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE "RblExpense" ADD CONSTRAINT "RblExpense_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "Vehicle"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+-- 16. VehicleCategory & Dump Truck Specs
+CREATE TABLE IF NOT EXISTS "VehicleCategory" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "code" TEXT,
+    "description" TEXT,
+    "isSystem" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "VehicleCategory_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "VehicleCategory_name_key" ON "VehicleCategory"("name");
+
+ALTER TABLE "Vehicle" ADD COLUMN IF NOT EXISTS "categoryId" TEXT;
+ALTER TABLE "Vehicle" ADD COLUMN IF NOT EXISTS "dump_truck_size" TEXT;
+ALTER TABLE "Vehicle" ADD COLUMN IF NOT EXISTS "capacity_cubic" DOUBLE PRECISION;
+
+CREATE INDEX IF NOT EXISTS "Vehicle_categoryId_idx" ON "Vehicle"("categoryId");
+
+DO $$ BEGIN
+    ALTER TABLE "Vehicle" ADD CONSTRAINT "Vehicle_categoryId_fkey" FOREIGN KEY ("categoryId") REFERENCES "VehicleCategory"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+-- 17. AggregateIncoming Dump Truck Link & AggregateRetaseSetting
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "vehicleId" TEXT;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "driverId" TEXT;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "dump_truck_size" TEXT;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "distance_km" DOUBLE PRECISION;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "rate_price" DOUBLE PRECISION;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "retase_amount" DOUBLE PRECISION;
+ALTER TABLE "AggregateIncoming" ADD COLUMN IF NOT EXISTS "is_retase_paid" BOOLEAN NOT NULL DEFAULT false;
+
+CREATE INDEX IF NOT EXISTS "AggregateIncoming_vehicleId_idx" ON "AggregateIncoming"("vehicleId");
+CREATE INDEX IF NOT EXISTS "AggregateIncoming_driverId_idx" ON "AggregateIncoming"("driverId");
+
+DO $$ BEGIN
+    ALTER TABLE "AggregateIncoming" ADD CONSTRAINT "AggregateIncoming_vehicleId_fkey" FOREIGN KEY ("vehicleId") REFERENCES "Vehicle"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE "AggregateIncoming" ADD CONSTRAINT "AggregateIncoming_driverId_fkey" FOREIGN KEY ("driverId") REFERENCES "Employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "AggregateRetaseSetting" (
+    "id" TEXT NOT NULL,
+    "price_dt_besar" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "price_dt_kecil" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "default_distance_km" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "effective_from" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "locationId" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "AggregateRetaseSetting_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "AggregateRetaseSetting_locationId_key" ON "AggregateRetaseSetting"("locationId");
+
+DO $$ BEGIN
+    ALTER TABLE "AggregateRetaseSetting" ADD CONSTRAINT "AggregateRetaseSetting_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 EXCEPTION WHEN duplicate_object THEN null;
 END $$;
 EOF

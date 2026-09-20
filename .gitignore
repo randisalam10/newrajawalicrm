@@ -48,4 +48,5 @@ _archive/
 android_app/keysote_apk/
 rajawali-development-firebase-adminsdk-*.json
 /uploads/
-
+scratch/
+check_users.js

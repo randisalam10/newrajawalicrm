@@ -2,7 +2,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
       args:
         NEXT_PUBLIC_PUSHER_APP_KEY: "bc74d4540fb90aef4aa1"
         NEXT_PUBLIC_PUSHER_CLUSTER: "ap1"
@@ -27,7 +27,15 @@ services:
       - NEXT_PUBLIC_VAPID_PUBLIC_KEY=BIlGR6nIKsx26ZZ-pLz806slsgQLBh7Y4taaCoOu0hwbOMsjw6x87TCkLhqRH6gjFWrD16enC8Rmn_furAWXl8E
       - VAPID_PRIVATE_KEY=V-URsTkXs2Iw7XnvJPB0n1ucSdWhObqRR0zUMWQESgI
       - VAPID_SUBJECT=mailto:rsi.rajawali@gmail.com
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+    command: sh -c "npx prisma generate && npx next dev --webpack -H 0.0.0.0"
     volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
       - ./uploads:/app/uploads
       - ./rajawali-development-firebase-adminsdk-fbsvc-8a05ea685a.json:/app/rajawali-development-firebase-adminsdk-fbsvc-8a05ea685a.json:ro
     depends_on:

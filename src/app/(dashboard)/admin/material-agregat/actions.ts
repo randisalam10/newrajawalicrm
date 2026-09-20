@@ -14,9 +14,15 @@ const aggregateSchema = z.object({
     volume_cubic: z.coerce.number().min(0.01, "Volume harus lebih dari 0"),
     aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Other"]),
     source_type: z.enum(["Internal", "External"]),
-    supplier: z.string().optional(),
-    notes: z.string().optional(),
+    supplier: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
     locationId: z.string().min(1, "Cabang wajib diisi"),
+    vehicleId: z.string().optional().nullable(),
+    driverId: z.string().optional().nullable(),
+    dump_truck_size: z.preprocess(val => (val === "" ? null : val), z.enum(["BESAR", "KECIL"]).nullable().optional()),
+    distance_km: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
+    rate_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
+    retase_amount: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
 })
 
 export async function getAggregateIncomings() {
@@ -27,7 +33,11 @@ export async function getAggregateIncomings() {
 
     return await prisma.aggregateIncoming.findMany({
         where: filter,
-        include: { location: true },
+        include: { 
+            location: true,
+            vehicle: true,
+            driver: true
+        },
         orderBy: { date: "desc" },
     })
 }
@@ -57,9 +67,47 @@ export async function createAggregateIncoming(formData: FormData) {
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
             locationId: targetLocationId,
+            vehicleId: formData.get("vehicleId") || undefined,
+            driverId: formData.get("driverId") || undefined,
+            dump_truck_size: formData.get("dump_truck_size") || undefined,
+            distance_km: formData.get("distance_km") || undefined,
+            rate_price: formData.get("rate_price") || undefined,
+            retase_amount: formData.get("retase_amount") || undefined,
         }
 
         const data = aggregateSchema.parse(rawData)
+
+        // Internal Quarry Transport Commission (Retase) Calculation
+        let resolvedDistance = data.distance_km ?? null
+        let resolvedRate = data.rate_price ?? null
+        let calculatedRetase = data.retase_amount ?? null
+
+        if (data.source_type === "Internal") {
+            const setting = await prisma.aggregateRetaseSetting.findUnique({
+                where: { locationId: data.locationId }
+            })
+
+            if (setting) {
+                // Determine rate strictly by branch setting according to dump_truck_size
+                resolvedRate = data.dump_truck_size === "BESAR" 
+                    ? setting.price_dt_besar 
+                    : (data.dump_truck_size === "KECIL" ? setting.price_dt_kecil : (setting.price_dt_besar || 0))
+
+                if (resolvedDistance == null || resolvedDistance <= 0) {
+                    resolvedDistance = setting.default_distance_km
+                }
+            }
+
+            if (resolvedRate != null && resolvedDistance != null) {
+                // Formula: tarif x jarak x kubikasi riil
+                calculatedRetase = Math.round(Number(data.volume_cubic) * Number(resolvedDistance) * Number(resolvedRate))
+            }
+        } else {
+            // Eksternal pembelian luar tidak ada retase internal
+            resolvedDistance = null
+            resolvedRate = null
+            calculatedRetase = null
+        }
 
         await prisma.aggregateIncoming.create({
             data: {
@@ -73,10 +121,17 @@ export async function createAggregateIncoming(formData: FormData) {
                 supplier: data.supplier || null,
                 notes: data.notes || null,
                 locationId: data.locationId,
+                vehicleId: data.vehicleId || null,
+                driverId: data.driverId || null,
+                dump_truck_size: data.dump_truck_size || null,
+                distance_km: resolvedDistance,
+                rate_price: resolvedRate,
+                retase_amount: calculatedRetase,
             },
         })
 
         revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/retase")
         return { success: true }
     } catch (error: any) {
         if (error?.errors) {
@@ -111,9 +166,45 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
             locationId: targetLocationId,
+            vehicleId: formData.get("vehicleId") || undefined,
+            driverId: formData.get("driverId") || undefined,
+            dump_truck_size: formData.get("dump_truck_size") || undefined,
+            distance_km: formData.get("distance_km") || undefined,
+            rate_price: formData.get("rate_price") || undefined,
+            retase_amount: formData.get("retase_amount") || undefined,
         }
 
         const data = aggregateSchema.parse(rawData)
+
+        let resolvedDistance = data.distance_km ?? null
+        let resolvedRate = data.rate_price ?? null
+        let calculatedRetase = data.retase_amount ?? null
+
+        if (data.source_type === "Internal") {
+            const setting = await prisma.aggregateRetaseSetting.findUnique({
+                where: { locationId: data.locationId }
+            })
+
+            if (setting) {
+                // Determine rate strictly by branch setting according to dump_truck_size
+                resolvedRate = data.dump_truck_size === "BESAR" 
+                    ? setting.price_dt_besar 
+                    : (data.dump_truck_size === "KECIL" ? setting.price_dt_kecil : (setting.price_dt_besar || 0))
+
+                if (resolvedDistance == null || resolvedDistance <= 0) {
+                    resolvedDistance = setting.default_distance_km
+                }
+            }
+
+            if (resolvedRate != null && resolvedDistance != null) {
+                // Formula: tarif x jarak x kubikasi riil
+                calculatedRetase = Math.round(Number(data.volume_cubic) * Number(resolvedDistance) * Number(resolvedRate))
+            }
+        } else {
+            resolvedDistance = null
+            resolvedRate = null
+            calculatedRetase = null
+        }
 
         await prisma.aggregateIncoming.update({
             where: { id },
@@ -128,10 +219,17 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
                 supplier: data.supplier || null,
                 notes: data.notes || null,
                 locationId: data.locationId,
+                vehicleId: data.vehicleId || null,
+                driverId: data.driverId || null,
+                dump_truck_size: data.dump_truck_size || null,
+                distance_km: resolvedDistance,
+                rate_price: resolvedRate,
+                retase_amount: calculatedRetase,
             },
         })
 
         revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/retase")
         return { success: true }
     } catch (error: any) {
         if (error?.errors) {
@@ -253,4 +351,52 @@ export async function getAggregateStockLedger(aggregateType: string, locationId?
 
 export async function getLocations() {
     return await prisma.location.findMany({ orderBy: { name: "asc" } })
+}
+
+const updateAggregateSettingSchema = z.object({
+    locationId: z.string().min(1, "Cabang wajib diisi"),
+    price_dt_besar: z.coerce.number().min(0, "Tarif DT Besar tidak boleh negatif"),
+    price_dt_kecil: z.coerce.number().min(0, "Tarif DT Kecil tidak boleh negatif"),
+    default_distance_km: z.coerce.number().min(0, "Jarak default tidak boleh negatif"),
+})
+
+export async function saveAggregateRetaseSetting(formData: FormData) {
+    const session = await auth()
+    if (!session?.user) return { error: "Unauthorized" }
+
+    const role = session.user.role || ""
+    if (!["SuperAdminBP", "AdminBP"].includes(role)) {
+        return { error: "Akses ditolak: Anda tidak memiliki izin untuk mengubah tarif retase." }
+    }
+
+    try {
+        const parsed = updateAggregateSettingSchema.parse(Object.fromEntries(formData.entries()))
+        const isSuperAdmin = role === "SuperAdminBP"
+
+        if (!isSuperAdmin && session.user.locationId !== parsed.locationId) {
+            return { error: "Permission Denied: Tidak dapat mengubah setting cabang lain." }
+        }
+
+        await prisma.aggregateRetaseSetting.upsert({
+            where: { locationId: parsed.locationId },
+            update: {
+                price_dt_besar: parsed.price_dt_besar,
+                price_dt_kecil: parsed.price_dt_kecil,
+                default_distance_km: parsed.default_distance_km,
+            },
+            create: {
+                locationId: parsed.locationId,
+                price_dt_besar: parsed.price_dt_besar,
+                price_dt_kecil: parsed.price_dt_kecil,
+                default_distance_km: parsed.default_distance_km,
+            }
+        })
+
+        revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/reports/retase")
+        return { success: true, message: "Pengaturan tarif retase Dump Truck berhasil disimpan." }
+    } catch (e: any) {
+        console.error(e)
+        return { error: e.message || "Gagal menyimpan tarif retase Dump Truck" }
+    }
 }

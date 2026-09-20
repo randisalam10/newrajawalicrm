@@ -47,6 +47,9 @@ export const authConfig = {
                 }
 
                 if (isAdminRoute && !['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
+                    if (nextUrl.pathname.startsWith('/admin/rbl') && userRole === 'AdminLogistik') {
+                        return true
+                    }
                     const target = userRole === 'AdminLogistik' ? '/logistik' : '/operator'
                     return Response.redirect(new URL(target, nextUrl))
                 }

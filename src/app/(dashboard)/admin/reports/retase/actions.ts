@@ -16,7 +16,7 @@ export interface RetaseMonthFilter {
  */
 export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user) return { mixer: [], dumpTruck: [] }
 
     // Hitung batas bulan (WIB-aware: gunakan UTC exact range)
     const monthDate = new Date(filter.year, filter.month - 1, 1)
@@ -30,27 +30,49 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         date: { gte: monthStart, lte: monthEnd }
     }
 
+    const aggregateWhere: any = {
+        source_type: "Internal",
+        retase_amount: { gt: 0 },
+        date: { gte: monthStart, lte: monthEnd }
+    }
+
     // Access control per cabang
     if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
         where.locationId = session.user.locationId
+        aggregateWhere.locationId = session.user.locationId
     } else if (filter.locationId) {
         where.locationId = filter.locationId
+        aggregateWhere.locationId = filter.locationId
     }
 
-    const transactions = await (prisma as any).productionTransaction.findMany({
-        where,
-        include: {
-            driver: true,
-            location: true,
-            retase: true,
-            project: { include: { customer: true } },
-            vehicle: true,
-            concreteQuality: true,
-        },
-        orderBy: [{ driverId: 'asc' }, { date: 'asc' }]
-    })
+    const [transactions, dumpTruckIncomings] = await Promise.all([
+        (prisma as any).productionTransaction.findMany({
+            where,
+            include: {
+                driver: true,
+                location: true,
+                retase: true,
+                project: { include: { customer: true } },
+                vehicle: true,
+                concreteQuality: true,
+            },
+            orderBy: [{ driverId: 'asc' }, { date: 'asc' }]
+        }),
+        prisma.aggregateIncoming.findMany({
+            where: aggregateWhere,
+            include: {
+                driver: true,
+                location: true,
+                vehicle: true,
+            },
+            orderBy: [{ driver_name: 'asc' }, { date: 'asc' }]
+        })
+    ])
 
-    return transactions
+    return {
+        mixer: transactions,
+        dumpTruck: dumpTruckIncomings
+    }
 }
 
 /**
@@ -58,20 +80,30 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
  */
 export async function getRetaseAvailableYears() {
     const session = await auth()
-    if (!session?.user?.employeeId) return []
+    if (!session?.user) return []
 
     const where: any = { status: "Confirmed", retase: { isNot: null } }
+    const aggWhere: any = { source_type: "Internal", retase_amount: { gt: 0 } }
     if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
         where.locationId = session.user.locationId
+        aggWhere.locationId = session.user.locationId
     }
 
-    const txs = await prisma.productionTransaction.findMany({
-        where,
-        select: { date: true },
-        orderBy: { date: 'asc' }
-    })
+    const [txs, aggTxs] = await Promise.all([
+        prisma.productionTransaction.findMany({
+            where,
+            select: { date: true },
+            orderBy: { date: 'asc' }
+        }),
+        prisma.aggregateIncoming.findMany({
+            where: aggWhere,
+            select: { date: true },
+            orderBy: { date: 'asc' }
+        })
+    ])
 
-    const years = [...new Set(txs.map(t => new Date(t.date).getFullYear()))].sort((a, b) => b - a)
+    const allDates = [...txs.map(t => t.date), ...aggTxs.map(t => t.date)]
+    const years = [...new Set(allDates.map(d => new Date(d).getFullYear()))].sort((a, b) => b - a)
     // Pastikan tahun sekarang selalu ada
     const currentYear = new Date().getFullYear()
     if (!years.includes(currentYear)) years.unshift(currentYear)

@@ -177,6 +177,11 @@ export default async function RblPrintPage({
                                         <td className="border p-2 font-mono whitespace-nowrap">{fmtShortDate(item.date)}</td>
                                         <td className="border p-2 font-medium text-slate-900">
                                             {item.itemDescription}
+                                            {item.vehicle && (
+                                                <span className="block text-[10px] text-amber-800 font-semibold mt-0.5">
+                                                    ⛽ Unit: {item.vehicle.code} ({item.vehicle.plate_number}){item.kmMeter ? ` • Odo: ${item.kmMeter.toLocaleString('id-ID')} KM` : ''}
+                                                </span>
+                                            )}
                                             {item.notes && <span className="block text-[10px] text-slate-500">{item.notes}</span>}
                                         </td>
                                         <td className="border p-2 text-slate-600">{item.category}</td>

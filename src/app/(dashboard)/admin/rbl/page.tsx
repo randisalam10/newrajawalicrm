@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getActiveBudget, getBudgetHistory, getRblSummaryData } from "./actions"
+import { getActiveBudget, getBudgetHistory, getRblSummaryData, getRblCategories, getRblVehicles } from "./actions"
 import { getLocations } from "../cabang/actions"
 import { RblClient } from "./rbl-client"
 import { hasPermission } from "@/lib/rbac"
@@ -16,7 +16,7 @@ export default async function RblPage({
     if (!session?.user) redirect("/login")
 
     const canView = hasPermission(session.user, "RBL", "VIEW") ||
-        ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(session.user.role ?? "")
+        ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(session.user.role ?? "")
 
     if (!canView) {
         redirect("/admin")
@@ -31,7 +31,7 @@ export default async function RblPage({
     // Corporate users can view all or specific branch; branch-scoped users locked to locationId
     const targetLocationId = isCorporate ? (locationId || "all") : (session.user.locationId || "")
 
-    const [activeBudget, history, summaryData, allLocations] = await Promise.all([
+    const [activeBudget, history, summaryData, allLocations, categories, vehicles] = await Promise.all([
         getActiveBudget(targetLocationId === "all" ? undefined : targetLocationId),
         getBudgetHistory({
             locationId: targetLocationId === "all" ? undefined : targetLocationId,
@@ -42,6 +42,8 @@ export default async function RblPage({
             year: parsedYear
         }),
         getLocations(),
+        getRblCategories(),
+        getRblVehicles(),
     ])
 
     // Filter locations for branch-scoped users
@@ -51,11 +53,11 @@ export default async function RblPage({
 
     const user = session.user
     const isSuperAdminBP = user.role === "SuperAdminBP"
-    const canCreate = isSuperAdminBP || hasPermission(user, "RBL", "CREATE") || user.role === "AdminBP"
-    const canEdit = isSuperAdminBP || hasPermission(user, "RBL", "EDIT") || user.role === "AdminBP"
-    const canDelete = isSuperAdminBP || hasPermission(user, "RBL", "DELETE") || user.role === "AdminBP"
-    const canClose = isSuperAdminBP || hasPermission(user, "RBL", "CLOSE") || user.role === "AdminBP"
-    const canExport = isSuperAdminBP || hasPermission(user, "RBL", "EXPORT") || ["AdminBP", "CEO", "FVP"].includes(user.role ?? "")
+    const canCreate = isSuperAdminBP || hasPermission(user, "RBL", "CREATE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
+    const canEdit = isSuperAdminBP || hasPermission(user, "RBL", "EDIT") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
+    const canDelete = isSuperAdminBP || hasPermission(user, "RBL", "DELETE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
+    const canClose = isSuperAdminBP || hasPermission(user, "RBL", "CLOSE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
+    const canExport = isSuperAdminBP || hasPermission(user, "RBL", "EXPORT") || ["AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user.role ?? "")
 
     return (
         <div className="space-y-6">
@@ -64,6 +66,8 @@ export default async function RblPage({
                 initialHistory={history}
                 summaryData={summaryData}
                 locations={locations}
+                initialCategories={categories}
+                vehicles={vehicles}
                 userRole={session.user.role || ""}
                 userLocationId={session.user.locationId || ""}
                 isSuperAdmin={isCorporate}

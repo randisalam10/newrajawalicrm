@@ -8,11 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
+    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from "@/components/ui/dialog"
-import {
-    Sheet, SheetContent, SheetHeader, SheetTitle
-} from "@/components/ui/sheet"
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
@@ -22,11 +19,12 @@ import {
 import {
     ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
     FileText, Plus, Search, Loader2, Upload, Receipt, TrendingUp,
-    Package, Tag, DollarSign, X, Eye, Printer
+    Package, Tag, DollarSign, X, Eye, Printer, BarChart3
 } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { createInvoice, recordPayment, cancelInvoice, cancelPayment, addDeposit, getInvoicesGroupedByCustomer, getUnbilledTransactions, getDepositSummary, getInvoiceDetail, getNextInvoiceSeq, getCustomerInvoiceSeq } from "./actions"
+import { BillingDashboard } from "./billing-dashboard"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n))
 const fmtDate = (d: any) => d ? format(new Date(d), "dd MMM yyyy", { locale: idLocale }) : "-"
@@ -69,6 +67,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [data, setData] = useState(initialData)
     const [isLoading, setIsLoading] = useState(false)
     const [selectedLocation, setSelectedLocation] = useState(!isCorporate && userLocationId ? userLocationId : "all")
+    const [activeTab, setActiveTab] = useState("dashboard")
 
     // Unbilled state
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
@@ -415,22 +414,46 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                 </div>
             )}
 
-            <Tabs defaultValue="unbilled">
-                <TabsList className="grid grid-cols-3 w-full max-w-lg">
-                    <TabsTrigger value="unbilled">
-                        Unbilled Pool
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="grid grid-cols-4 w-full max-w-2xl bg-slate-100/80 p-1 rounded-lg">
+                    <TabsTrigger value="dashboard" className="flex items-center gap-1.5 text-xs">
+                        <BarChart3 className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Dashboard</span>
+                    </TabsTrigger>
+                    <TabsTrigger value="unbilled" className="flex items-center gap-1.5 text-xs">
+                        <span>Unbilled Pool</span>
                         {unbilled.length > 0 && (
-                            <span className="ml-1.5 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">{unbilled.length}</span>
+                            <span className="ml-1 bg-orange-500 text-white text-[10px] rounded-full px-1.5 py-0.2 font-bold">{unbilled.length}</span>
                         )}
                     </TabsTrigger>
-                    <TabsTrigger value="invoices">
-                        Invoice
+                    <TabsTrigger value="invoices" className="flex items-center gap-1.5 text-xs">
+                        <span>Invoice</span>
                         {invoiceSummary.totalInvoice > 0 && (
-                            <span className="ml-1.5 bg-blue-600 text-white text-[10px] rounded-full px-1.5 py-0.5 font-bold">{invoiceSummary.totalInvoice}</span>
+                            <span className="ml-1 bg-blue-600 text-white text-[10px] rounded-full px-1.5 py-0.2 font-bold">{invoiceSummary.totalInvoice}</span>
                         )}
                     </TabsTrigger>
-                    <TabsTrigger value="deposit">Deposito</TabsTrigger>
+                    <TabsTrigger value="deposit" className="text-xs">
+                        <span>Deposito</span>
+                    </TabsTrigger>
                 </TabsList>
+
+                {/* ═══ TAB 0: DASHBOARD ═══════════════════════════════════════════════════ */}
+                <TabsContent value="dashboard" className="mt-4">
+                    <BillingDashboard
+                        unbilled={unbilled}
+                        groupedInvoices={data?.grouped ?? []}
+                        deposits={data?.deposits ?? []}
+                        locations={locations}
+                        selectedLocation={selectedLocation}
+                        onNavigateTab={(tab, filter) => {
+                            setActiveTab(tab)
+                            if (filter?.status) {
+                                setStatusFilter(filter.status)
+                            }
+                        }}
+                        isCorporate={isCorporate}
+                    />
+                </TabsContent>
 
                 {/* ═══ TAB 1: UNBILLED POOL ═══════════════════════════════════════════════ */}
                 <TabsContent value="unbilled" className="mt-4">
@@ -952,32 +975,48 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                 </DialogContent>
             </Dialog>
 
-            {/* ═══ INVOICE DETAIL SHEET ══════════════════════════════════════════════ */}
-            <Sheet open={!!selectedInvoice} onOpenChange={open => { if (!open) setSelectedInvoice(null) }}>
-                <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
-                    <SheetHeader className="pb-4 border-b">
-                        <SheetTitle className="flex items-center justify-between">
-                            <span className="font-mono text-base">{invoiceDetail?.invoice_number ?? selectedInvoice?.invoice_number}</span>
+            {/* ═══ INVOICE DETAIL MODAL DIALOG ════════════════════════════════════════ */}
+            <Dialog open={!!selectedInvoice} onOpenChange={open => { if (!open) setSelectedInvoice(null) }}>
+                <DialogContent className="max-w-3xl sm:max-w-4xl max-h-[88vh] overflow-y-auto p-0 z-50">
+                    <DialogHeader className="p-4 pb-3 border-b bg-slate-50/80 sticky top-0 z-10">
+                        <div className="flex items-center justify-between gap-3 mr-6">
+                            <DialogTitle className="text-base sm:text-lg font-bold text-slate-900 font-mono flex items-center gap-2">
+                                <FileText className="w-5 h-5 text-blue-600" />
+                                <span>{invoiceDetail?.invoice_number ?? selectedInvoice?.invoice_number}</span>
+                            </DialogTitle>
                             {invoiceDetail && (
-                                <span className={`text-xs px-2 py-1 rounded-full ${STATUS_CONFIG[invoiceDetail.status]?.color ?? ""}`}>
+                                <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${STATUS_CONFIG[invoiceDetail.status]?.color ?? ""}`}>
                                     {STATUS_CONFIG[invoiceDetail.status]?.label}
                                 </span>
                             )}
-                        </SheetTitle>
+                        </div>
                         {invoiceDetail && (
-                            <div className="text-xs text-slate-500 space-y-0.5">
-                                <div>{invoiceDetail.project?.customer?.customer_name} — {invoiceDetail.project?.name}</div>
-                                <div>Terbit: {fmtDate(invoiceDetail.issue_date)} {invoiceDetail.due_date ? `· Jatuh tempo: ${fmtDate(invoiceDetail.due_date)}` : ""}</div>
+                            <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                                <span className="font-semibold text-slate-800">
+                                    {invoiceDetail.project?.customer?.customer_name}
+                                </span>
+                                <span>·</span>
+                                <span>Proyek: <strong className="text-slate-700">{invoiceDetail.project?.name}</strong></span>
+                                <span>·</span>
+                                <span>Terbit: {fmtDate(invoiceDetail.issue_date)}</span>
+                                {invoiceDetail.due_date && (
+                                    <>
+                                        <span>·</span>
+                                        <span className={new Date(invoiceDetail.due_date) < new Date() && invoiceDetail.status !== "PAID" ? "text-rose-600 font-bold" : ""}>
+                                            Jatuh Tempo: {fmtDate(invoiceDetail.due_date)}
+                                        </span>
+                                    </>
+                                )}
                             </div>
                         )}
-                    </SheetHeader>
+                    </DialogHeader>
 
                     {sheetLoading ? (
                         <div className="flex items-center justify-center py-16">
-                            <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+                            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
                         </div>
                     ) : invoiceDetail ? (
-                        <div className="space-y-5 py-4">
+                        <div className="p-5 space-y-4">
                             {/* Summary per date */}
                             {(() => {
                                 const byDate = new Map<string, { tms: number; volume: number; nilai: number }>()
@@ -991,31 +1030,38 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 }
                                 return (
                                     <div>
-                                        <h3 className="text-sm font-semibold text-slate-700 mb-2">Ringkasan per Tanggal Kirim</h3>
-                                        <div className="border rounded-lg overflow-hidden">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                                                Ringkasan per Tanggal Kirim
+                                            </h3>
+                                            <span className="text-xs text-slate-500 font-mono">
+                                                {invoiceDetail.items.length} Total Ritase TM
+                                            </span>
+                                        </div>
+                                        <div className="border border-slate-200 rounded-lg overflow-hidden">
                                             <Table>
                                                 <TableHeader>
-                                                    <TableRow className="bg-slate-50">
+                                                    <TableRow className="bg-slate-50 text-[11px]">
                                                         <TableHead className="text-xs">Tanggal</TableHead>
                                                         <TableHead className="text-xs text-right">Total TM</TableHead>
                                                         <TableHead className="text-xs text-right">Kubikasi (m³)</TableHead>
-                                                        <TableHead className="text-xs text-right">Nilai</TableHead>
+                                                        <TableHead className="text-xs text-right">Nilai Tagihan</TableHead>
                                                     </TableRow>
                                                 </TableHeader>
                                                 <TableBody>
                                                     {Array.from(byDate.entries()).map(([date, d]) => (
-                                                        <TableRow key={date} className="text-xs">
-                                                            <TableCell>{fmtDate(date)}</TableCell>
-                                                            <TableCell className="text-right">{d.tms} TM</TableCell>
-                                                            <TableCell className="text-right">{d.volume.toFixed(2)}</TableCell>
-                                                            <TableCell className="text-right">{fmt(d.nilai)}</TableCell>
+                                                        <TableRow key={date} className="text-xs hover:bg-slate-50/70">
+                                                            <TableCell className="font-mono">{fmtDate(date)}</TableCell>
+                                                            <TableCell className="text-right font-mono">{d.tms} TM</TableCell>
+                                                            <TableCell className="text-right font-mono">{d.volume.toFixed(2)}</TableCell>
+                                                            <TableCell className="text-right font-mono font-medium">{fmt(d.nilai)}</TableCell>
                                                         </TableRow>
                                                     ))}
                                                     <TableRow className="bg-slate-50 font-bold text-xs">
-                                                        <TableCell>Total</TableCell>
-                                                        <TableCell className="text-right">{invoiceDetail.items.length} TM</TableCell>
-                                                        <TableCell className="text-right">{invoiceDetail.items.reduce((s: number, i: any) => s + i.quantity, 0).toFixed(2)}</TableCell>
-                                                        <TableCell className="text-right">{fmt(invoiceDetail.subtotal)}</TableCell>
+                                                        <TableCell>Total Pengiriman</TableCell>
+                                                        <TableCell className="text-right font-mono">{invoiceDetail.items.length} TM</TableCell>
+                                                        <TableCell className="text-right font-mono">{invoiceDetail.items.reduce((s: number, i: any) => s + i.quantity, 0).toFixed(2)} m³</TableCell>
+                                                        <TableCell className="text-right font-mono font-bold text-slate-900">{fmt(invoiceDetail.subtotal)}</TableCell>
                                                     </TableRow>
                                                 </TableBody>
                                             </Table>
@@ -1024,25 +1070,43 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 )
                             })()}
 
-                            {/* Footer */}
-                            <div className="bg-slate-50 rounded-lg p-4 space-y-1.5 text-sm">
-                                <div className="flex justify-between"><span className="text-slate-500">Subtotal</span><span>{fmt(invoiceDetail.subtotal)}</span></div>
-                                {invoiceDetail.include_ppn && <div className="flex justify-between text-slate-500"><span>PPN</span><span>{fmt(invoiceDetail.tax_amount)}</span></div>}
-                                <div className="flex justify-between font-bold text-base border-t pt-2"><span>Total Tagihan</span><span>{fmt(invoiceDetail.total_amount)}</span></div>
-                                <div className="flex justify-between text-green-700"><span>Terbayar</span><span>{fmt(invoiceDetail.paid_amount)}</span></div>
-                                <div className={`flex justify-between font-bold ${invoiceDetail.total_amount - invoiceDetail.paid_amount > 0 ? "text-red-600" : "text-green-600"}`}>
-                                    <span>Sisa</span><span>{fmt(invoiceDetail.total_amount - invoiceDetail.paid_amount)}</span>
+                            {/* Financial Summary Box */}
+                            <div className="bg-slate-50/80 border border-slate-200 rounded-lg p-3.5 space-y-1.5 text-xs">
+                                <div className="flex justify-between text-slate-600">
+                                    <span>Subtotal Tagihan</span>
+                                    <span className="font-mono font-medium">{fmt(invoiceDetail.subtotal)}</span>
+                                </div>
+                                {invoiceDetail.include_ppn && (
+                                    <div className="flex justify-between text-slate-600">
+                                        <span>PPN (11%)</span>
+                                        <span className="font-mono font-medium">{fmt(invoiceDetail.tax_amount)}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between font-bold text-sm border-t border-slate-200 pt-2 text-slate-900">
+                                    <span>Total Tagihan</span>
+                                    <span className="font-mono">{fmt(invoiceDetail.total_amount)}</span>
+                                </div>
+                                <div className="flex justify-between text-emerald-700 font-semibold">
+                                    <span>Sudah Terbayar</span>
+                                    <span className="font-mono">{fmt(invoiceDetail.paid_amount)}</span>
+                                </div>
+                                <div className={`flex justify-between font-bold text-sm border-t border-dashed border-slate-200 pt-1.5 ${invoiceDetail.total_amount - invoiceDetail.paid_amount > 0 ? "text-rose-600" : "text-emerald-700"}`}>
+                                    <span>Sisa Tagihan</span>
+                                    <span className="font-mono">{fmt(invoiceDetail.total_amount - invoiceDetail.paid_amount)}</span>
                                 </div>
                             </div>
 
+                            {/* Riwayat Pembayaran */}
                             {invoiceDetail.payments.length > 0 && (
                                 <div>
                                     <div className="flex items-center justify-between mb-2">
-                                        <h3 className="text-sm font-semibold text-slate-700">Riwayat Pembayaran</h3>
+                                        <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                                            Riwayat Pembayaran ({invoiceDetail.payments.length})
+                                        </h3>
                                         {invoiceDetail.payments.some((p: any) => p.is_cancelled) && (
                                             <button
                                                 onClick={() => setShowCancelledPayments(v => !v)}
-                                                className={`text-xs flex items-center gap-1 px-2 py-1 rounded border transition-colors ${showCancelledPayments
+                                                className={`text-[11px] flex items-center gap-1 px-2 py-0.5 rounded border transition-colors ${showCancelledPayments
                                                         ? 'bg-red-50 border-red-200 text-red-600'
                                                         : 'bg-white border-slate-200 text-slate-500'
                                                     }`}
@@ -1058,37 +1122,36 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             .map((p: any) => (
                                                 <div key={p.id} className={`border rounded-lg px-3 py-2 text-xs ${p.is_cancelled
                                                         ? 'bg-red-50 border-red-100 opacity-70'
-                                                        : 'bg-green-50 border-green-100'
+                                                        : 'bg-emerald-50/50 border-emerald-200'
                                                     }`}>
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div className="flex-1 min-w-0">
-                                                            <div className={`font-medium flex items-center gap-2 ${p.is_cancelled ? 'line-through text-slate-400' : ''
-                                                                }`}>
+                                                            <div className={`font-semibold flex items-center gap-2 ${p.is_cancelled ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                                                                 {fmtDate(p.payment_date)} — {p.method}
                                                                 {p.is_cancelled && (
                                                                     <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-semibold no-underline" style={{ textDecoration: 'none' }}>DIBATAL</span>
                                                                 )}
                                                             </div>
-                                                            {p.reference_no && <div className="text-slate-500">Ref: {p.reference_no}</div>}
-                                                            {p.notes && <div className="text-slate-500">{p.notes}</div>}
+                                                            {p.reference_no && <div className="text-slate-500 text-[11px]">No. Ref: {p.reference_no}</div>}
+                                                            {p.notes && <div className="text-slate-500 text-[11px]">Catatan: {p.notes}</div>}
                                                             {p.is_cancelled && p.cancel_reason && (
-                                                                <div className="text-red-600 mt-0.5">Alasan: {p.cancel_reason}</div>
+                                                                <div className="text-rose-600 mt-0.5 text-[11px]">Alasan Batal: {p.cancel_reason}</div>
                                                             )}
                                                             {p.proof_url && !p.is_cancelled && (
                                                                 <a href={p.proof_url} target="_blank" rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 mt-1 text-blue-600 hover:underline">
+                                                                    className="inline-flex items-center gap-1 mt-1 text-blue-600 hover:underline text-[11px]">
                                                                     📎 Lihat Bukti Bayar
                                                                 </a>
                                                             )}
                                                         </div>
                                                         <div className="flex items-center gap-2 flex-shrink-0">
-                                                            <span className={`font-bold whitespace-nowrap ${p.is_cancelled ? 'text-slate-400 line-through' : 'text-green-700'
+                                                            <span className={`font-mono font-bold whitespace-nowrap ${p.is_cancelled ? 'text-slate-400 line-through' : 'text-emerald-700'
                                                                 }`}>{fmt(p.amount)}</span>
                                                             {!p.is_cancelled && invoiceDetail.status !== "CANCELLED" && canManage && (
                                                                 <button
                                                                     onClick={() => { setCancelPaymentTarget(p); setCancelPaymentReason("") }}
-                                                                    className="text-red-400 hover:text-red-600 transition-colors"
-                                                                    title="Cancel pembayaran ini"
+                                                                    className="text-red-400 hover:text-red-600 transition-colors p-1 cursor-pointer"
+                                                                    title="Batalkan pembayaran ini"
                                                                 >
                                                                     <X className="w-3.5 h-3.5" />
                                                                 </button>
@@ -1101,35 +1164,48 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 </div>
                             )}
 
-                            {/* Actions */}
-                            <div className="flex gap-2 flex-wrap pt-2 border-t">
-                                {canManage && invoiceDetail.status !== "PAID" && invoiceDetail.status !== "CANCELLED" && (
-                                    <Button className="h-9" onClick={() => setShowPaymentDialog(true)}>
-                                        <Plus className="w-4 h-4 mr-1.5" /> Catat Pembayaran
+                            {/* Actions Bar */}
+                            <div className="flex items-center justify-between gap-2 flex-wrap pt-3 border-t border-slate-200">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {canManage && invoiceDetail.status !== "PAID" && invoiceDetail.status !== "CANCELLED" && (
+                                        <Button size="sm" className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer" onClick={() => setShowPaymentDialog(true)}>
+                                            <Plus className="w-3.5 h-3.5 mr-1.5" /> Catat Pembayaran
+                                        </Button>
+                                    )}
+                                    <Button variant="outline" size="sm" className="h-8 text-xs cursor-pointer" onClick={() => window.open(`/print/invoice/${invoiceDetail.id}`, "_blank")}>
+                                        <Printer className="w-3.5 h-3.5 mr-1.5 text-slate-600" /> Cetak Faktur
                                     </Button>
-                                )}
-                                <Button variant="outline" className="h-9" onClick={() => window.open(`/print/invoice/${invoiceDetail.id}`, "_blank")}>
-                                    <Printer className="w-4 h-4 mr-1.5" /> Cetak
+                                    {canManage && invoiceDetail.status !== "CANCELLED" && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 text-xs text-rose-600 border-rose-200 hover:bg-rose-50 cursor-pointer"
+                                            onClick={() => { setCancelInvoiceReason(""); setShowCancelInvoiceDialog(true) }}
+                                        >
+                                            <X className="w-3.5 h-3.5 mr-1.5" /> Batalkan Invoice
+                                        </Button>
+                                    )}
+                                </div>
+
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => setSelectedInvoice(null)}
+                                    className="h-8 text-xs text-slate-500 hover:text-slate-800 cursor-pointer"
+                                >
+                                    Tutup
                                 </Button>
-                                {canManage && invoiceDetail.status !== "CANCELLED" && (
-                                    <Button
-                                        variant="outline"
-                                        className="h-9 text-red-600 border-red-200 hover:bg-red-50"
-                                        onClick={() => { setCancelInvoiceReason(""); setShowCancelInvoiceDialog(true) }}
-                                    >
-                                        <X className="w-4 h-4 mr-1.5" /> Batalkan Invoice
-                                    </Button>
-                                )}
+
                                 {invoiceDetail.status === "CANCELLED" && invoiceDetail.cancel_reason && (
-                                    <div className="w-full text-xs text-red-600 bg-red-50 border border-red-100 rounded px-3 py-2 mt-1">
+                                    <div className="w-full text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded px-3 py-2 mt-1">
                                         <strong>Alasan dibatalkan:</strong> {invoiceDetail.cancel_reason}
                                     </div>
                                 )}
                             </div>
                         </div>
                     ) : null}
-                </SheetContent>
-            </Sheet>
+                </DialogContent>
+            </Dialog>
 
             {/* ═══ RECORD PAYMENT DIALOG ═══════════════════════════════════════════ */}
             <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>

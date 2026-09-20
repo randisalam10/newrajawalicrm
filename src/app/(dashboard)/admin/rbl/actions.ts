@@ -29,6 +29,34 @@ function getLocationCode(name: string): string {
 
 // ─── Read Actions ─────────────────────────────────────────────────────────────
 
+export async function getRblVehicles() {
+    const vehicles = await prisma.vehicle.findMany({
+        include: {
+            location: true,
+            category: true,
+            rblExpenses: {
+                where: { kmMeter: { not: null, gt: 0 } },
+                orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+                take: 1,
+                select: {
+                    kmMeter: true,
+                    date: true,
+                    itemDescription: true,
+                    receiptNo: true
+                }
+            }
+        },
+        orderBy: [{ location: { name: "asc" } }, { code: "asc" }]
+    })
+
+    return vehicles.map(v => ({
+        ...v,
+        lastKmMeter: v.rblExpenses[0]?.kmMeter ?? null,
+        lastKmDate: v.rblExpenses[0]?.date ?? null,
+        lastKmDescription: v.rblExpenses[0]?.itemDescription ?? null
+    }))
+}
+
 export async function getActiveBudget(locationId?: string) {
     const session = await auth()
     if (!session?.user) return null
@@ -54,7 +82,9 @@ export async function getActiveBudget(locationId?: string) {
             expenses: {
                 orderBy: [{ date: "asc" }, { createdAt: "asc" }],
                 include: {
-                    createdBy: { select: { username: true, employee: { select: { name: true } } } }
+                    createdBy: { select: { username: true, employee: { select: { name: true } } } },
+                    vehicle: { select: { id: true, code: true, plate_number: true, vehicle_type: true, category: true } },
+                    categoryRef: true
                 }
             },
             attachments: {
@@ -136,7 +166,9 @@ export async function getBudgetDetail(budgetId: string) {
             expenses: {
                 orderBy: [{ date: "asc" }, { createdAt: "asc" }],
                 include: {
-                    createdBy: { select: { username: true, employee: { select: { name: true } } } }
+                    createdBy: { select: { username: true, employee: { select: { name: true } } } },
+                    vehicle: { select: { id: true, code: true, plate_number: true, vehicle_type: true, category: true } },
+                    categoryRef: true
                 }
             },
             attachments: {
@@ -293,6 +325,9 @@ export async function addExpenseBatch(budgetId: string, items: Array<{
     date: string
     itemDescription: string
     category?: string
+    categoryId?: string | null
+    vehicleId?: string | null
+    kmMeter?: number | null
     quantity: number
     unit?: string
     unitPrice: number
@@ -336,7 +371,10 @@ export async function addExpenseBatch(budgetId: string, items: Array<{
                         budgetId,
                         date: new Date(it.date),
                         itemDescription: it.itemDescription.trim(),
-                        category: it.category || "Operasional",
+                        categoryId: it.categoryId || null,
+                        category: it.category || "Operasional Umum",
+                        vehicleId: it.vehicleId || null,
+                        kmMeter: it.kmMeter !== undefined && it.kmMeter !== null && !isNaN(Number(it.kmMeter)) ? Number(it.kmMeter) : null,
                         quantity: qty,
                         unit: it.unit?.trim() || "Pcs",
                         unitPrice: price,
@@ -360,6 +398,9 @@ export async function updateExpense(id: string, data: {
     date: string
     itemDescription: string
     category?: string
+    categoryId?: string | null
+    vehicleId?: string | null
+    kmMeter?: number | null
     quantity: number
     unit?: string
     unitPrice: number
@@ -396,7 +437,10 @@ export async function updateExpense(id: string, data: {
             data: {
                 date: new Date(data.date),
                 itemDescription: data.itemDescription.trim(),
-                category: data.category || "Operasional",
+                categoryId: data.categoryId || null,
+                category: data.category || "Operasional Umum",
+                vehicleId: data.vehicleId || null,
+                kmMeter: data.kmMeter !== undefined && data.kmMeter !== null && !isNaN(Number(data.kmMeter)) ? Number(data.kmMeter) : null,
                 quantity: qty,
                 unit: data.unit?.trim() || "Pcs",
                 unitPrice: price,
@@ -410,6 +454,128 @@ export async function updateExpense(id: string, data: {
         return { success: true }
     } catch (e: any) {
         return { success: false, error: e.message || "Gagal mengubah pengeluaran." }
+    }
+}
+
+// ─── Master Kategori RBL ──────────────────────────────────────────────────────
+
+export async function getRblCategories() {
+    const session = await auth()
+    if (!session?.user) return []
+
+    return await prisma.rblCategory.findMany({
+        orderBy: [
+            { isSystem: "desc" },
+            { name: "asc" }
+        ]
+    })
+}
+
+export async function createRblCategory(data: {
+    name: string
+    description?: string
+    requireVehicleKm?: boolean
+}) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    const name = data.name.trim()
+    if (!name) return { success: false, error: "Nama kategori tidak boleh kosong." }
+
+    try {
+        const existing = await prisma.rblCategory.findFirst({
+            where: { name: { equals: name, mode: "insensitive" } }
+        })
+        if (existing) {
+            return { success: false, error: `Kategori "${existing.name}" sudah terdaftar.` }
+        }
+
+        const category = await prisma.rblCategory.create({
+            data: {
+                name,
+                description: data.description?.trim() || null,
+                requireVehicleKm: Boolean(data.requireVehicleKm),
+                isSystem: false,
+            }
+        })
+
+        revalidatePath("/admin/rbl")
+        return { success: true, category }
+    } catch (e: any) {
+        return { success: false, error: e.message || "Gagal membuat kategori baru." }
+    }
+}
+
+export async function updateRblCategory(id: string, data: {
+    name: string
+    description?: string
+    requireVehicleKm?: boolean
+}) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    const name = data.name.trim()
+    if (!name) return { success: false, error: "Nama kategori tidak boleh kosong." }
+
+    try {
+        const existing = await prisma.rblCategory.findUnique({ where: { id } })
+        if (!existing) return { success: false, error: "Kategori tidak ditemukan." }
+
+        const dup = await prisma.rblCategory.findFirst({
+            where: {
+                id: { not: id },
+                name: { equals: name, mode: "insensitive" }
+            }
+        })
+        if (dup) {
+            return { success: false, error: `Nama kategori "${dup.name}" sudah digunakan.` }
+        }
+
+        const category = await prisma.rblCategory.update({
+            where: { id },
+            data: {
+                name,
+                description: data.description?.trim() || null,
+                requireVehicleKm: Boolean(data.requireVehicleKm),
+            }
+        })
+
+        revalidatePath("/admin/rbl")
+        return { success: true, category }
+    } catch (e: any) {
+        return { success: false, error: e.message || "Gagal memperbarui kategori." }
+    }
+}
+
+export async function deleteRblCategory(id: string) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    try {
+        const category = await prisma.rblCategory.findUnique({
+            where: { id },
+            include: { _count: { select: { expenses: true } } }
+        })
+
+        if (!category) return { success: false, error: "Kategori tidak ditemukan." }
+
+        if (category.isSystem) {
+            return { success: false, error: "Kategori bawaan sistem tidak dapat dihapus." }
+        }
+
+        if (category._count.expenses > 0) {
+            return {
+                success: false,
+                error: `Kategori "${category.name}" tidak dapat dihapus karena masih digunakan pada ${category._count.expenses} transaksi pengeluaran RBL.`
+            }
+        }
+
+        await prisma.rblCategory.delete({ where: { id } })
+
+        revalidatePath("/admin/rbl")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message || "Gagal menghapus kategori." }
     }
 }
 
@@ -609,3 +775,361 @@ export async function getRblSummaryData(filters: { locationId?: string; year?: n
         grandRemaining,
     }
 }
+
+// ─── Category Report & Vehicle Analysis Actions ───────────────────────────────
+
+export type RblCategoryReportFilters = {
+    categoryId?: string
+    locationId?: string
+    vehicleId?: string
+    startDate?: string
+    endDate?: string
+    year?: number
+    month?: number
+    search?: string
+}
+
+export async function getRblCategoryReport(filters: RblCategoryReportFilters = {}) {
+    const session = await auth()
+    if (!session?.user) {
+        return { success: false, error: "Unauthorized", expenses: [], summary: null }
+    }
+
+    const isCorp = isCorporateOrSuperAdmin(session)
+    const targetLocId = getTargetLocationId(session, filters.locationId)
+
+    const where: any = {}
+
+    // Location filter
+    if (filters.locationId && filters.locationId !== "all") {
+        where.budget = { locationId: targetLocId }
+    } else if (!isCorp) {
+        where.budget = { locationId: session.user.locationId }
+    }
+
+    // Category filter
+    if (filters.categoryId && filters.categoryId !== "all") {
+        where.categoryId = filters.categoryId
+    }
+
+    // Vehicle filter
+    if (filters.vehicleId && filters.vehicleId !== "all") {
+        if (filters.vehicleId === "none") {
+            where.vehicleId = null
+        } else {
+            where.vehicleId = filters.vehicleId
+        }
+    }
+
+    // Date range filter
+    if (filters.startDate || filters.endDate) {
+        where.date = {}
+        if (filters.startDate) {
+            where.date.gte = new Date(filters.startDate + "T00:00:00.000Z")
+        }
+        if (filters.endDate) {
+            where.date.lte = new Date(filters.endDate + "T23:59:59.999Z")
+        }
+    } else if (filters.year || filters.month) {
+        const year = filters.year || new Date().getFullYear()
+        if (filters.month) {
+            const start = new Date(year, filters.month - 1, 1)
+            const end = new Date(year, filters.month, 0, 23, 59, 59, 999)
+            where.date = { gte: start, lte: end }
+        } else {
+            const start = new Date(year, 0, 1)
+            const end = new Date(year, 11, 31, 23, 59, 59, 999)
+            where.date = { gte: start, lte: end }
+        }
+    }
+
+    // Search filter
+    if (filters.search && filters.search.trim()) {
+        const term = filters.search.trim()
+        where.OR = [
+            { itemDescription: { contains: term, mode: "insensitive" } },
+            { receiptNo: { contains: term, mode: "insensitive" } },
+            { notes: { contains: term, mode: "insensitive" } },
+            { category: { contains: term, mode: "insensitive" } },
+            { vehicle: { code: { contains: term, mode: "insensitive" } } },
+            { vehicle: { plate_number: { contains: term, mode: "insensitive" } } },
+        ]
+    }
+
+    const expenses = await prisma.rblExpense.findMany({
+        where,
+        include: {
+            budget: {
+                select: {
+                    id: true,
+                    code: true,
+                    periodMonth: true,
+                    periodYear: true,
+                    location: { select: { id: true, name: true } }
+                }
+            },
+            categoryRef: true,
+            vehicle: {
+                select: {
+                    id: true,
+                    code: true,
+                    plate_number: true,
+                    vehicle_type: true,
+                    location: { select: { id: true, name: true } }
+                }
+            },
+            createdBy: {
+                select: {
+                    username: true,
+                    employee: { select: { name: true } }
+                }
+            }
+        },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }]
+    })
+
+    // Aggregates
+    let totalAmount = 0
+    let totalQuantity = 0
+    const vehicleMap = new Map<string, any>()
+
+    for (const exp of expenses) {
+        totalAmount += exp.amount || 0
+        totalQuantity += exp.quantity || 0
+
+        const vKey = exp.vehicleId || "none"
+        if (!vehicleMap.has(vKey)) {
+            vehicleMap.set(vKey, {
+                vehicleId: exp.vehicleId,
+                code: exp.vehicle?.code || "Umum / Non-Armada",
+                plateNumber: exp.vehicle?.plate_number || "-",
+                type: exp.vehicle?.vehicle_type || "-",
+                locationName: exp.vehicle?.location?.name || exp.budget?.location?.name || "-",
+                totalQty: 0,
+                totalAmount: 0,
+                count: 0,
+                minKm: null as number | null,
+                maxKm: null as number | null,
+            })
+        }
+        const vData = vehicleMap.get(vKey)
+        vData.totalQty += exp.quantity || 0
+        vData.totalAmount += exp.amount || 0
+        vData.count += 1
+        if (exp.kmMeter !== null && exp.kmMeter !== undefined) {
+            if (vData.minKm === null || exp.kmMeter < vData.minKm) vData.minKm = exp.kmMeter
+            if (vData.maxKm === null || exp.kmMeter > vData.maxKm) vData.maxKm = exp.kmMeter
+        }
+    }
+
+    const vehicleBreakdown = Array.from(vehicleMap.values()).map(v => ({
+        ...v,
+        kmDiff: (v.maxKm !== null && v.minKm !== null) ? Math.max(0, v.maxKm - v.minKm) : 0
+    })).sort((a, b) => b.totalAmount - a.totalAmount)
+
+    return {
+        success: true,
+        expenses,
+        summary: {
+            totalAmount,
+            totalQuantity,
+            totalItems: expenses.length,
+            avgPrice: totalQuantity > 0 ? totalAmount / totalQuantity : 0,
+            vehicleBreakdown,
+        }
+    }
+}
+
+export type VehicleReportFilters = {
+    locationId?: string
+    vehicleId?: string
+    categoryId?: string
+    startDate?: string
+    endDate?: string
+    year?: number
+    month?: number
+}
+
+export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
+    const session = await auth()
+    if (!session?.user) {
+        return { success: false, error: "Unauthorized", data: null }
+    }
+
+    const isCorp = isCorporateOrSuperAdmin(session)
+    const targetLocId = getTargetLocationId(session, filters.locationId)
+
+    // 1. Get vehicles
+    const vehicleWhere: any = {}
+    if (filters.locationId && filters.locationId !== "all") {
+        vehicleWhere.locationId = targetLocId
+    } else if (!isCorp) {
+        vehicleWhere.locationId = session.user.locationId
+    }
+    if (filters.vehicleId && filters.vehicleId !== "all") {
+        vehicleWhere.id = filters.vehicleId
+    }
+    if (filters.categoryId && filters.categoryId !== "all") {
+        vehicleWhere.categoryId = filters.categoryId
+    }
+
+    const vehicles = await prisma.vehicle.findMany({
+        where: vehicleWhere,
+        include: { location: true, category: true },
+        orderBy: [{ location: { name: "asc" } }, { code: "asc" }]
+    })
+
+    // 2. Date filters for both expenses and transactions
+    const dateWhere: any = {}
+    if (filters.startDate || filters.endDate) {
+        if (filters.startDate) dateWhere.gte = new Date(filters.startDate + "T00:00:00.000Z")
+        if (filters.endDate) dateWhere.lte = new Date(filters.endDate + "T23:59:59.999Z")
+    } else if (filters.year || filters.month) {
+        const year = filters.year || new Date().getFullYear()
+        if (filters.month) {
+            dateWhere.gte = new Date(year, filters.month - 1, 1)
+            dateWhere.lte = new Date(year, filters.month, 0, 23, 59, 59, 999)
+        } else {
+            dateWhere.gte = new Date(year, 0, 1)
+            dateWhere.lte = new Date(year, 11, 31, 23, 59, 59, 999)
+        }
+    }
+
+    const vehicleIds = vehicles.map(v => v.id)
+
+    // 3. Fetch RblExpenses for these vehicles
+    const expenseWhere: any = {
+        vehicleId: { in: vehicleIds },
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        expenseWhere.date = dateWhere
+    }
+
+    const expenses = await prisma.rblExpense.findMany({
+        where: expenseWhere,
+        include: {
+            budget: {
+                select: {
+                    id: true,
+                    code: true,
+                    periodMonth: true,
+                    periodYear: true,
+                    location: { select: { id: true, name: true } }
+                }
+            },
+            categoryRef: true,
+            vehicle: { select: { id: true, code: true, plate_number: true, vehicle_type: true, category: true } },
+            createdBy: { select: { username: true, employee: { select: { name: true } } } }
+        },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }]
+    })
+
+    // 4. Fetch ProductionTransactions for these vehicles
+    const txWhere: any = {
+        vehicleId: { in: vehicleIds },
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        txWhere.date = dateWhere
+    }
+
+    const transactions = await prisma.productionTransaction.findMany({
+        where: txWhere,
+        include: {
+            vehicle: { select: { id: true, code: true, plate_number: true } },
+            driver: { select: { id: true, name: true } },
+            project: { select: { id: true, name: true, customer: { select: { id: true, customer_name: true } } } },
+            concreteQuality: { select: { id: true, name: true } },
+            location: { select: { id: true, name: true } }
+        },
+        orderBy: [{ date: "desc" }, { trip_sequence: "asc" }]
+    })
+
+    // 5. Aggregate per vehicle
+    const vehicleAnalytics = vehicles.map(veh => {
+        const vehExpenses = expenses.filter(e => e.vehicleId === veh.id)
+        const vehTransactions = transactions.filter(t => t.vehicleId === veh.id)
+
+        // RBL Costs Breakdown
+        let fuelLiters = 0
+        let fuelCost = 0
+        let lubricantQty = 0
+        let lubricantCost = 0
+        let otherCost = 0
+        let totalCost = 0
+
+        let minKm: number | null = null
+        let maxKm: number | null = null
+
+        for (const e of vehExpenses) {
+            totalCost += e.amount || 0
+            const catName = (e.category || "").toLowerCase()
+            if (catName.includes("bbm") || catName.includes("solar") || catName.includes("bakar")) {
+                fuelLiters += e.quantity || 0
+                fuelCost += e.amount || 0
+            } else if (catName.includes("oli") || catName.includes("pelumas")) {
+                lubricantQty += e.quantity || 0
+                lubricantCost += e.amount || 0
+            } else {
+                otherCost += e.amount || 0
+            }
+
+            if (e.kmMeter !== null && e.kmMeter !== undefined) {
+                if (minKm === null || e.kmMeter < minKm) minKm = e.kmMeter
+                if (maxKm === null || e.kmMeter > maxKm) maxKm = e.kmMeter
+            }
+        }
+
+        // Production / Delivery stats
+        const totalTrips = vehTransactions.length
+        const totalVolume = vehTransactions.reduce((s, t) => s + (t.volume_cubic || 0), 0)
+        const kmDistance = (maxKm !== null && minKm !== null) ? Math.max(0, maxKm - minKm) : 0
+
+        // Efficiency Metrics
+        const fuelPerCubic = totalVolume > 0 ? fuelLiters / totalVolume : 0
+        const costPerTrip = totalTrips > 0 ? totalCost / totalTrips : 0
+        const costPerCubic = totalVolume > 0 ? totalCost / totalVolume : 0
+
+        return {
+            vehicle: veh,
+            stats: {
+                totalCost,
+                fuelLiters,
+                fuelCost,
+                lubricantQty,
+                lubricantCost,
+                otherCost,
+                minKm,
+                maxKm,
+                kmDistance,
+                totalTrips,
+                totalVolume,
+                fuelPerCubic,
+                costPerTrip,
+                costPerCubic,
+                expenseCount: vehExpenses.length,
+            },
+            recentExpenses: (filters.vehicleId && filters.vehicleId !== "all") ? vehExpenses : vehExpenses.slice(0, 25),
+            recentTransactions: (filters.vehicleId && filters.vehicleId !== "all") ? vehTransactions : vehTransactions.slice(0, 25),
+        }
+    })
+
+    // Overall Fleet Summary
+    const overallSummary = {
+        totalVehicles: vehicles.length,
+        totalCost: vehicleAnalytics.reduce((s, v) => s + v.stats.totalCost, 0),
+        totalFuelLiters: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelLiters, 0),
+        totalFuelCost: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelCost, 0),
+        totalTrips: vehicleAnalytics.reduce((s, v) => s + v.stats.totalTrips, 0),
+        totalVolume: vehicleAnalytics.reduce((s, v) => s + v.stats.totalVolume, 0),
+    }
+
+    return {
+        success: true,
+        overallSummary,
+        vehicleAnalytics,
+        allExpenses: expenses,
+        allTransactions: transactions,
+        vehicles,
+    }
+}
+

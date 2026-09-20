@@ -331,3 +331,103 @@ export async function deleteConfirmedTransaction(transactionId: string) {
         return { error: e.message || "Failed to delete" }
     }
 }
+
+// ─── AGGREGATE DUMP TRUCK RETASE ACTIONS ─────────────────────────────────────
+
+export async function getAggregateRetaseSettings() {
+    const session = await auth()
+    if (!session?.user) return []
+
+    let filter = {}
+    if (!isCorporate(session) && session.user.locationId) {
+        filter = { locationId: session.user.locationId }
+    }
+
+    return await prisma.aggregateRetaseSetting.findMany({
+        where: filter,
+        include: { location: true },
+        orderBy: { location: { name: 'asc' } }
+    })
+}
+
+const updateAggregateSettingSchema = z.object({
+    locationId: z.string().min(1, "Cabang wajib diisi"),
+    price_dt_besar: z.coerce.number().min(0, "Tarif DT Besar tidak boleh negatif"),
+    price_dt_kecil: z.coerce.number().min(0, "Tarif DT Kecil tidak boleh negatif"),
+    default_distance_km: z.coerce.number().min(0, "Jarak default tidak boleh negatif"),
+})
+
+export async function upsertAggregateRetaseSetting(formData: FormData) {
+    const session = await auth()
+    if (!session?.user) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda tidak memiliki izin." }
+
+    try {
+        const parsed = updateAggregateSettingSchema.parse(Object.fromEntries(formData.entries()))
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+
+        if (!isSuperAdmin && session.user.locationId !== parsed.locationId) {
+            return { error: "Permission Denied: Tidak dapat mengubah setting cabang lain." }
+        }
+
+        await prisma.aggregateRetaseSetting.upsert({
+            where: { locationId: parsed.locationId },
+            update: {
+                price_dt_besar: parsed.price_dt_besar,
+                price_dt_kecil: parsed.price_dt_kecil,
+                default_distance_km: parsed.default_distance_km,
+            },
+            create: {
+                locationId: parsed.locationId,
+                price_dt_besar: parsed.price_dt_besar,
+                price_dt_kecil: parsed.price_dt_kecil,
+                default_distance_km: parsed.default_distance_km,
+            }
+        })
+
+        revalidatePath("/admin/retase")
+        revalidatePath("/admin/material-agregat")
+        return { success: true, message: "Pengaturan tarif retase Dump Truck berhasil disimpan." }
+    } catch (e: any) {
+        console.error(e)
+        return { error: e.message || "Gagal menyimpan tarif retase Dump Truck" }
+    }
+}
+
+export async function getAggregateRetaseTransactions() {
+    const session = await auth()
+    if (!session?.user) return []
+
+    let filter: any = { source_type: "Internal" }
+    if (!isCorporate(session) && session.user.locationId) {
+        filter.locationId = session.user.locationId
+    }
+
+    return await prisma.aggregateIncoming.findMany({
+        where: filter,
+        include: {
+            location: true,
+            vehicle: true,
+            driver: true,
+        },
+        orderBy: { date: "desc" }
+    })
+}
+
+export async function toggleAggregateRetasePaid(id: string, isPaid: boolean) {
+    const session = await auth()
+    if (!session?.user) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak." }
+
+    try {
+        await prisma.aggregateIncoming.update({
+            where: { id },
+            data: { is_retase_paid: isPaid }
+        })
+        revalidatePath("/admin/retase")
+        return { success: true }
+    } catch (e: any) {
+        return { error: e.message }
+    }
+}
+

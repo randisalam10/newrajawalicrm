@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -43,11 +43,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
     const hasPerm = (code: string) => {
         if (isSuperAdmin) return true
+        // Safe role fallbacks for standard roles if RBAC permissions are hydrating
+        if (code === "RBL_VIEW" && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "BILLING_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "PRODUKSI_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "DASHBOARD_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP", "Approver"].includes(user?.role || "")) return true
         return user?.permissions?.includes(code) ?? false
     }
 
     const hasAnyPerm = (...codes: string[]) => {
         if (isSuperAdmin) return true
+        if (codes.includes("RBL_VIEW") && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
         return codes.some(code => user?.permissions?.includes(code))
     }
 
@@ -81,7 +87,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
             defaultOpen: false,
             items: [
                 ...(hasPerm("BILLING_VIEW") ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
-                ...(hasPerm("RBL_VIEW") ? [{ title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards }] : []),
+                ...(hasPerm("RBL_VIEW") ? [
+                    { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards },
+                ] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_VIEW", "VEHICLE_VIEW", "RBL_VIEW") ? [
+                    { title: "Laporan Kendaraan", url: "/admin/reports/kendaraan", icon: Truck },
+                ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 }] : []),
             ]
         },
@@ -111,7 +122,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Logistik & Peralatan",
             defaultOpen: false,
             items: [
-                ...(hasPerm("LOGISTIK_VIEW") ? [{ title: "Dashboard", url: "/logistik", icon: LayoutDashboard }] : []),
+                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard }] : []),
                 ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart }] : []),
                 ...(hasPerm("LOGISTIK_VIEW") ? [
                     { title: "Daftar PO", url: "/logistik/po", icon: FileText },
@@ -147,8 +158,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
     if (pathname === '/admin') bestMatchUrl = '/admin'
 
     useEffect(() => {
-        // Jangan auto-expand grup Monitoring jika sedang di halaman utama Dashboard,
-        // biarkan default state ("Operasional & Transaksi") yang terbuka.
         if (pathname === '/admin') return
 
         const activeGroup = navGroups.find(group =>
@@ -161,17 +170,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }, [pathname])
 
     if (!mounted) {
-        return <Sidebar variant="sidebar" className="border-r border-slate-200/80" />
+        return <Sidebar variant="inset" />
     }
 
     return (
-        <Sidebar variant="sidebar" className="border-r border-slate-200/80">
-            <SidebarHeader className="h-14 flex flex-row items-center border-b border-slate-200/80 px-4 overflow-hidden bg-white">
-                <div className="flex items-center gap-2.5 font-semibold text-primary">
-                    <div className="p-1.5 bg-primary rounded-lg">
-                        <Factory className="h-4 w-4 text-primary-foreground" />
+        <Sidebar variant="inset">
+            <SidebarHeader className="h-16 flex justify-center border-b pt-4 px-4 overflow-hidden">
+                <div className="flex items-center gap-3 font-semibold text-primary">
+                    <div className="p-1.5 bg-primary rounded-xl">
+                        <Factory className="h-5 w-5 text-primary-foreground" />
                     </div>
-                    <span className="truncate text-sm font-bold tracking-tight">BP ERP System</span>
+                    <span className="truncate text-base tracking-tight">BP ERP System</span>
                 </div>
             </SidebarHeader>
 

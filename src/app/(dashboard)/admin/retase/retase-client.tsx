@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
-import { MoreHorizontal, Printer, Settings, CheckCircle2, Trash2, Edit, ChevronsUpDown, Check, AlertTriangle, Calculator, Calendar } from "lucide-react"
+import { MoreHorizontal, Printer, Settings, CheckCircle2, Trash2, Edit, ChevronsUpDown, Check, AlertTriangle, Calculator, Calendar, Truck, Download, Mountain } from "lucide-react"
 import {
     Dialog,
     DialogContent,
@@ -24,7 +24,13 @@ import {
 } from "@/components/ui/dialog"
 import { format } from "date-fns"
 import { id } from "date-fns/locale"
-import { confirmTransaction, upsertRetaseSetting, deleteConfirmedTransaction } from "./actions"
+import { 
+    confirmTransaction, 
+    upsertRetaseSetting, 
+    deleteConfirmedTransaction,
+    upsertAggregateRetaseSetting,
+    toggleAggregateRetasePaid
+} from "./actions"
 import { useToast } from "@/hooks/use-toast"
 import { RetaseLaporanClient } from "./retase-laporan-client"
 
@@ -82,7 +88,7 @@ export function RetaseClient({
         })
     }, [confirmedTransactions, filterCabang, filterCustomer])
 
-    // Setting State
+    // Setting State Mixer
     const initialLoc = locations[0]?.id || ""
     const initialSetting = settings.find((s: any) => s.locationId === initialLoc)
     const [settingLocation, setSettingLocation] = useState(initialLoc)
@@ -184,23 +190,23 @@ export function RetaseClient({
     return (
         <div className="space-y-6">
             <Tabs defaultValue="pending">
-                <TabsList className={`grid w-full ${canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"} mb-8`}>
-                    <TabsTrigger value="pending" className="flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Konfirmasi Retase ({pendingTransactions.length})
+                <TabsList className={`grid w-full ${canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"} mb-6`}>
+                    <TabsTrigger value="pending" className="flex items-center gap-1.5 text-xs">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Retase Mixer ({pendingTransactions.length})</span>
                     </TabsTrigger>
-                    <TabsTrigger value="confirmed" className="flex items-center gap-2">
-                        <Printer className="w-4 h-4" />
-                        Surat Jalan & Selesai
+                    <TabsTrigger value="confirmed" className="flex items-center gap-1.5 text-xs">
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Surat Jalan Mixer</span>
                     </TabsTrigger>
-                    <TabsTrigger value="laporan" className="flex items-center gap-2">
-                        <Settings className="w-4 h-4" />
-                        Laporan
+                    <TabsTrigger value="laporan" className="flex items-center gap-1.5 text-xs">
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>Laporan Mixer</span>
                     </TabsTrigger>
                     {canManageSettings && (
-                        <TabsTrigger value="settings" className="flex items-center gap-2">
-                            <Settings className="w-4 h-4" />
-                            Pengaturan Harga Jarak
+                        <TabsTrigger value="settings" className="flex items-center gap-1.5 text-xs">
+                            <Settings className="w-3.5 h-3.5" />
+                            <span>Pengaturan Tarif</span>
                         </TabsTrigger>
                     )}
                 </TabsList>
@@ -500,235 +506,235 @@ export function RetaseClient({
                 </TabsContent>
 
                 {canManageSettings && (
-                    <TabsContent value="settings">
-                        <Card className="max-w-2xl">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Settings className="w-5 h-5 text-blue-600" />
-                                Pengaturan Rumus & Tarif Retase Cabang
-                            </CardTitle>
-                            <CardDescription>
-                                Atur rumus komisi sopir dan tarif dasar per kilometer untuk masing-masing cabang operasional.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <form onSubmit={handleSaveSetting} className="space-y-6">
-                                {userRole === 'SuperAdminBP' && (
-                                    <div className="space-y-2">
-                                        <Label className="font-semibold text-slate-800">Pilih Cabang Operasional</Label>
-                                        <select
-                                            className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2"
-                                            value={settingLocation}
-                                            onChange={(e) => onLocationChange(e.target.value)}
-                                            required
-                                        >
-                                            {locations.map((loc: any) => (
-                                                <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                )}
-
-                                {/* PILIHAN RUMUS PERHITUNGAN */}
-                                <div className="space-y-3">
-                                    <Label className="font-semibold text-slate-800">Metode & Rumus Perhitungan Komisi</Label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <div
-                                            onClick={() => setSettingCalcMode("DISTANCE_ONLY")}
-                                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                                settingCalcMode === "DISTANCE_ONLY"
-                                                    ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
-                                                    : "border-slate-200 hover:border-slate-300 bg-white"
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-900 text-sm">Harga × Jarak (KM)</span>
-                                                        <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">Default Baru</Badge>
-                                                    </div>
-                                                    <p className="text-xs text-slate-500 leading-relaxed">
-                                                        Komisi supir hanya dihitung berdasarkan kilometer jarak tempuh (Rp/KM). Volume kubikasi mixer tidak mempengaruhi komisi.
-                                                    </p>
-                                                </div>
-                                                <input
-                                                    type="radio"
-                                                    checked={settingCalcMode === "DISTANCE_ONLY"}
-                                                    onChange={() => setSettingCalcMode("DISTANCE_ONLY")}
-                                                    className="mt-1 accent-blue-600"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div
-                                            onClick={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
-                                            className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                                settingCalcMode === "DISTANCE_AND_VOLUME"
-                                                    ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
-                                                    : "border-slate-200 hover:border-slate-300 bg-white"
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div className="space-y-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="font-bold text-slate-900 text-sm">Harga × Jarak × Kubikasi</span>
-                                                        <Badge variant="outline" className="text-[10px] text-slate-600 px-1.5 py-0">Rumus Lama</Badge>
-                                                    </div>
-                                                    <p className="text-xs text-slate-500 leading-relaxed">
-                                                        Komisi supir dihitung proporsional terhadap jarak tempuh dan kubikasi volume beton yang diangkut (Rp/M³/KM).
-                                                    </p>
-                                                </div>
-                                                <input
-                                                    type="radio"
-                                                    checked={settingCalcMode === "DISTANCE_AND_VOLUME"}
-                                                    onChange={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
-                                                    className="mt-1 accent-blue-600"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* INPUT HARGA DASAR */}
-                                <div className="space-y-2">
-                                    <Label className="font-semibold text-slate-800">
-                                        {settingCalcMode === "DISTANCE_ONLY"
-                                            ? "Harga Dasar Retase per KM (Rp/KM) *"
-                                            : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
-                                    </Label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
-                                        <Input
-                                            type="number"
-                                            required
-                                            min="0"
-                                            step="any"
-                                            value={settingPrice}
-                                            onChange={(e) => setSettingPrice(e.target.value)}
-                                            placeholder={settingCalcMode === "DISTANCE_ONLY" ? "Misal: 2500" : "Misal: 1500"}
-                                            className="pl-10 text-base font-semibold"
-                                        />
-                                    </div>
-                                    <p className="text-xs text-slate-500">
-                                        Rumus aktif:{" "}
-                                        <span className="font-semibold text-slate-700">
-                                            {settingCalcMode === "DISTANCE_ONLY"
-                                                ? "Jarak Tempuh (KM) × Harga ini"
-                                                : "Jarak Tempuh (KM) × Kubikasi Beton (M³) × Harga ini"}
-                                        </span>
-                                    </p>
-                                </div>
-
-                                {/* SIMULASI LIVE */}
-                                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                        <Calculator className="w-4 h-4 text-blue-600" />
-                                        Simulasi Live Perhitungan (Contoh: Jarak 10 KM, Muatan 7 M³)
-                                    </div>
-                                    <div className="flex items-center justify-between pt-1">
-                                        <span className="text-xs text-slate-600">
-                                            {settingCalcMode === "DISTANCE_ONLY"
-                                                ? `10 KM × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`
-                                                : `10 KM × 7 M³ × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`}
-                                        </span>
-                                        <div className="text-sm font-black text-blue-700">
-                                            Rp{" "}
-                                            {(
-                                                settingCalcMode === "DISTANCE_ONLY"
-                                                    ? 10 * (Number(settingPrice) || 0)
-                                                    : 10 * 7 * (Number(settingPrice) || 0)
-                                            ).toLocaleString("id-ID")}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* CAKUPAN KEBERLAKUAN (FUTURE vs BACKDATE) */}
-                                <div className="space-y-3 pt-2 border-t">
-                                    <Label className="font-semibold text-slate-800">Cakupan Keberlakuan Perubahan</Label>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        <div
-                                            onClick={() => setApplyScope("FUTURE")}
-                                            className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
-                                                applyScope === "FUTURE"
-                                                    ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
-                                                    : "border-slate-200 hover:border-slate-300 bg-white"
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div>
-                                                    <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
-                                                        <span>Berlaku Mulai Sekarang</span>
-                                                        <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300">Default</Badge>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                                                        Hanya berlaku untuk konfirmasi transaksi mendatang. Data pengiriman lama tidak berubah.
-                                                    </p>
-                                                </div>
-                                                <input
-                                                    type="radio"
-                                                    checked={applyScope === "FUTURE"}
-                                                    onChange={() => setApplyScope("FUTURE")}
-                                                    className="mt-0.5 accent-emerald-600"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div
-                                            onClick={() => setApplyScope("BACKDATE")}
-                                            className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
-                                                applyScope === "BACKDATE"
-                                                    ? "border-amber-600 bg-amber-50/40 shadow-sm ring-1 ring-amber-600"
-                                                    : "border-slate-200 hover:border-slate-300 bg-white"
-                                            }`}
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div>
-                                                    <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
-                                                        <span>Berlaku Mundur (Backdate)</span>
-                                                        <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300">Revisi Data</Badge>
-                                                    </div>
-                                                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                                                        Menghitung ulang komisi seluruh pengiriman selesai yang ada sejak tanggal tertentu.
-                                                    </p>
-                                                </div>
-                                                <input
-                                                    type="radio"
-                                                    checked={applyScope === "BACKDATE"}
-                                                    onChange={() => setApplyScope("BACKDATE")}
-                                                    className="mt-0.5 accent-amber-600"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {applyScope === "BACKDATE" && (
-                                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-2 mt-2">
-                                            <div className="flex items-center gap-2 text-amber-800 text-xs font-semibold">
-                                                <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                                Pilih Tanggal Awal Berlaku Mundur
-                                            </div>
-                                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                                                <Input
-                                                    type="date"
-                                                    value={effectiveDate}
-                                                    onChange={(e) => setEffectiveDate(e.target.value)}
-                                                    className="max-w-xs bg-white text-sm"
-                                                    required
-                                                />
-                                                <span className="text-xs text-amber-800 leading-tight">
-                                                    Seluruh data retase cabang ini sejak tanggal tersebut akan direvisi dan dicatat ke Audit Log.
-                                                </span>
-                                            </div>
+                    <TabsContent value="settings" className="space-y-4">
+                        <Card className="max-w-2xl border-slate-200">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <Settings className="w-5 h-5 text-blue-600" />
+                                    Pengaturan Rumus & Tarif Retase Mixer BP
+                                </CardTitle>
+                                <CardDescription className="text-xs">
+                                    Atur rumus komisi sopir dan tarif dasar per kilometer untuk armada Mixer di masing-masing cabang operasional.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <form onSubmit={handleSaveSetting} className="space-y-6">
+                                    {userRole === 'SuperAdminBP' && (
+                                        <div className="space-y-2">
+                                            <Label className="font-semibold text-slate-800">Pilih Cabang Operasional</Label>
+                                            <select
+                                                className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2"
+                                                value={settingLocation}
+                                                onChange={(e) => onLocationChange(e.target.value)}
+                                                required
+                                            >
+                                                {locations.map((loc: any) => (
+                                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                     )}
-                                </div>
 
-                                <Button disabled={isLoading} type="submit" className="w-full">
-                                    {isLoading ? "Menyimpan..." : "Simpan Pengaturan"}
-                                </Button>
-                            </form>
-                        </CardContent>
-                    </Card>
+                                    {/* PILIHAN RUMUS PERHITUNGAN */}
+                                    <div className="space-y-3">
+                                        <Label className="font-semibold text-slate-800">Metode & Rumus Perhitungan Komisi</Label>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div
+                                                onClick={() => setSettingCalcMode("DISTANCE_ONLY")}
+                                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                                    settingCalcMode === "DISTANCE_ONLY"
+                                                        ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
+                                                        : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-slate-900 text-sm">Harga × Jarak (KM)</span>
+                                                            <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">Default Baru</Badge>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 leading-relaxed">
+                                                            Komisi supir hanya dihitung berdasarkan kilometer jarak tempuh (Rp/KM). Volume kubikasi mixer tidak mempengaruhi komisi.
+                                                        </p>
+                                                    </div>
+                                                    <input
+                                                        type="radio"
+                                                        checked={settingCalcMode === "DISTANCE_ONLY"}
+                                                        onChange={() => setSettingCalcMode("DISTANCE_ONLY")}
+                                                        className="mt-1 accent-blue-600"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                onClick={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
+                                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                                                    settingCalcMode === "DISTANCE_AND_VOLUME"
+                                                        ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
+                                                        : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div className="space-y-1">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-bold text-slate-900 text-sm">Harga × Jarak × Kubikasi</span>
+                                                            <Badge variant="outline" className="text-[10px] text-slate-600 px-1.5 py-0">Rumus Lama</Badge>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 leading-relaxed">
+                                                            Komisi supir dihitung proporsional terhadap jarak tempuh dan kubikasi volume beton yang diangkut (Rp/M³/KM).
+                                                        </p>
+                                                    </div>
+                                                    <input
+                                                        type="radio"
+                                                        checked={settingCalcMode === "DISTANCE_AND_VOLUME"}
+                                                        onChange={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
+                                                        className="mt-1 accent-blue-600"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* INPUT HARGA DASAR */}
+                                    <div className="space-y-2">
+                                        <Label className="font-semibold text-slate-800">
+                                            {settingCalcMode === "DISTANCE_ONLY"
+                                                ? "Harga Dasar Retase per KM (Rp/KM) *"
+                                                : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
+                                            <Input
+                                                type="number"
+                                                required
+                                                min="0"
+                                                step="any"
+                                                value={settingPrice}
+                                                onChange={(e) => setSettingPrice(e.target.value)}
+                                                placeholder={settingCalcMode === "DISTANCE_ONLY" ? "Misal: 2500" : "Misal: 1500"}
+                                                className="pl-10 text-base font-semibold"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            Rumus aktif:{" "}
+                                            <span className="font-semibold text-slate-700">
+                                                {settingCalcMode === "DISTANCE_ONLY"
+                                                    ? "Jarak Tempuh (KM) × Harga ini"
+                                                    : "Jarak Tempuh (KM) × Kubikasi Beton (M³) × Harga ini"}
+                                            </span>
+                                        </p>
+                                    </div>
+
+                                    {/* SIMULASI LIVE */}
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
+                                            <Calculator className="w-4 h-4 text-blue-600" />
+                                            Simulasi Live Perhitungan (Contoh: Jarak 10 KM, Muatan 7 M³)
+                                        </div>
+                                        <div className="flex items-center justify-between pt-1">
+                                            <span className="text-xs text-slate-600">
+                                                {settingCalcMode === "DISTANCE_ONLY"
+                                                    ? `10 KM × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`
+                                                    : `10 KM × 7 M³ × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`}
+                                            </span>
+                                            <div className="text-sm font-black text-blue-700">
+                                                Rp{" "}
+                                                {(
+                                                    settingCalcMode === "DISTANCE_ONLY"
+                                                        ? 10 * (Number(settingPrice) || 0)
+                                                        : 10 * 7 * (Number(settingPrice) || 0)
+                                                ).toLocaleString("id-ID")}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* CAKUPAN KEBERLAKUAN (FUTURE vs BACKDATE) */}
+                                    <div className="space-y-3 pt-2 border-t">
+                                        <Label className="font-semibold text-slate-800">Cakupan Keberlakuan Perubahan</Label>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div
+                                                onClick={() => setApplyScope("FUTURE")}
+                                                className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
+                                                    applyScope === "FUTURE"
+                                                        ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
+                                                        : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                                                            <span>Berlaku Mulai Sekarang</span>
+                                                            <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300">Default</Badge>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                                            Hanya berlaku untuk konfirmasi transaksi mendatang. Data pengiriman lama tidak berubah.
+                                                        </p>
+                                                    </div>
+                                                    <input
+                                                        type="radio"
+                                                        checked={applyScope === "FUTURE"}
+                                                        onChange={() => setApplyScope("FUTURE")}
+                                                        className="mt-0.5 accent-emerald-600"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div
+                                                onClick={() => setApplyScope("BACKDATE")}
+                                                className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
+                                                    applyScope === "BACKDATE"
+                                                        ? "border-amber-600 bg-amber-50/40 shadow-sm ring-1 ring-amber-600"
+                                                        : "border-slate-200 hover:border-slate-300 bg-white"
+                                                }`}
+                                            >
+                                                <div className="flex items-start justify-between">
+                                                    <div>
+                                                        <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
+                                                            <span>Berlaku Mundur (Backdate)</span>
+                                                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300">Revisi Data</Badge>
+                                                        </div>
+                                                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                                                            Menghitung ulang komisi seluruh pengiriman selesai yang ada sejak tanggal tertentu.
+                                                        </p>
+                                                    </div>
+                                                    <input
+                                                        type="radio"
+                                                        checked={applyScope === "BACKDATE"}
+                                                        onChange={() => setApplyScope("BACKDATE")}
+                                                        className="mt-0.5 accent-amber-600"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {applyScope === "BACKDATE" && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-2 mt-2">
+                                                <div className="flex items-center gap-2 text-amber-800 text-xs font-semibold">
+                                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                                    Pilih Tanggal Awal Berlaku Mundur
+                                                </div>
+                                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                                    <Input
+                                                        type="date"
+                                                        value={effectiveDate}
+                                                        onChange={(e) => setEffectiveDate(e.target.value)}
+                                                        className="max-w-xs bg-white text-sm"
+                                                        required
+                                                    />
+                                                    <span className="text-xs text-amber-800 leading-tight">
+                                                        Seluruh data retase cabang ini sejak tanggal tersebut akan direvisi dan dicatat ke Audit Log.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <Button disabled={isLoading} type="submit" className="w-full">
+                                        {isLoading ? "Menyimpan..." : "Simpan Pengaturan"}
+                                    </Button>
+                                </form>
+                            </CardContent>
+                        </Card>
                     </TabsContent>
                 )}
             </Tabs>

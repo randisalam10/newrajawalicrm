@@ -1,0 +1,27 @@
+FROM node:20-alpine
+
+# Install system dependencies required by Prisma & Alpine
+RUN apk add --no-cache libc6-compat openssl tzdata
+
+WORKDIR /app
+
+# Copy dependency manifests & Prisma schema first for efficient Docker layer caching
+COPY package.json package-lock.json* ./
+COPY prisma ./prisma/
+
+# Install all dependencies (including devDependencies needed for development)
+# and generate Prisma client
+RUN npm ci
+
+# Development environment variables for hot reloading & host binding
+ENV NODE_ENV=development
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+ENV WATCHPACK_POLLING=true
+ENV CHOKIDAR_USEPOLLING=true
+
+EXPOSE 3000
+
+# Run prisma generate on startup (in case schema changed) then start Next.js dev server with Webpack polling
+CMD ["sh", "-c", "npx prisma generate && npx next dev --webpack -H 0.0.0.0"]
