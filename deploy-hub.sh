@@ -110,6 +110,11 @@ docker run -d \
     -v /home/secrets:/app/secrets \
     $IMAGE_NAME
 
+# Sinkronkan permission RBAC terbaru ke database secara otomatis & aman
+echo -e "${CYAN}Menyinkronkan permission RBAC ke database...${NC}"
+docker exec $APP_NAME npx tsx prisma/seed-rbac.ts > /dev/null 2>&1 || true
+echo -e "${GREEN}   ✓ RBAC permissions tersinkronisasi.${NC}"
+
 # Bersihkan image yang tidak terpakai
 docker image prune -f > /dev/null 2>&1 || true
 
