@@ -401,7 +401,7 @@ export function KendaraanClient({
                                 </Select>
                             </div>
 
-                            {userRole === "SuperAdminBP" ? (
+                            {(userRole === "SuperAdminBP" || isCorporate || !editData?.locationId) ? (
                                 <div className="space-y-1">
                                     <Label htmlFor="locationId" className="text-xs font-semibold text-slate-700">Cabang Pangkalan *</Label>
                                     <Select name="locationId" defaultValue={editData?.locationId || locations[0]?.id || ""}>

@@ -2,19 +2,43 @@ import { getKendaraan, getVehicleCategories } from "./actions"
 import { KendaraanClient } from "./kendaraan-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 import { Eye } from "lucide-react"
+import { redirect } from "next/navigation"
 
 export default async function KendaraanPage() {
     const session = await auth()
+    if (!session?.user) redirect("/login")
+
+    const userRole = session.user.role || "OperatorBP"
+    const isCorporate = isCorporateUser(session.user)
+    const perms = session.user.permissions || []
+
+    const canView = userRole === "SuperAdminBP" || isCorporate ||
+        perms.includes("VEHICLE_VIEW") ||
+        perms.includes("MASTER_DATA_VIEW") ||
+        hasPermission(session.user, "VEHICLE", "VIEW") ||
+        ["AdminBP", "AdminLogistik", "CEO", "FVP"].includes(userRole)
+
+    if (!canView) redirect("/admin")
+
+    const canManage = userRole === "SuperAdminBP" || (
+        !["CEO", "FVP", "Approver"].includes(userRole) && (
+            userRole === "AdminBP" ||
+            perms.includes("VEHICLE_CREATE") ||
+            perms.includes("VEHICLE_EDIT") ||
+            perms.includes("MASTER_DATA_CREATE") ||
+            perms.includes("MASTER_DATA_EDIT") ||
+            hasPermission(session.user, "VEHICLE", "CREATE") ||
+            hasPermission(session.user, "MASTER_DATA", "CREATE")
+        )
+    )
+
     const [data, locations, categories] = await Promise.all([
         getKendaraan(),
         getLocations(),
         getVehicleCategories(),
     ])
-    const userRole = session?.user?.role || "OperatorBP"
-    const isCorporate = isCorporateUser(session?.user)
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP"].includes(userRole)
 
     return (
         <div className="space-y-6">

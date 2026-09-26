@@ -58,6 +58,18 @@ export const PERMISSIONS = [
     { code: 'MASTER_DATA_EDIT', module: 'MASTER_DATA', action: 'edit', name: 'Ubah Data Master' },
     { code: 'MASTER_DATA_DELETE', module: 'MASTER_DATA', action: 'delete', name: 'Hapus Data Master' },
 
+    // Master Kendaraan & Alat Berat
+    { code: 'VEHICLE_VIEW', module: 'VEHICLE', action: 'view', name: 'Lihat Data Kendaraan & Alat' },
+    { code: 'VEHICLE_CREATE', module: 'VEHICLE', action: 'create', name: 'Tambah Kendaraan & Alat Baru' },
+    { code: 'VEHICLE_EDIT', module: 'VEHICLE', action: 'edit', name: 'Ubah Data Kendaraan & Kategori' },
+    { code: 'VEHICLE_DELETE', module: 'VEHICLE', action: 'delete', name: 'Hapus Data Kendaraan & Kategori' },
+
+    // Master Karyawan & Supir
+    { code: 'KARYAWAN_VIEW', module: 'KARYAWAN', action: 'view', name: 'Lihat Data Karyawan & Supir' },
+    { code: 'KARYAWAN_CREATE', module: 'KARYAWAN', action: 'create', name: 'Tambah Data Karyawan Baru' },
+    { code: 'KARYAWAN_EDIT', module: 'KARYAWAN', action: 'edit', name: 'Ubah Data Karyawan' },
+    { code: 'KARYAWAN_DELETE', module: 'KARYAWAN', action: 'delete', name: 'Hapus Data Karyawan' },
+
     // Master Cabang
     { code: 'MASTER_CABANG_VIEW', module: 'MASTER_CABANG', action: 'view', name: 'Lihat Master Cabang' },
     { code: 'MASTER_CABANG_CREATE', module: 'MASTER_CABANG', action: 'create', name: 'Tambah Cabang Baru' },
@@ -128,6 +140,8 @@ export const ROLES = [
             'MATERIAL_USAGE_VIEW',
             'PLANNING_VIEW', 'PLANNING_CREATE', 'PLANNING_EDIT',
             'MASTER_DATA_VIEW', 'MASTER_DATA_CREATE', 'MASTER_DATA_EDIT',
+            'VEHICLE_VIEW', 'VEHICLE_CREATE', 'VEHICLE_EDIT', 'VEHICLE_DELETE',
+            'KARYAWAN_VIEW', 'KARYAWAN_CREATE', 'KARYAWAN_EDIT', 'KARYAWAN_DELETE',
             'LOGISTIK_VIEW', 'LOGISTIK_CREATE',
             'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_CREATE', 'RBL_EDIT', 'RBL_DELETE', 'RBL_CLOSE', 'RBL_EXPORT',
@@ -159,6 +173,8 @@ export const ROLES = [
             'MATERIAL_SEMEN_VIEW', 'MATERIAL_SEMEN_CREATE', 'MATERIAL_SEMEN_EDIT',
             'MATERIAL_AGREGAT_VIEW', 'MATERIAL_AGREGAT_CREATE', 'MATERIAL_AGREGAT_EDIT',
             'MATERIAL_USAGE_VIEW',
+            'VEHICLE_VIEW', 'VEHICLE_CREATE', 'VEHICLE_EDIT',
+            'MASTER_DATA_VIEW', 'MASTER_DATA_CREATE', 'MASTER_DATA_EDIT',
             'REPORTS_VIEW',
         ],
     },
@@ -171,6 +187,7 @@ export const ROLES = [
         permissions: [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
             'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
+            'VEHICLE_VIEW', 'KARYAWAN_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',
         ],
@@ -184,6 +201,7 @@ export const ROLES = [
         permissions: [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
             'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
+            'VEHICLE_VIEW', 'KARYAWAN_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',
         ],

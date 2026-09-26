@@ -21,7 +21,15 @@ export function hasPermission(user: SessionUser | null | undefined, module: stri
     if (!user) return false
     if (user.role === "SuperAdminBP") return true
     const code = `${module}_${action.toUpperCase()}`
-    return Boolean(user.permissions && user.permissions.includes(code))
+    if (user.permissions && user.permissions.includes(code)) return true
+
+    // Fallbacks for module mappings (e.g. VEHICLE/KARYAWAN can fallback to MASTER_DATA)
+    if (module === "VEHICLE" || module === "KARYAWAN") {
+        const masterDataCode = `MASTER_DATA_${action.toUpperCase()}`
+        if (user.permissions && user.permissions.includes(masterDataCode)) return true
+    }
+
+    return false
 }
 
 /**
@@ -46,6 +54,7 @@ export function isCorporateUser(user: SessionUser | any): boolean {
     if (!user) return false
     return (
         user.role === "SuperAdminBP" ||
+        user.role === "AdminLogistik" ||
         user.roleScope === "ALL_BRANCHES" ||
         ["CEO", "FVP", "Approver"].includes(user.role || "")
     )

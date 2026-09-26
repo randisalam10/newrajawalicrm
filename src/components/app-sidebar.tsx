@@ -49,14 +49,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
         if (code === "BILLING_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "PRODUKSI_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "SEWA_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "VEHICLE_VIEW" && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "KARYAWAN_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "DASHBOARD_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP", "Approver"].includes(user?.role || "")) return true
         return user?.permissions?.includes(code) ?? false
     }
 
     const hasAnyPerm = (...codes: string[]) => {
         if (isSuperAdmin) return true
-        if (codes.includes("RBL_VIEW") && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
-        return codes.some(code => user?.permissions?.includes(code))
+        return codes.some(code => hasPerm(code))
     }
 
     const rawNavGroups = [
@@ -103,10 +104,16 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Data Master",
             defaultOpen: false,
             items: [
-                ...(hasPerm("MASTER_DATA_VIEW") ? [
+                ...(hasAnyPerm("KARYAWAN_VIEW", "MASTER_DATA_VIEW") ? [
                     { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
+                ] : []),
+                ...(hasAnyPerm("VEHICLE_VIEW", "MASTER_DATA_VIEW") ? [
                     { title: "Data Kendaraan & Alat", url: "/admin/kendaraan", icon: Truck },
+                ] : []),
+                ...(hasAnyPerm("SEWA_VIEW", "MASTER_DATA_VIEW") ? [
                     { title: "Master Sewa Alat", url: "/admin/master-sewa", icon: Box },
+                ] : []),
+                ...(hasPerm("MASTER_DATA_VIEW") ? [
                     { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
                 ] : []),

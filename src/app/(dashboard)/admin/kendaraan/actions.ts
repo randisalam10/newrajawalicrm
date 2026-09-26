@@ -23,10 +23,52 @@ const kendaraanSchema = z.object({
     rental_notes: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
 })
 
-function canManageKendaraan(user: any) {
+export async function canManageKendaraan(user: any): Promise<boolean> {
     if (!user) return false
+    if (user.role === "SuperAdminBP") return true
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+    if (user.role === "AdminBP") return true
+
+    const perms: string[] = user.permissions || []
+    if (
+        perms.includes("VEHICLE_CREATE") ||
+        perms.includes("VEHICLE_EDIT") ||
+        perms.includes("MASTER_DATA_CREATE") ||
+        perms.includes("MASTER_DATA_EDIT")
+    ) {
+        return true
+    }
+
+    // Real-time check from DB in case token is not yet refreshed
+    if (user.id) {
+        try {
+            const dbUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: {
+                    role: true,
+                    roleRef: {
+                        include: {
+                            permissions: {
+                                include: { permission: true }
+                            }
+                        }
+                    }
+                }
+            })
+            if (dbUser?.role === "SuperAdminBP" || dbUser?.role === "AdminBP") return true
+            const dbPerms = dbUser?.roleRef?.permissions.map(rp => rp.permission.code) || []
+            return (
+                dbPerms.includes("VEHICLE_CREATE") ||
+                dbPerms.includes("VEHICLE_EDIT") ||
+                dbPerms.includes("MASTER_DATA_CREATE") ||
+                dbPerms.includes("MASTER_DATA_EDIT")
+            )
+        } catch {
+            return false
+        }
+    }
+
+    return false
 }
 
 // ─── Vehicle Category Server Actions ─────────────────────────────────────────
@@ -87,7 +129,7 @@ export async function getVehicleCategories() {
 
 export async function createVehicleCategory(data: { name: string; code?: string; description?: string }) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola kategori kendaraan" }
     }
     if (!data.name || !data.name.trim()) {
@@ -120,7 +162,7 @@ export async function createVehicleCategory(data: { name: string; code?: string;
 
 export async function updateVehicleCategory(id: string, data: { name: string; code?: string; description?: string }) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola kategori kendaraan" }
     }
 
@@ -142,7 +184,7 @@ export async function updateVehicleCategory(id: string, data: { name: string; co
 
 export async function deleteVehicleCategory(id: string) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola kategori kendaraan" }
     }
 
@@ -181,7 +223,7 @@ export async function getKendaraan() {
 
 export async function createKendaraan(formData: FormData) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data kendaraan" }
     }
 
@@ -193,10 +235,10 @@ export async function createKendaraan(formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
+        const isCorp = isCorporateUser(session.user)
+        const finalLocationId = parsed.data.locationId || session.user.locationId
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId) return { success: false, error: "Cabang pangkalan wajib dipilih." }
 
         const { locationId, categoryId, vehicle_type, ...insertData } = parsed.data
 
@@ -262,7 +304,7 @@ export async function createKendaraan(formData: FormData) {
 
 export async function updateKendaraan(id: string, formData: FormData) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data kendaraan" }
     }
 
@@ -277,17 +319,17 @@ export async function updateKendaraan(id: string, formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isCorp = isCorporateUser(session.user)
         const existing = await prisma.vehicle.findUnique({ where: { id } })
 
-        // Verify ownership if not SuperAdmin
-        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
-            return { success: false, error: "Unauthorized" }
+        // Verify ownership if not Corporate user
+        if (!isCorp && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized: Anda tidak memiliki akses ke kendaraan cabang lain" }
         }
 
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+        const finalLocationId = (isCorp && parsed.data.locationId) ? parsed.data.locationId : (existing?.locationId || parsed.data.locationId)
 
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        if (!finalLocationId) return { success: false, error: "Cabang pangkalan wajib dipilih." }
 
         const { locationId, categoryId, vehicle_type, ...updateData } = parsed.data
 
@@ -353,17 +395,17 @@ export async function updateKendaraan(id: string, formData: FormData) {
 
 export async function deleteKendaraan(id: string) {
     const session = await auth()
-    if (!session?.user || !canManageKendaraan(session.user)) {
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data kendaraan" }
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isCorp = isCorporateUser(session.user)
         const existing = await prisma.vehicle.findUnique({ where: { id } })
 
-        // Verify ownership if not SuperAdmin
-        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
-            return { success: false, error: "Unauthorized" }
+        // Verify ownership if not Corporate user
+        if (!isCorp && existing?.locationId !== session.user.locationId) {
+            return { success: false, error: "Unauthorized: Anda tidak memiliki akses ke kendaraan cabang lain" }
         }
 
         await prisma.vehicle.delete({

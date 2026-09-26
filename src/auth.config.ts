@@ -47,9 +47,32 @@ export const authConfig = {
                 }
 
                 if (isAdminRoute && !['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
-                    if (nextUrl.pathname.startsWith('/admin/rbl') && userRole === 'AdminLogistik') {
+                    const permissions = (auth.user as any)?.permissions as string[] | undefined || []
+
+                    // AdminLogistik or any role with relevant admin permissions can access admin subroutes
+                    const hasAdminAccess = userRole === 'AdminLogistik' ||
+                        permissions.some(p =>
+                            p.startsWith('MASTER_DATA_') ||
+                            p.startsWith('VEHICLE_') ||
+                            p.startsWith('KARYAWAN_') ||
+                            p.startsWith('MATERIAL_') ||
+                            p.startsWith('RBL_') ||
+                            p.startsWith('SEWA_') ||
+                            p.startsWith('REPORTS_') ||
+                            p.startsWith('PRODUKSI_') ||
+                            p.startsWith('BILLING_') ||
+                            p.startsWith('PLANNING_') ||
+                            p.startsWith('CUSTOMER_')
+                        )
+
+                    if (hasAdminAccess) {
+                        // If accessing root /admin overview without DASHBOARD_VIEW permission, redirect appropriately
+                        if (nextUrl.pathname === '/admin' && userRole === 'AdminLogistik' && !permissions.includes('DASHBOARD_VIEW')) {
+                            return Response.redirect(new URL('/logistik', nextUrl))
+                        }
                         return true
                     }
+
                     const target = userRole === 'AdminLogistik' ? '/logistik' : '/operator'
                     return Response.redirect(new URL(target, nextUrl))
                 }
