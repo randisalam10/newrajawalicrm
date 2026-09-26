@@ -5,6 +5,7 @@ import { useActionState } from "react"
 import { useRouter } from "next/navigation"
 import { authenticate } from "./actions"
 import { Factory, Lock, User, Eye, EyeOff, ArrowRight } from "lucide-react"
+import Image from "next/image"
 
 export default function LoginPage() {
     const router = useRouter()
@@ -42,13 +43,20 @@ export default function LoginPage() {
 
                 {/* Logo */}
                 <div className="relative z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/30">
-                            <Factory className="w-5 h-5 text-white" />
+                    <div className="flex items-center gap-3.5">
+                        <div className="relative h-14 w-14 shrink-0 drop-shadow-md">
+                            <Image
+                                src="/RajawalimixLogo.png"
+                                alt="RajawaliMix Logo"
+                                width={56}
+                                height={56}
+                                className="object-contain"
+                                priority
+                            />
                         </div>
                         <div>
-                            <div className="text-white font-bold text-lg leading-none">Rajawali BP</div>
-                            <div className="text-blue-300 text-xs font-medium mt-0.5">Batching Plant System</div>
+                            <div className="text-white font-extrabold text-2xl tracking-tight leading-none">RajawaliMix</div>
+                            <div className="text-blue-300 text-xs font-medium tracking-wide mt-1">Batching Plant System</div>
                         </div>
                     </div>
                 </div>
@@ -88,13 +96,20 @@ export default function LoginPage() {
             <div className="flex-1 flex flex-col items-center justify-center bg-white px-8 py-12">
 
                 {/* Mobile logo */}
-                <div className="lg:hidden mb-8 flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center">
-                        <Factory className="w-6 h-6 text-white" />
+                <div className="lg:hidden mb-8 flex flex-col items-center gap-2.5">
+                    <div className="relative h-18 w-18 drop-shadow-md">
+                        <Image
+                            src="/RajawalimixLogo.png"
+                            alt="RajawaliMix Logo"
+                            width={72}
+                            height={72}
+                            className="object-contain"
+                            priority
+                        />
                     </div>
                     <div className="text-center">
-                        <div className="font-bold text-lg text-slate-900">Rajawali BP</div>
-                        <div className="text-slate-500 text-xs">Batching Plant System</div>
+                        <div className="font-extrabold text-2xl text-slate-900 tracking-tight">RajawaliMix</div>
+                        <div className="text-slate-500 text-xs font-medium mt-0.5">Batching Plant System</div>
                     </div>
                 </div>
 

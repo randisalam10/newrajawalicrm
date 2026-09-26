@@ -8,13 +8,19 @@ import { isCorporateUser } from "@/lib/rbac"
 
 const kendaraanSchema = z.object({
     id: z.string().optional(),
-    plate_number: z.string().min(1, "Plat Nomor required"),
+    plate_number: z.string().min(1, "Plat Nomor / No. Seri required"),
     vehicle_type: z.enum(["Mixer", "Loader"]).optional(),
     categoryId: z.string().optional().nullable(),
-    code: z.string().min(1, "Kode Kendaraan required"),
+    code: z.string().min(1, "Kode Unit required"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
     dump_truck_size: z.preprocess(val => (val === "" || val === "NONE" ? null : val), z.enum(["BESAR", "KECIL"]).nullable().optional()),
     capacity_cubic: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
+    meter_type: z.preprocess(val => (val === "HM" ? "HM" : "KM"), z.enum(["KM", "HM"])).default("KM"),
+    merk_model: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
+    is_for_rent: z.preprocess(val => val === "true" || val === true || val === "on", z.boolean()).default(false),
+    default_day_rate: z.preprocess(val => (val === "" || val === undefined || val === null ? 0 : Number(val)), z.number().nullable().optional()).default(0),
+    rental_status: z.string().default("Tersedia"),
+    rental_notes: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
 })
 
 function canManageKendaraan(user: any) {
@@ -33,27 +39,47 @@ export async function getVehicleCategories() {
         }
     })
 
-    // Ensure standard category "Dump Truck" exists
-    const hasDT = existing.some(c => c.name.toLowerCase().includes("dump"))
-    if (!hasDT) {
-        try {
-            await prisma.vehicleCategory.create({
-                data: {
-                    name: "Dump Truck",
-                    code: "DT",
-                    description: "Armada pengangkut material agregat / pasir / batu",
-                    isSystem: true
-                }
-            })
-            return await prisma.vehicleCategory.findMany({
-                orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
-                include: {
-                    _count: { select: { vehicles: true } }
-                }
-            })
-        } catch {
-            // ignore if concurrent insert
+    // Standard categories for Vehicles & Machinery
+    const standardCategories = [
+        { name: "Truck Mixer", code: "MX", description: "Truk Molen / Pengaduk & Pengangkut Beton Cor" },
+        { name: "Wheel Loader", code: "LD", description: "Alat Berat Loader Pengisi Hopper Agregat Plant" },
+        { name: "Dump Truck", code: "DT", description: "Truk Jungkit Pengangkut Material Pasir & Batu Pecah" },
+        { name: "Concrete Pump", code: "CP", description: "Pompa Beton Cor (Boom Pump / Pompa Kodok)" },
+        { name: "Excavator", code: "EXC", description: "Alat Berat Excavator Pengeruk Agregat & Pekerjaan Tanah" },
+        { name: "Mobile Crane", code: "CR", description: "Crane Derek Pengangkat Beban & Alat Berat" },
+        { name: "Batching Plant", code: "BP", description: "Unit Mesin Batching Plant Pengolah Beton Cor" },
+        { name: "Genset & Power Plant", code: "GS", description: "Pembangkit Daya Genset & Mekanikal Kelistrikan" },
+        { name: "Mobil Operasional", code: "OPS", description: "Kendaraan Pickup, Double Cabin, & Mobil Dinas Plant" },
+        { name: "Sepeda Motor", code: "MTR", description: "Sepeda Motor Operasional Lapangan & Kurir" },
+    ]
+
+    let needsRefetch = false
+    for (const cat of standardCategories) {
+        const found = existing.some(c => c.name.toLowerCase() === cat.name.toLowerCase() || (cat.code && c.code?.toUpperCase() === cat.code))
+        if (!found) {
+            try {
+                await prisma.vehicleCategory.create({
+                    data: {
+                        name: cat.name,
+                        code: cat.code,
+                        description: cat.description,
+                        isSystem: true
+                    }
+                })
+                needsRefetch = true
+            } catch {
+                // ignore concurrent insert
+            }
         }
+    }
+
+    if (needsRefetch) {
+        return await prisma.vehicleCategory.findMany({
+            orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
+            include: {
+                _count: { select: { vehicles: true } }
+            }
+        })
     }
 
     return existing
@@ -185,15 +211,49 @@ export async function createKendaraan(formData: FormData) {
             }
         }
 
-        await prisma.vehicle.create({
+        const createdVeh = await prisma.vehicle.create({
             data: {
                 ...insertData,
                 vehicle_type: resolvedType,
                 categoryId: finalCategoryId,
                 locationId: finalLocationId
-            }
+            },
+            include: { category: true }
         })
+
+        if (createdVeh.is_for_rent) {
+            try {
+                await prisma.masterSewaAlat.upsert({
+                    where: { kode_alat: createdVeh.code },
+                    update: {
+                        nama_alat: `${createdVeh.category?.name || "Alat"} ${createdVeh.code}`,
+                        kategori: createdVeh.category?.name || "Lainnya",
+                        merk_model: createdVeh.merk_model,
+                        nomor_seri_plat: createdVeh.plate_number,
+                        default_day_rate: createdVeh.default_day_rate || 0,
+                        status: createdVeh.rental_status || "Tersedia",
+                        keterangan: createdVeh.rental_notes,
+                        locationId: createdVeh.locationId
+                    },
+                    create: {
+                        kode_alat: createdVeh.code,
+                        nama_alat: `${createdVeh.category?.name || "Alat"} ${createdVeh.code}`,
+                        kategori: createdVeh.category?.name || "Lainnya",
+                        merk_model: createdVeh.merk_model,
+                        nomor_seri_plat: createdVeh.plate_number,
+                        default_day_rate: createdVeh.default_day_rate || 0,
+                        status: createdVeh.rental_status || "Tersedia",
+                        keterangan: createdVeh.rental_notes,
+                        locationId: createdVeh.locationId
+                    }
+                })
+            } catch (e) {
+                console.error("Failed to sync MasterSewaAlat:", e)
+            }
+        }
+
         revalidatePath("/admin/kendaraan")
+        revalidatePath("/admin/sewa")
         return { success: true }
     } catch (e: any) {
         return { success: false, error: e.message }
@@ -241,16 +301,50 @@ export async function updateKendaraan(id: string, formData: FormData) {
             }
         }
 
-        await prisma.vehicle.update({
+        const updatedVeh = await prisma.vehicle.update({
             where: { id },
             data: {
                 ...updateData,
                 vehicle_type: resolvedType,
                 categoryId: finalCategoryId,
                 locationId: finalLocationId
-            }
+            },
+            include: { category: true }
         })
+
+        if (updatedVeh.is_for_rent) {
+            try {
+                await prisma.masterSewaAlat.upsert({
+                    where: { kode_alat: updatedVeh.code },
+                    update: {
+                        nama_alat: `${updatedVeh.category?.name || "Alat"} ${updatedVeh.code}`,
+                        kategori: updatedVeh.category?.name || "Lainnya",
+                        merk_model: updatedVeh.merk_model,
+                        nomor_seri_plat: updatedVeh.plate_number,
+                        default_day_rate: updatedVeh.default_day_rate || 0,
+                        status: updatedVeh.rental_status || "Tersedia",
+                        keterangan: updatedVeh.rental_notes,
+                        locationId: updatedVeh.locationId
+                    },
+                    create: {
+                        kode_alat: updatedVeh.code,
+                        nama_alat: `${updatedVeh.category?.name || "Alat"} ${updatedVeh.code}`,
+                        kategori: updatedVeh.category?.name || "Lainnya",
+                        merk_model: updatedVeh.merk_model,
+                        nomor_seri_plat: updatedVeh.plate_number,
+                        default_day_rate: updatedVeh.default_day_rate || 0,
+                        status: updatedVeh.rental_status || "Tersedia",
+                        keterangan: updatedVeh.rental_notes,
+                        locationId: updatedVeh.locationId
+                    }
+                })
+            } catch (e) {
+                console.error("Failed to sync MasterSewaAlat on update:", e)
+            }
+        }
+
         revalidatePath("/admin/kendaraan")
+        revalidatePath("/admin/sewa")
         return { success: true }
     } catch (e: any) {
         return { success: false, error: e.message }

@@ -17,11 +17,13 @@ export default async function PrintInvoicePage({
         where: { id },
         include: {
             project: { include: { customer: true } },
+            customer: true,
             items: {
                 include: {
                     transaction: { include: { concreteQuality: true, vehicle: true } },
+                    sewaTransaction: { include: { equipment: true, operator: true } },
                 },
-                orderBy: { transaction: { date: "asc" } },
+                orderBy: { id: "asc" },
             },
             payments: { orderBy: { payment_date: "asc" } },
             location: true,
@@ -39,10 +41,16 @@ export default async function PrintInvoicePage({
         cancelled_at: invoice.cancelled_at?.toISOString() ?? null,
         items: invoice.items.map(item => ({
             ...item,
-            transaction: {
+            transaction: item.transaction ? {
                 ...item.transaction,
                 date: item.transaction.date.toISOString(),
-            },
+            } : null,
+            sewaTransaction: item.sewaTransaction ? {
+                ...item.sewaTransaction,
+                date: item.sewaTransaction.date.toISOString(),
+                start_date: item.sewaTransaction.start_date.toISOString(),
+                end_date: item.sewaTransaction.end_date.toISOString(),
+            } : null,
         })),
         payments: invoice.payments.map(p => ({
             ...p,

@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
@@ -47,6 +48,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         if (code === "RBL_VIEW" && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "BILLING_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "PRODUKSI_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
+        if (code === "SEWA_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
         if (code === "DASHBOARD_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP", "Approver"].includes(user?.role || "")) return true
         return user?.permissions?.includes(code) ?? false
     }
@@ -75,6 +77,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             defaultOpen: true,
             items: [
                 ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory }] : []),
+                ...(hasPerm("SEWA_VIEW") ? [{ title: "Sewa Alat / Kendaraan", url: "/admin/sewa", icon: KeyRound }] : []),
                 ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck }] : []),
                 ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat }] : []),
                 ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText }] : []),
@@ -91,7 +94,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards },
                 ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_VIEW", "VEHICLE_VIEW", "RBL_VIEW") ? [
-                    { title: "Laporan Kendaraan", url: "/admin/reports/kendaraan", icon: Truck },
+                    { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck },
                 ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 }] : []),
             ]
@@ -102,7 +105,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
             items: [
                 ...(hasPerm("MASTER_DATA_VIEW") ? [
                     { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
-                    { title: "Data Kendaraan", url: "/admin/kendaraan", icon: Truck },
+                    { title: "Data Kendaraan & Alat", url: "/admin/kendaraan", icon: Truck },
+                    { title: "Master Sewa Alat", url: "/admin/master-sewa", icon: Box },
                     { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
                 ] : []),
@@ -170,18 +174,29 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }, [pathname])
 
     if (!mounted) {
-        return <Sidebar variant="inset" />
+        return <Sidebar collapsible="icon" />
     }
 
     return (
-        <Sidebar variant="inset">
-            <SidebarHeader className="h-16 flex justify-center border-b pt-4 px-4 overflow-hidden">
-                <div className="flex items-center gap-3 font-semibold text-primary">
-                    <div className="p-1.5 bg-primary rounded-xl">
-                        <Factory className="h-5 w-5 text-primary-foreground" />
+        <Sidebar collapsible="icon">
+            <SidebarHeader className="h-16 p-0 px-3.5 border-b border-sidebar-border flex flex-row items-center justify-between shrink-0 group-data-[collapsible=icon]:px-1 group-data-[collapsible=icon]:justify-center">
+                <Link href="/admin" className="flex items-center gap-2.5 font-semibold text-slate-900 overflow-hidden min-w-0 group-data-[collapsible=icon]:justify-center">
+                    <div className="relative h-10 w-10 shrink-0 flex items-center justify-center">
+                        <Image
+                            src="/RajawalimixLogo.png"
+                            alt="RajawaliMix Logo"
+                            width={40}
+                            height={40}
+                            className="object-contain"
+                            priority
+                        />
                     </div>
-                    <span className="truncate text-base tracking-tight">BP ERP System</span>
-                </div>
+                    <div className="flex flex-col min-w-0 group-data-[collapsible=icon]:hidden">
+                        <span className="truncate text-base font-bold tracking-tight text-slate-900 leading-tight">
+                            RajawaliMix
+                        </span>
+                    </div>
+                </Link>
             </SidebarHeader>
 
             <SidebarContent className="px-3 pt-4 gap-1">

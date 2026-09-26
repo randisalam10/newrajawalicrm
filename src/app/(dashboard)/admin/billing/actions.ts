@@ -44,7 +44,12 @@ export async function getNextInvoiceSeq(locationId?: string, date?: Date): Promi
 /** Returns next per-customer invoice sequence (total invoices ever issued for this customer + 1) */
 export async function getCustomerInvoiceSeq(customerId: string): Promise<number> {
     const count = await prisma.invoice.count({
-        where: { project: { customerId } },
+        where: {
+            OR: [
+                { project: { customerId } },
+                { customerId },
+            ]
+        },
     })
     return count + 1
 }
@@ -87,27 +92,93 @@ export async function getUnbilledTransactions(filters: {
         ? (filters.locationId && filters.locationId !== "all" ? { locationId: filters.locationId } : {})
         : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
-    return prisma.productionTransaction.findMany({
-        where: {
-            ...locationFilter,
-            invoiceItem: null, // no InvoiceItem = unbilled
-            ...(filters.projectId ? { projectId: filters.projectId } : {}),
-            ...(filters.startDate || filters.endDate ? {
-                date: {
-                    ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
-                    ...(filters.endDate ? { lte: new Date(filters.endDate) } : {}),
-                }
-            } : {}),
+    const [prodTxs, sewaTxs] = await Promise.all([
+        prisma.productionTransaction.findMany({
+            where: {
+                ...locationFilter,
+                invoiceItem: null, // no InvoiceItem = unbilled
+                ...(filters.projectId ? { projectId: filters.projectId } : {}),
+                ...(filters.startDate || filters.endDate ? {
+                    date: {
+                        ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
+                        ...(filters.endDate ? { lte: new Date(filters.endDate) } : {}),
+                    }
+                } : {}),
+            },
+            include: {
+                project: { include: { customer: true, prices: { include: { concreteQuality: true } } } },
+                concreteQuality: true,
+                driver: true,
+                vehicle: true,
+                location: true,
+            },
+            orderBy: [{ date: "asc" }, { trip_sequence: "asc" }],
+        }),
+        prisma.sewaTransaction.findMany({
+            where: {
+                ...locationFilter,
+                invoiceItem: null,
+                status: { not: "Cancelled" },
+                ...(filters.projectId ? { projectId: filters.projectId } : {}),
+                ...(filters.customerId ? { customerId: filters.customerId } : {}),
+                ...(filters.startDate || filters.endDate ? {
+                    date: {
+                        ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
+                        ...(filters.endDate ? { lte: new Date(filters.endDate) } : {}),
+                    }
+                } : {}),
+            },
+            include: {
+                customer: true,
+                project: { include: { customer: true } },
+                equipment: true,
+                vehicle: { include: { category: true } },
+                operator: { include: { driverCategory: true } },
+                location: true,
+            },
+            orderBy: { date: "asc" },
+        })
+    ])
+
+    const normalizedProd = prodTxs.map(tx => ({
+        ...tx,
+        itemType: "READYMIX" as const,
+    }))
+
+    const normalizedSewa = sewaTxs.map(tx => {
+        const eqName = tx.vehicle ? `${tx.vehicle.category?.name || "Unit"} ${tx.vehicle.code}` : (tx.equipment?.nama_alat || "Alat Sewa")
+        return {
+            id: tx.id,
+            itemType: "SEWA" as const,
+            date: tx.date,
+            sewaNumber: tx.sewa_number,
+            startDate: tx.start_date,
+            endDate: tx.end_date,
+            rentalDates: tx.rental_dates,
+            totalDays: tx.total_days,
+            pricePerDay: tx.price_per_day,
+            totalPrice: tx.total_price,
+            volume_cubic: tx.total_days,
+            qualityId: null,
+            concreteQuality: { name: `Sewa: ${eqName}` },
+        equipment: tx.equipment,
+        operator: tx.operator,
+        customer: tx.customer,
+        project: tx.project || {
+            id: `SEWA_${tx.customerId}`,
+            name: tx.lokasi_proyek || "Penyewaan Alat & Kendaraan",
+            customerId: tx.customerId,
+            customer: tx.customer,
+            prices: []
         },
-        include: {
-            project: { include: { customer: true, prices: { include: { concreteQuality: true } } } },
-            concreteQuality: true,
-            driver: true,
-            vehicle: true,
-            location: true,
-        },
-        orderBy: [{ date: "asc" }, { trip_sequence: "asc" }],
+        projectId: tx.projectId || `SEWA_${tx.customerId}`,
+        location: tx.location,
+        locationId: tx.locationId,
+        status: tx.status,
+        }
     })
+
+    return [...normalizedProd, ...normalizedSewa]
 }
 
 export async function getInvoicesGroupedByCustomer(filters: {
@@ -132,7 +203,13 @@ export async function getInvoicesGroupedByCustomer(filters: {
         },
         include: {
             project: { include: { customer: true } },
-            items: { include: { transaction: { include: { concreteQuality: true } } } },
+            customer: true,
+            items: {
+                include: {
+                    transaction: { include: { concreteQuality: true } },
+                    sewaTransaction: { include: { equipment: true, operator: true } },
+                }
+            },
             // Include ALL payments so we can show cancelled ones in detail
             payments: true,
         },
@@ -153,7 +230,8 @@ export async function getInvoicesGroupedByCustomer(filters: {
     }>()
 
     for (const inv of invoices) {
-        const cust = inv.project.customer
+        const cust = inv.customer || inv.project?.customer
+        if (!cust) continue
         if (!customerMap.has(cust.id)) {
             customerMap.set(cust.id, {
                 customerId: cust.id,
@@ -174,14 +252,16 @@ export async function getInvoicesGroupedByCustomer(filters: {
             custData.totalPaid += activePaid
         }
 
-        if (!custData.projects.has(inv.projectId)) {
-            custData.projects.set(inv.projectId, {
-                projectId: inv.projectId,
-                projectName: inv.project.name,
+        const prjId = inv.projectId || `SEWA_${cust.id}`
+        const prjName = inv.project?.name || "Penyewaan Alat & Kendaraan"
+        if (!custData.projects.has(prjId)) {
+            custData.projects.set(prjId, {
+                projectId: prjId,
+                projectName: prjName,
                 invoices: [],
             })
         }
-        custData.projects.get(inv.projectId)!.invoices.push(inv)
+        custData.projects.get(prjId)!.invoices.push(inv)
     }
 
     return Array.from(customerMap.values()).map(c => ({
@@ -195,13 +275,18 @@ export async function getInvoiceDetail(invoiceId: string) {
         where: { id: invoiceId },
         include: {
             project: { include: { customer: true } },
+            customer: true,
+            location: true,
             items: {
                 include: {
                     transaction: {
                         include: { concreteQuality: true, vehicle: true, driver: true }
+                    },
+                    sewaTransaction: {
+                        include: { equipment: true, operator: true }
                     }
                 },
-                orderBy: { transaction: { date: "asc" } }
+                orderBy: { id: "asc" }
             },
             // Include all payments including cancelled so UI can show them
             payments: { orderBy: { payment_date: "asc" } },
@@ -258,62 +343,111 @@ export async function createInvoice(params: {
         return { success: false, error: "Akses ditolak" }
 
     try {
-        const project = await prisma.project.findUnique({
-            where: { id: params.projectId },
-            include: { customer: true, prices: true },
-        })
-        if (!project) return { success: false, error: "Proyek tidak ditemukan" }
+        // Fetch both Sewa and Production transactions
+        const [sewaTransactions, prodTransactions] = await Promise.all([
+            prisma.sewaTransaction.findMany({
+                where: { id: { in: params.transactionIds }, invoiceItem: null },
+                include: { customer: true, project: true, equipment: true, vehicle: { include: { category: true } }, operator: true },
+            }),
+            prisma.productionTransaction.findMany({
+                where: { id: { in: params.transactionIds }, invoiceItem: null },
+                include: {
+                    concreteQuality: true,
+                    project: { include: { customer: true, prices: true } },
+                },
+            }),
+        ])
 
-        const transactions = await prisma.productionTransaction.findMany({
-            where: { id: { in: params.transactionIds }, invoiceItem: null },
-            include: { concreteQuality: true },
-        })
-        if (transactions.length === 0) return { success: false, error: "Tidak ada transaksi yang valid" }
-
-        // Check all mutu have prices
-        const unpriced = transactions.filter(tx => {
-            return !project.prices.find(p => p.qualityId === tx.qualityId)
-        })
-        if (unpriced.length > 0) {
-            const names = [...new Set(unpriced.map(t => t.concreteQuality.name))]
-            return { success: false, error: `Harga belum diset untuk mutu: ${names.join(", ")}` }
+        if (sewaTransactions.length === 0 && prodTransactions.length === 0) {
+            return { success: false, error: "Tidak ada transaksi valid yang belum ditagih." }
         }
 
-        let subtotal = 0
-        const itemsData = transactions.map(tx => {
-            const price = project.prices.find(p => p.qualityId === tx.qualityId)!.price
-            const lineTotal = tx.volume_cubic * price
-            subtotal += lineTotal
-            return {
-                transactionId: tx.id,
-                quantity: tx.volume_cubic,
-                unit_price: price,
-                subtotal: lineTotal,
-            }
-        })
+        const isCombined = sewaTransactions.length > 0 && prodTransactions.length > 0
+        const isSewaOnly = sewaTransactions.length > 0 && prodTransactions.length === 0
+        const invoice_type = isCombined ? "COMBINED" : (isSewaOnly ? "SEWA" : "READYMIX")
 
-        const taxRate = params.includePpn ? project.tax_ppn / 100 : 0
+        // Resolve customer and project
+        let customerId: string
+        let customer: any
+        let projectId: string | null = null
+        let project: any = null
+
+        if (prodTransactions.length > 0) {
+            project = prodTransactions[0].project
+            projectId = prodTransactions[0].projectId
+            customerId = project.customerId
+            customer = project.customer
+        } else {
+            customer = sewaTransactions[0].customer
+            customerId = sewaTransactions[0].customerId
+            project = sewaTransactions[0].project
+            projectId = params.projectId && !params.projectId.startsWith("SEWA_") ? params.projectId : (sewaTransactions[0].projectId || null)
+        }
+
+        const itemsData: any[] = []
+        let subtotal = 0
+
+        // 1. Process Sewa items
+        for (const tx of sewaTransactions) {
+            const lineTotal = tx.total_price || (tx.price_per_day * tx.total_days)
+            subtotal += lineTotal
+            const eqName = tx.vehicle ? `${tx.vehicle.category?.name || "Unit"} ${tx.vehicle.code}` : (tx.equipment?.nama_alat || "Alat Sewa")
+            const eqCode = tx.vehicle?.code || tx.equipment?.kode_alat || "-"
+            itemsData.push({
+                item_type: "SEWA",
+                sewaTransactionId: tx.id,
+                description: `Sewa ${eqName} (${eqCode}) - ${tx.total_days} Hari [${tx.operator?.name ?? "-"}]`,
+                quantity: tx.total_days,
+                unit_price: tx.price_per_day,
+                subtotal: lineTotal,
+            })
+        }
+
+        // 2. Process ReadyMix items
+        if (prodTransactions.length > 0) {
+            const projPrices = project?.prices || []
+            const unpriced = prodTransactions.filter(tx => !projPrices.find((p: any) => p.qualityId === tx.qualityId))
+            if (unpriced.length > 0) {
+                const names = [...new Set(unpriced.map(t => t.concreteQuality?.name || "Mutu"))]
+                return { success: false, error: `Harga belum diset untuk mutu beton: ${names.join(", ")}` }
+            }
+
+            for (const tx of prodTransactions) {
+                const price = projPrices.find((p: any) => p.qualityId === tx.qualityId)!.price
+                const lineTotal = tx.volume_cubic * price
+                subtotal += lineTotal
+                itemsData.push({
+                    item_type: "READYMIX",
+                    transactionId: tx.id,
+                    quantity: tx.volume_cubic,
+                    unit_price: price,
+                    subtotal: lineTotal,
+                })
+            }
+        }
+
+        // Tax rate: use project tax or 11%
+        const ppnPercent = project?.tax_ppn ?? 11
+        const taxRate = params.includePpn ? ppnPercent / 100 : 0
         const taxAmount = subtotal * taxRate
         const totalAmount = subtotal + taxAmount
 
-        // Get locationId from first transaction
-        const firstTx = await prisma.productionTransaction.findUnique({
-            where: { id: params.transactionIds[0] },
-            select: { locationId: true }
-        })
-        const locationId = firstTx?.locationId ?? session.user.locationId!
+        // Location ID
+        const locationId = prodTransactions[0]?.locationId || sewaTransactions[0]?.locationId || session.user.locationId!
 
         // Generate sequenced number
         const now = new Date()
         const seq = await getNextInvoiceSeq(locationId, now)
-        const customerSeq = params.customerSeqOverride ?? await getCustomerInvoiceSeq(project.customerId)
-        const initials = params.initialsOverride?.toUpperCase().trim() || extractInitials(project.customer.customer_name)
+        const customerSeq = params.customerSeqOverride ?? await getCustomerInvoiceSeq(customerId)
+        const initials = params.initialsOverride?.toUpperCase().trim() || extractInitials(customer.customer_name)
         const invoiceNumber = buildInvoiceNumber(seq, customerSeq, initials, now)
 
         const invoice = await prisma.invoice.create({
             data: {
                 invoice_number: invoiceNumber,
-                projectId: params.projectId,
+                projectId,
+                customerId,
+                invoice_type,
                 status: "ISSUED",
                 include_ppn: params.includePpn,
                 subtotal,
@@ -332,15 +466,25 @@ export async function createInvoice(params: {
         await writeBillingLog({
             action: "INVOICE_CREATED",
             invoiceId: invoice.id,
-            description: `Invoice ${invoiceNumber} dibuat untuk ${project.name} — Total Rp ${totalAmount.toLocaleString("id-ID")}`,
-            metadata: { invoiceNumber, projectId: params.projectId, total: totalAmount, txCount: transactions.length },
+            description: `Invoice ${invoice_type} ${invoiceNumber} dibuat untuk ${customer.customer_name} — Total Rp ${totalAmount.toLocaleString("id-ID")}`,
+            metadata: {
+                invoiceNumber,
+                customerId,
+                total: totalAmount,
+                txCount: itemsData.length,
+                type: invoice_type,
+                sewaCount: sewaTransactions.length,
+                rmCount: prodTransactions.length,
+            },
         })
 
         revalidatePath("/admin/billing")
+        revalidatePath("/admin/sewa")
         return { success: true, invoiceId: invoice.id }
     } catch (e: any) {
         if (e.code === "P2002") return { success: false, error: "Nomor invoice sudah dipakai, ubah suffix." }
-        return { success: false, error: e.message }
+        console.error("Error creating invoice:", e)
+        return { success: false, error: e.message || "Gagal membuat invoice" }
     }
 }
 
@@ -523,6 +667,39 @@ export async function addDeposit(params: {
     }
 }
 
+export async function updatePaymentProof(paymentId: string, proofUrl: string) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
+        return { success: false, error: "Akses ditolak" }
+
+    try {
+        const payment = await prisma.payment.findUnique({
+            where: { id: paymentId },
+            include: { invoice: true },
+        })
+        if (!payment) return { success: false, error: "Pembayaran tidak ditemukan" }
+
+        await prisma.payment.update({
+            where: { id: paymentId },
+            data: { proof_url: proofUrl },
+        })
+
+        await writeBillingLog({
+            action: "PAYMENT_RECORDED",
+            invoiceId: payment.invoiceId,
+            paymentId: payment.id,
+            description: `Lampiran bukti pembayaran diunggah untuk pembayaran Rp ${payment.amount.toLocaleString("id-ID")}`,
+            metadata: { proofUrl },
+        })
+
+        revalidatePath("/admin/billing")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
 export async function getBillingPageData(filters: { locationId?: string } = {}) {
     const session = await auth()
     if (!session?.user?.employeeId) return null
@@ -540,3 +717,4 @@ export async function getBillingPageData(filters: { locationId?: string } = {}) 
 
     return { unbilled, grouped, deposits, isSuperAdmin: isCorp, userLocationId: session.user.locationId }
 }
+

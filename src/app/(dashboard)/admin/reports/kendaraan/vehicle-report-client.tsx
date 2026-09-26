@@ -13,8 +13,9 @@ import {
     Truck, Fuel, DollarSign, Building2, Tag,
     Search, RefreshCw, Printer, FileSpreadsheet, Layers,
     ChevronRight, X, RotateCcw, Calendar, Gauge, ExternalLink,
-    Filter, ArrowUpDown
+    Filter, ArrowUpDown, Wrench, AlertTriangle
 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { format, subMonths } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { toast } from "sonner"
@@ -29,7 +30,7 @@ const getCategoryBadgeClass = (name: string = "") => {
     if (lower.includes("mixer")) return "bg-blue-50 text-blue-700 border-blue-200"
     if (lower.includes("loader")) return "bg-orange-50 text-orange-700 border-orange-200"
     if (lower.includes("dump")) return "bg-emerald-50 text-emerald-700 border-emerald-200"
-    if (lower.includes("pump")) return "bg-purple-50 text-purple-700 border-purple-200"
+    if (lower.includes("pump")) return "bg-sky-50 text-sky-700 border-sky-200"
     if (lower.includes("operasional") || lower.includes("mobil")) return "bg-teal-50 text-teal-700 border-teal-200"
     if (lower.includes("genset") || lower.includes("berat")) return "bg-slate-100 text-slate-700 border-slate-200"
     if (lower.includes("motor")) return "bg-cyan-50 text-cyan-700 border-cyan-200"
@@ -169,12 +170,17 @@ export function VehicleReportClient({
             "No. Plat",
             "Kategori Kendaraan",
             "Tipe Produksi",
+            "Unit Sewa",
             "Cabang Pangkalan",
             "Total Solar (Liter)",
             "Biaya Solar (Rp)",
             "Biaya Pelumas/Oli (Rp)",
             "Biaya Lain-lain (Rp)",
-            "Total Biaya Operasional (Rp)",
+            "Total Biaya RBL (Rp)",
+            "Biaya Sparepart PO (Rp)",
+            "Grand Total TCO (Rp)",
+            "Pendapatan Sewa (Rp)",
+            "Profit Bersih Unit (Rp)",
             "KM Awal",
             "KM Akhir",
             "Jarak Tempuh (KM)",
@@ -195,12 +201,17 @@ export function VehicleReportClient({
                 `"${v.plate_number}"`,
                 `"${categoryName}"`,
                 `"${v.vehicle_type}"`,
+                `"${v.is_for_rent ? "Ya (Sewa)" : "Operasional"}"`,
                 `"${v.location?.name || "-"}"`,
                 s.fuelLiters,
                 s.fuelCost,
                 s.lubricantCost,
                 s.otherCost,
                 s.totalCost,
+                s.sparepartCost || 0,
+                s.grandTotalCost || s.totalCost,
+                s.rentalRevenue || 0,
+                s.netProfit || 0,
                 s.minKm ?? "-",
                 s.maxKm ?? "-",
                 s.kmDistance,
@@ -495,15 +506,15 @@ export function VehicleReportClient({
             </div>
 
             {/* ─── Sleek Executive Summary Grid (Unified Card) ────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x border border-slate-200 bg-white rounded-lg shadow-2xs overflow-hidden">
-                {/* 1. Total Armada */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y sm:divide-y-0 sm:divide-x border border-slate-200 bg-white rounded-lg shadow-2xs overflow-hidden">
+                {/* 1. Total Armada & Alat */}
                 <div className="p-3 sm:p-3.5 flex items-start gap-3">
                     <div className="p-2 rounded-lg bg-blue-50 text-blue-600 border border-blue-100 shrink-0">
                         <Truck className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                            Total Armada
+                            Total Armada & Alat
                         </div>
                         <div className="text-base sm:text-lg font-bold text-slate-900 font-mono leading-tight mt-0.5">
                             {overall.totalVehicles || 0}
@@ -553,20 +564,56 @@ export function VehicleReportClient({
                     </div>
                 </div>
 
-                {/* 4. Total Biaya Operasional */}
+                {/* 4. Suku Cadang & Alat PO */}
+                <div className="p-3 sm:p-3.5 flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-purple-50 text-purple-600 border border-purple-100 shrink-0">
+                        <Wrench className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Suku Cadang & PO
+                        </div>
+                        <div className="text-base sm:text-lg font-bold text-purple-700 font-mono leading-tight mt-0.5 truncate">
+                            {fmt(overall.totalSparepartCost || 0)}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                            {overall.totalPoItems || 0} Pengadaan item PO
+                        </div>
+                    </div>
+                </div>
+
+                {/* 5. Total Biaya Operasional / TCO */}
                 <div className="p-3 sm:p-3.5 flex items-start gap-3">
                     <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 shrink-0">
                         <DollarSign className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                            Total Biaya Operasional
+                            Total Biaya (TCO)
                         </div>
                         <div className="text-base sm:text-lg font-bold text-emerald-700 font-mono leading-tight mt-0.5 truncate">
-                            {fmt(overall.totalCost || 0)}
+                            {fmt(overall.grandTotalCost || overall.totalCost || 0)}
                         </div>
                         <div className="text-[10px] text-slate-500 truncate mt-0.5">
-                            Solar, pelumas & kas RBL
+                            RBL ({fmt(overall.totalCost || 0)}) + PO
+                        </div>
+                    </div>
+                </div>
+
+                {/* 6. Pendapatan Sewa Unit */}
+                <div className="p-3 sm:p-3.5 flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-teal-50 text-teal-600 border border-teal-100 shrink-0">
+                        <Tag className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Pendapatan Sewa
+                        </div>
+                        <div className="text-base sm:text-lg font-bold text-teal-700 font-mono leading-tight mt-0.5 truncate">
+                            {fmt(overall.totalRentalRevenue || 0)}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate mt-0.5">
+                            {overall.totalRentalDays || 0} Hari ({overall.totalSewaCount || 0} Sewa)
                         </div>
                     </div>
                 </div>
@@ -593,7 +640,7 @@ export function VehicleReportClient({
                                         {singleVehicleData.vehicle.category?.name || singleVehicleData.vehicle.vehicle_type}
                                     </span>
                                     <span className="text-xs text-slate-500">
-                                        📍 {singleVehicleData.vehicle.location?.name || "-"}
+                                        {singleVehicleData.vehicle.location?.name || "-"}
                                     </span>
                                 </div>
                             </div>
@@ -602,9 +649,15 @@ export function VehicleReportClient({
                         {/* Quick metrics in header */}
                         <div className="flex items-center gap-2 flex-wrap text-xs">
                             <div className="px-2 py-1 bg-slate-50 rounded border border-slate-200 text-right">
-                                <span className="text-[9px] text-slate-500 block uppercase font-medium">Jarak Tempuh</span>
+                                <span className="text-[9px] text-slate-500 block uppercase font-medium">Jarak / Jam Tempuh</span>
                                 <span className="font-mono font-bold text-slate-900">
-                                    {singleVehicleData.stats.kmDistance > 0 ? `${fmtNum(singleVehicleData.stats.kmDistance)} KM` : "-"}
+                                    {singleVehicleData.stats.kmDistance > 0 ? `${fmtNum(singleVehicleData.stats.kmDistance)} ${(singleVehicleData.vehicle.meter_type || "").toUpperCase() === "HM" ? "HM" : "KM"}` : "-"}
+                                </span>
+                            </div>
+                            <div className="px-2 py-1 bg-slate-50 rounded border border-slate-200 text-right">
+                                <span className="text-[9px] text-slate-500 block uppercase font-medium">Rentang Meter</span>
+                                <span className="font-mono font-bold text-slate-900">
+                                    {singleVehicleData.stats.minKm !== null && singleVehicleData.stats.maxKm !== null ? `${fmtNum(singleVehicleData.stats.minKm)} - ${fmtNum(singleVehicleData.stats.maxKm)}` : "-"}
                                 </span>
                             </div>
                             <div className="px-2 py-1 bg-slate-50 rounded border border-slate-200 text-right">
@@ -620,11 +673,27 @@ export function VehicleReportClient({
                                 </span>
                             </div>
                             <div className="px-2 py-1 bg-slate-50 rounded border border-slate-200 text-right">
-                                <span className="text-[9px] text-slate-500 block uppercase font-medium">Total Biaya</span>
+                                <span className="text-[9px] text-slate-500 block uppercase font-medium">Total Biaya TCO</span>
                                 <span className="font-mono font-bold text-emerald-700">
-                                    {fmt(singleVehicleData.stats.totalCost)}
+                                    {fmt(singleVehicleData.stats.grandTotalCost || singleVehicleData.stats.totalCost)}
                                 </span>
                             </div>
+                            {(singleVehicleData.stats.rentalRevenue > 0 || singleVehicleData.vehicle.is_for_rent) && (
+                                <>
+                                    <div className="px-2 py-1 bg-teal-50/70 rounded border border-teal-200 text-right">
+                                        <span className="text-[9px] text-teal-700 block uppercase font-semibold">Pendapatan Sewa</span>
+                                        <span className="font-mono font-bold text-teal-800">
+                                            {fmt(singleVehicleData.stats.rentalRevenue || 0)}
+                                        </span>
+                                    </div>
+                                    <div className="px-2 py-1 bg-slate-50 rounded border border-slate-200 text-right">
+                                        <span className="text-[9px] text-slate-500 block uppercase font-medium">Profit Bersih</span>
+                                        <span className={`font-mono font-bold ${(singleVehicleData.stats.netProfit || 0) >= 0 ? "text-emerald-700" : "text-rose-600"}`}>
+                                            {fmt(singleVehicleData.stats.netProfit || 0)}
+                                        </span>
+                                    </div>
+                                </>
+                            )}
 
                             <Button
                                 type="button"
@@ -650,6 +719,23 @@ export function VehicleReportClient({
                                 <TabsTrigger value="trips" className="text-xs h-6 px-2.5 gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-2xs">
                                     <Layers className="h-3 w-3 text-indigo-600" />
                                     <span>Log Pengiriman & Ritase ({singleVehicleData.recentTransactions.length})</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="spareparts" className="text-xs h-6 px-2.5 gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-2xs">
+                                    <Wrench className="h-3 w-3 text-slate-600" />
+                                    <span>Suku Cadang & PO ({singleVehicleData.recentPoItems?.length || 0})</span>
+                                </TabsTrigger>
+                                <TabsTrigger value="meter" className="text-xs h-6 px-2.5 gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-2xs">
+                                    <Gauge className="h-3 w-3 text-slate-700" />
+                                    <span>Audit Meter (RBL + PO) ({singleVehicleData.meterEvents?.length || 0})</span>
+                                    {singleVehicleData.stats.hasBackdateAnomaly && (
+                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-300 ml-1">
+                                            Backdate!
+                                        </span>
+                                    )}
+                                </TabsTrigger>
+                                <TabsTrigger value="sewa" className="text-xs h-6 px-2.5 gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-2xs">
+                                    <Tag className="h-3 w-3 text-teal-600" />
+                                    <span>Log Sewa & Pendapatan ({singleVehicleData.recentSewaTransactions?.length || 0})</span>
                                 </TabsTrigger>
                             </TabsList>
 
@@ -807,6 +893,274 @@ export function VehicleReportClient({
                                     </Table>
                                 </div>
                             </TabsContent>
+
+                            {/* TAB 3: PO Spareparts & Equipment Log */}
+                            <TabsContent value="spareparts" className="mt-2">
+                                <div className="border border-slate-200 rounded-md overflow-hidden bg-white">
+                                    <Table>
+                                        <TableHeader className="bg-slate-50/80 text-[11px]">
+                                            <TableRow className="h-7">
+                                                <TableHead className="w-9 text-center">#</TableHead>
+                                                <TableHead className="w-24">Tanggal PO</TableHead>
+                                                <TableHead className="w-28">No. PO</TableHead>
+                                                <TableHead className="w-32">Supplier</TableHead>
+                                                <TableHead>Nama Suku Cadang / Barang</TableHead>
+                                                <TableHead className="w-28">Part No / Merk</TableHead>
+                                                <TableHead className="text-center w-24">KM / HM</TableHead>
+                                                <TableHead className="text-right w-16">Qty</TableHead>
+                                                <TableHead className="w-16">Satuan</TableHead>
+                                                <TableHead className="text-right w-24">Harga (Rp)</TableHead>
+                                                <TableHead className="text-right w-28 font-bold">Total (Rp)</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody className="text-xs">
+                                            {(!singleVehicleData.recentPoItems || singleVehicleData.recentPoItems.length === 0) ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={11} className="py-6 text-center text-slate-400 italic">
+                                                        Belum ada riwayat pembelian suku cadang / sparepart melalui PO untuk unit ini pada periode yang dipilih.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                singleVehicleData.recentPoItems.map((item: any, idx: number) => {
+                                                    const itemSubtotal = item.subtotal || ((item.harga_satuan || 0) * (item.quantity || 0))
+                                                    return (
+                                                        <TableRow key={item.id} className="h-8 hover:bg-slate-50/70">
+                                                            <TableCell className="text-center font-mono text-slate-400 text-[11px] py-1">
+                                                                {idx + 1}
+                                                            </TableCell>
+                                                            <TableCell className="font-mono text-slate-700 py-1">
+                                                                {fmtDate(item.purchaseOrder?.tanggal_terbit)}
+                                                            </TableCell>
+                                                            <TableCell className="font-mono font-semibold text-blue-700 py-1 text-[11px]">
+                                                                <div>{item.purchaseOrder?.po_number || "-"}</div>
+                                                                {item.purchaseOrder?.status && (
+                                                                    <span className={`inline-block px-1 py-0.2 rounded text-[9px] font-semibold border mt-0.5 ${
+                                                                        item.purchaseOrder.status === 'APPROVED' 
+                                                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                    }`}>
+                                                                        {item.purchaseOrder.status === 'APPROVED' ? 'Disetujui' : 'Menunggu Approval'}
+                                                                    </span>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-slate-600 py-1 truncate max-w-[130px]">
+                                                                {item.supplierName || item.purchaseOrder?.supplier?.name || "-"}
+                                                            </TableCell>
+                                                            <TableCell className="font-medium text-slate-900 py-1">
+                                                                {item.masterItem?.name || "-"}
+                                                            </TableCell>
+                                                            <TableCell className="text-slate-500 py-1 text-[11px]">
+                                                                {[item.masterItem?.merk, item.masterItem?.part_number].filter(Boolean).join(" / ") || "-"}
+                                                            </TableCell>
+                                                            <TableCell className="text-center font-mono py-1">
+                                                                {item.km_hm ? (
+                                                                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-semibold text-[10px]">
+                                                                        {item.km_hm}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400">-</span>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono font-bold text-slate-900 py-1">
+                                                                {item.quantity}
+                                                            </TableCell>
+                                                            <TableCell className="text-slate-600 py-1 text-[11px]">
+                                                                {item.masterItem?.satuan || "PCS"}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono text-slate-600 py-1">
+                                                                {fmt(item.harga_satuan)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono font-bold text-slate-900 py-1">
+                                                                {fmt(itemSubtotal)}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })
+                                            )}
+                                        </TableBody>
+                                        {singleVehicleData.recentPoItems && singleVehicleData.recentPoItems.length > 0 && (
+                                            <TableFooter className="bg-slate-50/80 font-semibold text-xs">
+                                                <TableRow className="h-8">
+                                                    <TableCell colSpan={10} className="text-right text-slate-600">
+                                                        Total Biaya Suku Cadang (PO):
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-slate-900 font-bold">
+                                                        {fmt(singleVehicleData.stats.sparepartCost || 0)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            </TableFooter>
+                                        )}
+                                    </Table>
+                                </div>
+                            </TabsContent>
+
+                            {/* TAB 4: Sewa & Pendapatan Log */}
+                            <TabsContent value="sewa" className="mt-2">
+                                <div className="border border-slate-200 rounded-md overflow-hidden bg-white">
+                                    <Table>
+                                        <TableHeader className="bg-slate-50/80 text-[11px]">
+                                            <TableRow className="h-7">
+                                                <TableHead className="w-9 text-center">#</TableHead>
+                                                <TableHead className="w-24">Tanggal</TableHead>
+                                                <TableHead className="w-32">No. Surat Jalan</TableHead>
+                                                <TableHead>Penyewa / Customer</TableHead>
+                                                <TableHead>Lokasi Kerja</TableHead>
+                                                <TableHead className="w-28">Operator</TableHead>
+                                                <TableHead className="text-center w-20">Durasi</TableHead>
+                                                <TableHead className="text-right w-24">Tarif/Hari</TableHead>
+                                                <TableHead className="text-right w-28 font-bold text-teal-800">Total Sewa</TableHead>
+                                                <TableHead className="w-20 text-center">Status</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody className="text-xs">
+                                            {(!singleVehicleData.recentSewaTransactions || singleVehicleData.recentSewaTransactions.length === 0) ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={10} className="py-6 text-center text-slate-400 italic">
+                                                        Belum ada riwayat transaksi penyewaan untuk unit ini pada periode yang dipilih.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                singleVehicleData.recentSewaTransactions.map((item: any, idx: number) => (
+                                                    <TableRow key={item.id} className="h-8 hover:bg-slate-50/70">
+                                                        <TableCell className="text-center font-mono text-slate-400 text-[11px] py-1">
+                                                            {idx + 1}
+                                                        </TableCell>
+                                                        <TableCell className="font-mono text-slate-700 py-1">
+                                                            {fmtDate(item.date)}
+                                                        </TableCell>
+                                                        <TableCell className="font-mono font-semibold text-blue-700 py-1 text-[11px]">
+                                                            {item.sewa_number}
+                                                        </TableCell>
+                                                        <TableCell className="font-medium text-slate-900 py-1">
+                                                            {item.customer?.customer_name || "-"}
+                                                        </TableCell>
+                                                        <TableCell className="text-slate-500 py-1 truncate max-w-[150px]">
+                                                            {item.lokasi_proyek || "-"}
+                                                        </TableCell>
+                                                        <TableCell className="text-slate-700 py-1">
+                                                            {item.operator?.name || "-"}
+                                                        </TableCell>
+                                                        <TableCell className="text-center font-bold text-blue-700 py-1">
+                                                            {item.total_days} Hari
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-mono text-slate-600 py-1">
+                                                            {fmt(item.price_per_day)}
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-mono font-bold text-teal-700 py-1">
+                                                            {fmt(item.total_price)}
+                                                        </TableCell>
+                                                        <TableCell className="text-center py-1">
+                                                            <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                                                item.status === 'Completed'
+                                                                    ? 'bg-slate-100 text-slate-700 border-slate-200'
+                                                                    : item.status === 'Active'
+                                                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                                                            }`}>
+                                                                {item.status === 'Active' ? 'Aktif' : item.status === 'Completed' ? 'Selesai' : item.status}
+                                                            </span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                        {singleVehicleData.recentSewaTransactions && singleVehicleData.recentSewaTransactions.length > 0 && (
+                                            <TableFooter className="bg-slate-50/80 font-semibold text-xs">
+                                                <TableRow className="h-8">
+                                                    <TableCell colSpan={8} className="text-right text-slate-600">
+                                                        Total Pendapatan Sewa:
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-teal-700 font-bold">
+                                                        {fmt(singleVehicleData.stats.rentalRevenue || 0)}
+                                                    </TableCell>
+                                                    <TableCell></TableCell>
+                                                </TableRow>
+                                            </TableFooter>
+                                        )}
+                                    </Table>
+                                </div>
+                            </TabsContent>
+
+                            {/* TAB 5: Unified Meter Audit Trail (RBL + PO) */}
+                            <TabsContent value="meter" className="mt-2">
+                                <div className="border border-slate-200 rounded-md overflow-hidden bg-white">
+                                    <Table>
+                                        <TableHeader className="bg-slate-50/80 text-[11px]">
+                                            <TableRow className="h-7">
+                                                <TableHead className="w-9 text-center">#</TableHead>
+                                                <TableHead className="w-24">Tanggal</TableHead>
+                                                <TableHead className="w-28">Sumber</TableHead>
+                                                <TableHead className="w-28">No. Referensi</TableHead>
+                                                <TableHead>Keterangan Transaksi</TableHead>
+                                                <TableHead className="text-right w-28">Nilai Meter ({(singleVehicleData.vehicle.meter_type || "").toUpperCase() === "HM" ? "HM" : "KM"})</TableHead>
+                                                <TableHead className="text-right w-24">Selisih (Δ)</TableHead>
+                                                <TableHead className="w-28 text-center">Status Urutan</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody className="text-xs">
+                                            {(!singleVehicleData.meterEvents || singleVehicleData.meterEvents.length === 0) ? (
+                                                <TableRow>
+                                                    <TableCell colSpan={8} className="py-6 text-center text-slate-400 italic">
+                                                        Belum ada catatan pembacaan meter (KM/HM) dari transaksi RBL ataupun PO untuk unit ini.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                singleVehicleData.meterEvents.map((evt: any, idx: number) => {
+                                                    const prevEvt = idx > 0 ? singleVehicleData.meterEvents[idx - 1] : null
+                                                    const delta = prevEvt ? evt.meter - prevEvt.meter : 0
+                                                    return (
+                                                        <TableRow key={evt.id} className={cn("h-8 hover:bg-slate-50/70", evt.isBackdateAnomaly && "bg-rose-50/40")}>
+                                                            <TableCell className="text-center font-mono text-slate-400 text-[11px] py-1">
+                                                                {idx + 1}
+                                                            </TableCell>
+                                                            <TableCell className="font-mono text-slate-700 py-1">
+                                                                {fmtDate(evt.date)}
+                                                            </TableCell>
+                                                            <TableCell className="py-1">
+                                                                <span className={cn(
+                                                                    "inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold border",
+                                                                    evt.type === "RBL" ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-blue-50 text-blue-800 border-blue-200"
+                                                                )}>
+                                                                    {evt.type === "RBL" ? "RBL BBM/Operasional" : "PO Suku Cadang"}
+                                                                </span>
+                                                            </TableCell>
+                                                            <TableCell className="font-mono text-slate-600 text-[11px] py-1">
+                                                                {evt.referenceNo}
+                                                            </TableCell>
+                                                            <TableCell className="font-medium text-slate-900 py-1">
+                                                                {evt.description}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono font-bold text-slate-900 py-1">
+                                                                {fmtNum(evt.meter)}
+                                                            </TableCell>
+                                                            <TableCell className="text-right font-mono py-1">
+                                                                {prevEvt ? (
+                                                                    <span className={cn("font-semibold text-[11px]", delta >= 0 ? "text-emerald-700" : "text-rose-600 font-bold")}>
+                                                                        {delta >= 0 ? `+${fmtNum(delta)}` : fmtNum(delta)}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 text-[11px]">Awal</span>
+                                                                )}
+                                                            </TableCell>
+                                                            <TableCell className="text-center py-1">
+                                                                {evt.isBackdateAnomaly ? (
+                                                                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                                                                        ⚠️ Backdate
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="inline-block px-1.5 py-0.2 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                        Normal
+                                                                    </span>
+                                                                )}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </TabsContent>
                         </Tabs>
                     </div>
                 </div>
@@ -843,24 +1197,29 @@ export function VehicleReportClient({
                             <TableRow className="h-7">
                                 <TableHead className="w-9 text-center">#</TableHead>
                                 <TableHead className="w-24">Kode Unit</TableHead>
-                                <TableHead className="w-32">No. Plat</TableHead>
-                                <TableHead className="w-36">Kategori Kendaraan</TableHead>
+                                <TableHead className="w-28">No. Plat / Seri</TableHead>
+                                <TableHead className="w-36">Kategori Kendaraan / Alat</TableHead>
+                                <TableHead className="w-16 text-center">Meter</TableHead>
                                 <TableHead className="w-28">Cabang</TableHead>
-                                <TableHead className="text-right w-24">Solar (L)</TableHead>
-                                <TableHead className="text-right w-28">Biaya BBM (Rp)</TableHead>
-                                <TableHead className="text-right w-28 font-bold">Total Biaya RBL</TableHead>
-                                <TableHead className="text-right w-28">KM Range</TableHead>
-                                <TableHead className="text-right w-24">Jarak (KM)</TableHead>
+                                <TableHead className="text-right w-20">Solar (L)</TableHead>
+                                <TableHead className="text-right w-24">Biaya BBM</TableHead>
+                                <TableHead className="text-right w-24">Biaya RBL</TableHead>
+                                <TableHead className="text-right w-28 text-slate-700 font-semibold">Suku Cadang (PO)</TableHead>
+                                <TableHead className="text-right w-28 font-bold text-emerald-800">Total Biaya (TCO)</TableHead>
+                                <TableHead className="text-right w-28 text-teal-700 font-semibold">Pendapatan Sewa</TableHead>
+                                <TableHead className="text-right w-28 font-bold text-slate-800">Profit Bersih</TableHead>
+                                <TableHead className="text-right w-24">KM / HM Range</TableHead>
+                                <TableHead className="text-right w-24">Jarak / Jam</TableHead>
                                 <TableHead className="text-right w-16">Rit</TableHead>
-                                <TableHead className="text-right w-24">Volume (m³)</TableHead>
-                                <TableHead className="text-right w-20">Rasio (L/m³)</TableHead>
+                                <TableHead className="text-right w-20">Volume (m³)</TableHead>
+                                <TableHead className="text-right w-16">L/m³</TableHead>
                                 <TableHead className="w-8 text-center"></TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody className="text-xs">
                             {filteredAnalytics.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={14} className="py-8 text-center text-slate-400 italic">
+                                    <TableCell colSpan={19} className="py-8 text-center text-slate-400 italic">
                                         Tidak ada data armada yang sesuai dengan kriteria filter.
                                     </TableCell>
                                 </TableRow>
@@ -870,6 +1229,7 @@ export function VehicleReportClient({
                                     const s = va.stats
                                     const isSelected = selectedVehicleId === v.id
                                     const categoryName = v.category?.name || v.vehicle_type
+                                    const isHM = (v.meter_type || "").toUpperCase() === "HM"
 
                                     return (
                                         <TableRow
@@ -895,7 +1255,16 @@ export function VehicleReportClient({
                                                     {categoryName}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-slate-600 py-1">
+                                            <TableCell className="text-center py-1">
+                                                <span className={`px-1.5 py-0.2 rounded font-mono text-[10px] font-bold border ${
+                                                    isHM 
+                                                        ? "bg-amber-50 text-amber-800 border-amber-300" 
+                                                        : "bg-blue-50 text-blue-700 border-blue-200"
+                                                }`}>
+                                                    {isHM ? "HM" : "KM"}
+                                                </span>
+                                            </TableCell>
+                                            <TableCell className="text-slate-600 py-1 truncate max-w-[120px]">
                                                 {v.location?.name || "-"}
                                             </TableCell>
                                             <TableCell className="text-right font-mono font-semibold text-amber-800 py-1">
@@ -904,14 +1273,39 @@ export function VehicleReportClient({
                                             <TableCell className="text-right font-mono text-slate-700 py-1">
                                                 {s.fuelCost > 0 ? fmt(s.fuelCost) : "-"}
                                             </TableCell>
-                                            <TableCell className="text-right font-mono font-bold text-slate-900 py-1">
+                                            <TableCell className="text-right font-mono text-slate-800 py-1">
                                                 {fmt(s.totalCost)}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-slate-900 font-semibold py-1">
+                                                {s.sparepartCost > 0 ? fmt(s.sparepartCost) : "-"}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono font-bold text-emerald-700 py-1">
+                                                {fmt(s.grandTotalCost || s.totalCost)}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono text-teal-700 font-semibold py-1">
+                                                {s.rentalRevenue > 0 ? (
+                                                     <div>
+                                                         <div>{fmt(s.rentalRevenue)}</div>
+                                                         <div className="text-[10px] text-slate-400 font-normal">{s.rentalDays} Hari</div>
+                                                     </div>
+                                                 ) : v.is_for_rent ? (
+                                                     <span className="text-[10px] text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                                         Unit Sewa
+                                                     </span>
+                                                 ) : "-"}
+                                            </TableCell>
+                                            <TableCell className={`text-right font-mono font-bold py-1 ${
+                                                v.is_for_rent || s.rentalRevenue > 0
+                                                    ? (s.netProfit >= 0 ? "text-emerald-700" : "text-rose-600")
+                                                    : "text-slate-400 font-normal"
+                                            }`}>
+                                                {v.is_for_rent || s.rentalRevenue > 0 ? fmt(s.netProfit) : "-"}
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-[11px] text-slate-500 py-1">
                                                 {s.minKm !== null && s.maxKm !== null ? `${fmtNum(s.minKm)} - ${fmtNum(s.maxKm)}` : "-"}
                                             </TableCell>
                                             <TableCell className="text-right font-mono text-blue-700 font-semibold py-1">
-                                                {s.kmDistance > 0 ? `${fmtNum(s.kmDistance)} KM` : "-"}
+                                                {s.kmDistance > 0 ? `${fmtNum(s.kmDistance)} ${isHM ? "HM" : "KM"}` : "-"}
                                             </TableCell>
                                             <TableCell className="text-right font-mono py-1">
                                                 {s.totalTrips > 0 ? `${s.totalTrips}x` : "-"}
@@ -933,7 +1327,7 @@ export function VehicleReportClient({
                         {filteredAnalytics.length > 0 && (
                             <TableFooter className="bg-slate-50/90 font-semibold text-xs">
                                 <TableRow className="h-8">
-                                    <TableCell colSpan={5} className="text-right text-slate-700">
+                                    <TableCell colSpan={6} className="text-right text-slate-700">
                                         Total Rekapitulasi ({filteredAnalytics.length} Unit):
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-amber-800 font-bold">
@@ -942,12 +1336,24 @@ export function VehicleReportClient({
                                     <TableCell className="text-right font-mono text-slate-800">
                                         {fmt(filteredAnalytics.reduce((s: number, va: any) => s + va.stats.fuelCost, 0))}
                                     </TableCell>
-                                    <TableCell className="text-right font-mono font-bold text-slate-900">
+                                    <TableCell className="text-right font-mono text-slate-800">
                                         {fmt(filteredAnalytics.reduce((s: number, va: any) => s + va.stats.totalCost, 0))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-slate-900 font-bold">
+                                        {fmt(filteredAnalytics.reduce((s: number, va: any) => s + (va.stats.sparepartCost || 0), 0))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono font-bold text-emerald-700">
+                                        {fmt(filteredAnalytics.reduce((s: number, va: any) => s + (va.stats.grandTotalCost || va.stats.totalCost), 0))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono text-teal-700 font-bold">
+                                        {fmt(filteredAnalytics.reduce((s: number, va: any) => s + (va.stats.rentalRevenue || 0), 0))}
+                                    </TableCell>
+                                    <TableCell className="text-right font-mono font-bold text-slate-900">
+                                        {fmt(filteredAnalytics.reduce((s: number, va: any) => s + (va.stats.netProfit || 0), 0))}
                                     </TableCell>
                                     <TableCell></TableCell>
                                     <TableCell className="text-right font-mono text-blue-700 font-bold">
-                                        {fmtNum(filteredAnalytics.reduce((s: number, va: any) => s + va.stats.kmDistance, 0))} KM
+                                        {fmtNum(filteredAnalytics.reduce((s: number, va: any) => s + va.stats.kmDistance, 0))}
                                     </TableCell>
                                     <TableCell className="text-right font-mono font-bold">
                                         {filteredAnalytics.reduce((s: number, va: any) => s + va.stats.totalTrips, 0)}x

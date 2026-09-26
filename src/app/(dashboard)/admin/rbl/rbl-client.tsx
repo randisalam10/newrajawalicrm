@@ -607,12 +607,13 @@ export function RblClient({
             }
         }
 
-        // 3. Check in vehicles list (from getRblVehicles with historical lastKmMeter)
+        // 3. Check in vehicles list (from getRblVehicles with historical synchronized lastKmMeter)
         const foundVehicle = vehicles.find((v: any) => v.id === vehicleId)
         if (foundVehicle?.lastKmMeter && foundVehicle.lastKmMeter > 0) {
+            const srcLabel = foundVehicle.lastKmSource ? `Riwayat ${foundVehicle.lastKmSource}` : "Riwayat"
             return {
                 km: foundVehicle.lastKmMeter,
-                source: foundVehicle.lastKmDate ? `Riwayat (${fmtShortDate(foundVehicle.lastKmDate)})` : "Database",
+                source: foundVehicle.lastKmDate ? `${srcLabel} (${fmtShortDate(foundVehicle.lastKmDate)})` : `${srcLabel} Sistem`,
                 date: foundVehicle.lastKmDate
             }
         }

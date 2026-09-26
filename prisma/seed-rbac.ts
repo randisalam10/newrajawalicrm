@@ -92,6 +92,13 @@ export const PERMISSIONS = [
     { code: 'RBL_DELETE', module: 'RBL', action: 'delete', name: 'Hapus Pengeluaran RBL' },
     { code: 'RBL_CLOSE', module: 'RBL', action: 'approve', name: 'Tutup Buku / Close RBL' },
     { code: 'RBL_EXPORT', module: 'RBL', action: 'export', name: 'Cetak / Export Laporan RBL' },
+
+    // Sewa Alat / Kendaraan
+    { code: 'SEWA_VIEW', module: 'SEWA', action: 'view', name: 'Lihat Sewa Alat & Kendaraan' },
+    { code: 'SEWA_CREATE', module: 'SEWA', action: 'create', name: 'Buat Transaksi Sewa Baru' },
+    { code: 'SEWA_EDIT', module: 'SEWA', action: 'edit', name: 'Ubah Data Sewa & Master Alat' },
+    { code: 'SEWA_DELETE', module: 'SEWA', action: 'delete', name: 'Hapus / Batalkan Sewa' },
+    { code: 'SEWA_PRINT', module: 'SEWA', action: 'print', name: 'Cetak DO / Surat Jalan Sewa' },
 ]
 
 export const ROLES = [
@@ -124,6 +131,7 @@ export const ROLES = [
             'LOGISTIK_VIEW', 'LOGISTIK_CREATE',
             'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_CREATE', 'RBL_EDIT', 'RBL_DELETE', 'RBL_CLOSE', 'RBL_EXPORT',
+            'SEWA_VIEW', 'SEWA_CREATE', 'SEWA_EDIT', 'SEWA_DELETE', 'SEWA_PRINT',
         ],
     },
     {
@@ -137,6 +145,7 @@ export const ROLES = [
             'PRODUKSI_VIEW', 'PRODUKSI_CREATE',
             'RETASE_VIEW',
             'PLANNING_VIEW',
+            'SEWA_VIEW', 'SEWA_CREATE', 'SEWA_PRINT',
         ],
     },
     {
@@ -163,7 +172,7 @@ export const ROLES = [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
             'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
-            'RBL_VIEW', 'RBL_EXPORT',
+            'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',
         ],
     },
     {
@@ -176,7 +185,7 @@ export const ROLES = [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
             'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
-            'RBL_VIEW', 'RBL_EXPORT',
+            'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',
         ],
     },
     {

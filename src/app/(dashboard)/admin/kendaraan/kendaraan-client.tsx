@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,10 +45,12 @@ const getCategoryBadgeClass = (name: string = "") => {
     if (lower.includes("loader")) return "bg-orange-100 text-orange-800 border-orange-200"
     if (lower.includes("dump")) return "bg-emerald-100 text-emerald-800 border-emerald-200"
     if (lower.includes("pump")) return "bg-purple-100 text-purple-800 border-purple-200"
+    if (lower.includes("batching") || lower.includes("plant")) return "bg-indigo-100 text-indigo-800 border-indigo-200"
+    if (lower.includes("genset") || lower.includes("power")) return "bg-amber-100 text-amber-800 border-amber-200"
+    if (lower.includes("excavator")) return "bg-yellow-100 text-yellow-800 border-yellow-200"
     if (lower.includes("operasional") || lower.includes("mobil")) return "bg-teal-100 text-teal-800 border-teal-200"
-    if (lower.includes("genset") || lower.includes("berat")) return "bg-slate-100 text-slate-800 border-slate-200"
     if (lower.includes("motor")) return "bg-cyan-100 text-cyan-800 border-cyan-200"
-    return "bg-indigo-100 text-indigo-800 border-indigo-200"
+    return "bg-slate-100 text-slate-800 border-slate-200"
 }
 
 export function KendaraanClient({
@@ -70,6 +72,8 @@ export function KendaraanClient({
     const [editData, setEditData] = useState<any>(null)
     const [categories, setCategories] = useState<any[]>(initialCategories)
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>("")
+    const [meterType, setMeterType] = useState<string>("KM")
+    const [merkModel, setMerkModel] = useState<string>("")
     const [isPending, startTransition] = useTransition()
 
     // Shortcut Modal: Quick Add Vehicle Category
@@ -86,24 +90,80 @@ export function KendaraanClient({
     const [dumpTruckSize, setDumpTruckSize] = useState<string>("BESAR")
     const [capacityCubic, setCapacityCubic] = useState<string>("")
 
+    // Rental / Sewa Configuration State
+    const [isForRent, setIsForRent] = useState<boolean>(false)
+    const [defaultDayRate, setDefaultDayRate] = useState<string>("")
+    const [rentalStatus, setRentalStatus] = useState<string>("Tersedia")
+    const [rentalNotes, setRentalNotes] = useState<string>("")
+
+    // Filter Tab State: ALL | OPERASIONAL | SEWA
+    const [filterTab, setFilterTab] = useState<"ALL" | "OPERASIONAL" | "SEWA">("ALL")
+
+    const handleCategoryChange = (catId: string) => {
+        setSelectedCategoryId(catId)
+        const cat = categories.find(c => c.id === catId)
+        const catName = cat?.name?.toLowerCase() || ""
+        if (catName.includes("batching") || catName.includes("genset") || catName.includes("loader") || catName.includes("excavator") || catName.includes("pump") || catName.includes("crane")) {
+            setMeterType("HM")
+        } else if (catName.includes("mixer") || catName.includes("dump") || catName.includes("mobil") || catName.includes("motor")) {
+            setMeterType("KM")
+        }
+    }
+
     const handleOpenNew = () => {
         setEditData(null)
         // Default to first category (e.g. Truck Mixer) or empty
-        setSelectedCategoryId(categories[0]?.id || "")
+        const firstCatId = categories[0]?.id || ""
+        setSelectedCategoryId(firstCatId)
+        setMeterType("KM")
+        setMerkModel("")
         setDumpTruckSize("BESAR")
         setCapacityCubic("")
+        setIsForRent(false)
+        setDefaultDayRate("")
+        setRentalStatus("Tersedia")
+        setRentalNotes("")
         setOpen(true)
     }
 
     const handleOpenEdit = (data: any) => {
         setEditData(data)
         setSelectedCategoryId(data.categoryId || categories.find(c => c.name.toLowerCase() === (data.vehicle_type || "").toLowerCase())?.id || "")
+        setMeterType(data.meter_type || "KM")
+        setMerkModel(data.merk_model || "")
         setDumpTruckSize(data.dump_truck_size || "BESAR")
         setCapacityCubic(data.capacity_cubic != null ? String(data.capacity_cubic) : "")
+        setIsForRent(Boolean(data.is_for_rent))
+        setDefaultDayRate(data.default_day_rate != null && data.default_day_rate > 0 ? String(data.default_day_rate) : "")
+        setRentalStatus(data.rental_status || "Tersedia")
+        setRentalNotes(data.rental_notes || "")
         setOpen(true)
     }
 
     async function handleSubmit(formData: FormData) {
+        // Pass meter_type and merk_model
+        formData.set("meter_type", meterType)
+        if (merkModel.trim()) {
+            formData.set("merk_model", merkModel.trim())
+        } else {
+            formData.delete("merk_model")
+        }
+
+        // Pass rental / sewa tag fields
+        formData.set("is_for_rent", isForRent ? "true" : "false")
+        if (isForRent) {
+            formData.set("default_day_rate", defaultDayRate || "0")
+            formData.set("rental_status", rentalStatus || "Tersedia")
+            if (rentalNotes.trim()) {
+                formData.set("rental_notes", rentalNotes.trim())
+            } else {
+                formData.delete("rental_notes")
+            }
+        } else {
+            formData.set("default_day_rate", "0")
+            formData.delete("rental_notes")
+        }
+
         // Ensure categoryId is passed in formData
         if (selectedCategoryId) {
             formData.set("categoryId", selectedCategoryId)
@@ -127,7 +187,7 @@ export function KendaraanClient({
         }
 
         if (result.success) {
-            toast.success(editData ? "Data kendaraan berhasil diperbarui" : "Kendaraan baru berhasil ditambahkan")
+            toast.success(editData ? "Data unit berhasil diperbarui" : "Unit kendaraan / alat baru berhasil ditambahkan")
             setOpen(false)
             setEditData(null)
         } else {
@@ -223,46 +283,47 @@ export function KendaraanClient({
                             className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-9 gap-1.5 shadow-xs cursor-pointer"
                         >
                             <Plus className="w-4 h-4" />
-                            <span>Tambah Kendaraan</span>
+                            <span>Tambah Kendaraan & Alat</span>
                         </Button>
                     </div>
                 )}
             </div>
 
-            {/* Dialog: Form Tambah / Edit Kendaraan */}
+            {/* Dialog: Form Tambah / Edit Kendaraan & Alat */}
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="sm:max-w-[460px]">
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="text-base flex items-center gap-2">
                             <Truck className="h-5 w-5 text-blue-600" />
-                            <span>{editData ? "Edit Kendaraan" : "Tambah Kendaraan Baru"}</span>
+                            <span>{editData ? "Edit Unit Kendaraan / Alat" : "Tambah Unit Kendaraan & Alat Baru"}</span>
                         </DialogTitle>
                         <DialogDescription className="text-xs text-slate-500">
-                            Masukkan data armada kendaraan, kode unik, nomor plat, dan kategori operasional.
+                            Informasi data armada, alat berat, batching plant, genset, dan spesifikasi unit.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <form key={editData?.id || "new"} action={handleSubmit} className="space-y-3.5 mt-2 text-xs">
+                    <form key={editData?.id || "new"} action={handleSubmit} className="space-y-4 mt-2 text-xs">
                         {editData && <input type="hidden" name="id" value={editData.id} />}
 
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* Identitas Unit (2 Kolom) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             <div className="space-y-1">
-                                <Label htmlFor="code" className="text-xs font-semibold text-slate-700">Kode Kendaraan *</Label>
+                                <Label htmlFor="code" className="text-xs font-semibold text-slate-700">Kode Unit *</Label>
                                 <Input
                                     id="code"
                                     name="code"
-                                    placeholder="Misal: MX-01, LD-02"
+                                    placeholder="Misal: MX-01, BP-01, GS-02"
                                     defaultValue={editData?.code}
                                     required
                                     className="h-8 text-xs font-mono font-bold"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <Label htmlFor="plate_number" className="text-xs font-semibold text-slate-700">Plat Nomor *</Label>
+                                <Label htmlFor="plate_number" className="text-xs font-semibold text-slate-700">Plat Nomor / No. Seri *</Label>
                                 <Input
                                     id="plate_number"
                                     name="plate_number"
-                                    placeholder="Contoh: PA 8821 AB"
+                                    placeholder="PA 8821 AB atau No. Seri Unit"
                                     defaultValue={editData?.plate_number}
                                     required
                                     className="h-8 text-xs font-mono uppercase"
@@ -270,45 +331,93 @@ export function KendaraanClient({
                             </div>
                         </div>
 
-                        {/* Kategori Kendaraan with Shortcut Button */}
-                        <div className="space-y-1">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-xs font-semibold text-slate-700">
-                                    Kategori / Jenis Kendaraan *
-                                </Label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsQuickCategoryOpen(true)}
-                                    className="text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                        {/* Kategori & Merk / Model (2 Kolom) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-semibold text-slate-700">
+                                        Kategori / Jenis Unit *
+                                    </Label>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsQuickCategoryOpen(true)}
+                                        className="text-[11px] font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                        <span>Kategori Baru</span>
+                                    </button>
+                                </div>
+
+                                <Select
+                                    value={selectedCategoryId}
+                                    onValueChange={handleCategoryChange}
                                 >
-                                    <Plus className="h-3 w-3" />
-                                    <span>+ Kategori Baru</span>
-                                </button>
+                                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                        <SelectValue placeholder="Pilih Kategori Kendaraan / Alat" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {categories.map((cat) => (
+                                            <SelectItem key={cat.id} value={cat.id} className="text-xs">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-semibold text-slate-800">{cat.name}</span>
+                                                    {cat.code && (
+                                                        <span className="text-[10px] text-slate-400 font-mono">({cat.code})</span>
+                                                    )}
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
 
-                            <Select
-                                value={selectedCategoryId}
-                                onValueChange={setSelectedCategoryId}
-                            >
-                                <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
-                                    <SelectValue placeholder="Pilih Kategori Kendaraan" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {categories.map((cat) => (
-                                        <SelectItem key={cat.id} value={cat.id} className="text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-slate-800">{cat.name}</span>
-                                                {cat.code && (
-                                                    <span className="text-[10px] text-slate-400 font-mono">({cat.code})</span>
-                                                )}
-                                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="merk_model" className="text-xs font-semibold text-slate-700">Merk / Model / Spesifikasi</Label>
+                                <Input
+                                    id="merk_model"
+                                    placeholder="Sicoma 60m³, Perkins 150kVA, Sany SY5290THB"
+                                    value={merkModel}
+                                    onChange={e => setMerkModel(e.target.value)}
+                                    className="h-8 text-xs"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Satuan Meter & Cabang (2 Kolom) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                            <div className="space-y-1">
+                                <Label className="text-xs font-semibold text-slate-700">Satuan Meter Unit *</Label>
+                                <Select value={meterType} onValueChange={setMeterType}>
+                                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                        <SelectValue placeholder="Pilih Satuan Meter" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="KM" className="text-xs font-medium">
+                                            KM (Kilometer - Kendaraan)
                                         </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <p className="text-[10px] text-slate-400">
-                                Pilih kategori armada atau tambahkan kategori baru melalui tombol shortcut di atas.
-                            </p>
+                                        <SelectItem value="HM" className="text-xs font-medium">
+                                            HM (Hour Meter - Alat/Mesin)
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {userRole === "SuperAdminBP" ? (
+                                <div className="space-y-1">
+                                    <Label htmlFor="locationId" className="text-xs font-semibold text-slate-700">Cabang Pangkalan *</Label>
+                                    <Select name="locationId" defaultValue={editData?.locationId || locations[0]?.id || ""}>
+                                        <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                            <SelectValue placeholder="Pilih Cabang" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc.id} value={loc.id} className="text-xs">
+                                                    {loc.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ) : <div />}
                         </div>
 
                         {/* Dump Truck Specific Configuration */}
@@ -319,39 +428,39 @@ export function KendaraanClient({
                             if (!isDT) return null
 
                             return (
-                                <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg space-y-2.5">
+                                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
-                                            <Truck className="h-3.5 w-3.5 text-emerald-600" />
+                                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-800">
+                                            <Truck className="h-3.5 w-3.5 text-slate-600" />
                                             <span>Konfigurasi Dump Truck</span>
                                         </div>
-                                        <span className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-1.5 py-0.5 rounded">
+                                        <span className="text-[10px] bg-slate-200 text-slate-700 font-medium px-1.5 py-0.5 rounded">
                                             Internal Quarry
                                         </span>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-2.5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                         <div className="space-y-1">
-                                            <Label htmlFor="dump_truck_size" className="text-[11px] font-semibold text-emerald-950">
+                                            <Label htmlFor="dump_truck_size" className="text-[11px] font-medium text-slate-700">
                                                 Tipe Ukuran DT *
                                             </Label>
                                             <Select value={dumpTruckSize} onValueChange={setDumpTruckSize}>
-                                                <SelectTrigger className="h-8 text-xs bg-white border-emerald-300 focus:ring-emerald-500">
+                                                <SelectTrigger className="h-8 text-xs bg-white border-slate-300">
                                                     <SelectValue placeholder="Pilih Tipe Ukuran" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem value="BESAR" className="text-xs font-semibold">
-                                                        🚛 DT Besar (Tronton)
+                                                    <SelectItem value="BESAR" className="text-xs font-medium">
+                                                        DT Besar (Tronton)
                                                     </SelectItem>
-                                                    <SelectItem value="KECIL" className="text-xs font-semibold">
-                                                        🚚 DT Kecil (Engkel)
+                                                    <SelectItem value="KECIL" className="text-xs font-medium">
+                                                        DT Kecil (Engkel)
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
 
                                         <div className="space-y-1">
-                                            <Label htmlFor="capacity_cubic" className="text-[11px] font-semibold text-emerald-950">
+                                            <Label htmlFor="capacity_cubic" className="text-[11px] font-medium text-slate-700">
                                                 Kapasitas Bak Spec (m³)
                                             </Label>
                                             <Input
@@ -362,35 +471,84 @@ export function KendaraanClient({
                                                 placeholder="Misal: 8 atau 10"
                                                 value={capacityCubic}
                                                 onChange={e => setCapacityCubic(e.target.value)}
-                                                className="h-8 text-xs bg-white border-emerald-300"
+                                                className="h-8 text-xs bg-white border-slate-300"
                                             />
                                         </div>
                                     </div>
-
-                                    <p className="text-[10px] text-emerald-800 leading-tight">
-                                        💡 <strong>Catatan:</strong> Tipe ukuran menentukan tarif retase per m³·km. Kapasitas bak adalah acuan spesifikasi teknis dan <u>tidak mengunci</u> volume muatan per transaksi material agregat.
-                                    </p>
                                 </div>
                             )
                         })()}
 
-                        {userRole === "SuperAdminBP" && (
-                            <div className="space-y-1">
-                                <Label htmlFor="locationId" className="text-xs font-semibold text-slate-700">Cabang Pangkalan *</Label>
-                                <Select name="locationId" defaultValue={editData?.locationId || locations[0]?.id || ""}>
-                                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
-                                        <SelectValue placeholder="Pilih Cabang" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {locations.map((loc) => (
-                                            <SelectItem key={loc.id} value={loc.id} className="text-xs">
-                                                📍 {loc.name}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        )}
+                        {/* Sewa & Rental Tagging Configuration */}
+                        <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50/70 space-y-3">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={isForRent}
+                                    onChange={e => setIsForRent(e.target.checked)}
+                                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+                                />
+                                <span className="font-semibold text-xs text-slate-800">
+                                    Daftarkan sebagai Unit yang Bisa Disewa
+                                </span>
+                            </label>
+
+                            {isForRent && (
+                                <div className="pt-2.5 border-t border-slate-200 space-y-2.5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="default_day_rate" className="text-[11px] font-medium text-slate-700">
+                                                Tarif Acuan Sewa / Hari (Rp)
+                                            </Label>
+                                            <Input
+                                                id="default_day_rate"
+                                                type="number"
+                                                placeholder="Contoh: 3500000"
+                                                value={defaultDayRate}
+                                                onChange={e => setDefaultDayRate(e.target.value)}
+                                                className="h-8 text-xs bg-white border-slate-300 font-mono"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="rental_status" className="text-[11px] font-medium text-slate-700">
+                                                Status Ketersediaan Sewa
+                                            </Label>
+                                            <Select value={rentalStatus} onValueChange={setRentalStatus}>
+                                                <SelectTrigger className="h-8 text-xs bg-white border-slate-300">
+                                                    <SelectValue placeholder="Pilih Status" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Tersedia" className="text-xs font-medium">
+                                                        Tersedia
+                                                    </SelectItem>
+                                                    <SelectItem value="Disewa" className="text-xs font-medium">
+                                                        Sedang Disewa
+                                                    </SelectItem>
+                                                    <SelectItem value="Maintenance" className="text-xs font-medium">
+                                                        Perawatan / Maintenance
+                                                    </SelectItem>
+                                                    <SelectItem value="Nonaktif" className="text-xs font-medium">
+                                                        Nonaktif
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label htmlFor="rental_notes" className="text-[11px] font-medium text-slate-700">
+                                            Catatan / Spesifikasi Sewa (Opsional)
+                                        </Label>
+                                        <Input
+                                            id="rental_notes"
+                                            placeholder="Contoh: Boom reach 37m, output 120m3/h"
+                                            value={rentalNotes}
+                                            onChange={e => setRentalNotes(e.target.value)}
+                                            className="h-8 text-xs bg-white border-slate-300"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         <DialogFooter className="pt-2">
                             <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)} className="text-xs h-8">
@@ -570,72 +728,157 @@ export function KendaraanClient({
                 </DialogContent>
             </Dialog>
 
-            {/* Table Kendaraan */}
-            <SimpleDataTable
-                data={initialData}
-                searchKeys={["code", "plate_number", "vehicle_type"]}
-                searchPlaceholder="Cari kode armada, nomor plat, atau kategori..."
-            >
-                {(items, sortConfig, toggleSort) => (
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-slate-50/70 text-xs">
-                                {isCorporate && (
-                                    <TableHead>
-                                        <SortableHeader label="Cabang" sortKey="locationId" sortConfig={sortConfig} onSort={toggleSort} />
-                                    </TableHead>
-                                )}
-                                <TableHead>
-                                    <SortableHeader label="Kode Unit" sortKey="code" sortConfig={sortConfig} onSort={toggleSort} />
-                                </TableHead>
-                                <TableHead>
-                                    <SortableHeader label="Plat Nomor" sortKey="plate_number" sortConfig={sortConfig} onSort={toggleSort} />
-                                </TableHead>
-                                <TableHead>
-                                    <SortableHeader label="Kategori Kendaraan" sortKey="vehicle_type" sortConfig={sortConfig} onSort={toggleSort} />
-                                </TableHead>
-                                {canManage && <TableHead className="w-[90px] text-center">Aksi</TableHead>}
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {items.length === 0 && (
-                                <TableRow>
-                                    <TableCell colSpan={(isCorporate ? 1 : 0) + 3 + (canManage ? 1 : 0)} className="text-center text-muted-foreground h-24 text-xs">
-                                        Data kendaraan tidak ditemukan.
-                                    </TableCell>
-                                </TableRow>
-                            )}
-                            {items.map((item) => {
-                                const categoryName = item.category?.name || item.vehicle_type
-                                const badgeClass = getCategoryBadgeClass(categoryName)
+            {/* Filter Tabs & Table Kendaraan & Alat */}
+            {(() => {
+                const operationalCount = initialData.filter(d => !d.is_for_rent).length
+                const rentalCount = initialData.filter(d => d.is_for_rent).length
+                const filteredData = filterTab === "OPERASIONAL"
+                    ? initialData.filter(d => !d.is_for_rent)
+                    : filterTab === "SEWA"
+                    ? initialData.filter(d => d.is_for_rent)
+                    : initialData
 
-                                return (
-                                    <TableRow key={item.id} className="hover:bg-slate-50/70 transition-colors text-xs">
-                                        {isCorporate && (
-                                            <TableCell>
-                                                <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
-                                                    {item.location?.name || "N/A"}
-                                                </span>
-                                            </TableCell>
+                return (
+                    <div className="space-y-3">
+                        {/* Quick Filter Tabs */}
+                        <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-lg w-fit text-xs border border-slate-200">
+                            <button
+                                type="button"
+                                onClick={() => setFilterTab("ALL")}
+                                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+                                    filterTab === "ALL"
+                                        ? "bg-white text-slate-900 shadow-2xs"
+                                        : "text-slate-600 hover:text-slate-900"
+                                }`}
+                            >
+                                Semua Unit ({initialData.length})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFilterTab("OPERASIONAL")}
+                                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+                                    filterTab === "OPERASIONAL"
+                                        ? "bg-white text-blue-700 shadow-2xs"
+                                        : "text-slate-600 hover:text-slate-900"
+                                }`}
+                            >
+                                Operasional Internal ({operationalCount})
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFilterTab("SEWA")}
+                                className={`px-3 py-1.5 rounded-md font-semibold transition-all cursor-pointer ${
+                                    filterTab === "SEWA"
+                                        ? "bg-white text-blue-700 shadow-2xs"
+                                        : "text-slate-600 hover:text-slate-900"
+                                }`}
+                            >
+                                Unit Sewa ({rentalCount})
+                            </button>
+                        </div>
+
+                        <SimpleDataTable
+                            data={filteredData}
+                            searchKeys={["code", "plate_number", "vehicle_type", "merk_model"]}
+                            searchPlaceholder="Cari kode unit, nomor plat, merk/tipe, atau kategori alat..."
+                        >
+                            {(items, sortConfig, toggleSort) => (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-slate-50/70 text-xs">
+                                            {isCorporate && (
+                                                <TableHead>
+                                                    <SortableHeader label="Cabang" sortKey="locationId" sortConfig={sortConfig} onSort={toggleSort} />
+                                                </TableHead>
+                                            )}
+                                            <TableHead>
+                                                <SortableHeader label="Kode Unit" sortKey="code" sortConfig={sortConfig} onSort={toggleSort} />
+                                            </TableHead>
+                                            <TableHead>
+                                                <SortableHeader label="Plat / No. Seri" sortKey="plate_number" sortConfig={sortConfig} onSort={toggleSort} />
+                                            </TableHead>
+                                            <TableHead>
+                                                <SortableHeader label="Kategori Unit" sortKey="vehicle_type" sortConfig={sortConfig} onSort={toggleSort} />
+                                            </TableHead>
+                                            <TableHead className="text-center w-24">
+                                                <SortableHeader label="Meter" sortKey="meter_type" sortConfig={sortConfig} onSort={toggleSort} />
+                                            </TableHead>
+                                            {canManage && <TableHead className="w-[90px] text-center">Aksi</TableHead>}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {items.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={(isCorporate ? 1 : 0) + 4 + (canManage ? 1 : 0)} className="text-center text-muted-foreground h-24 text-xs">
+                                                    Data kendaraan & alat tidak ditemukan.
+                                                </TableCell>
+                                            </TableRow>
                                         )}
-                                        <TableCell className="font-bold text-slate-900 font-mono text-xs">
-                                            {item.code}
-                                        </TableCell>
-                                        <TableCell className="font-medium text-slate-700 font-mono text-xs">
-                                            {item.plate_number}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex items-center gap-1.5 flex-wrap">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badgeClass}`}>
-                                                    {categoryName}
-                                                </span>
-                                                {item.dump_truck_size && (
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                        {item.dump_truck_size === "BESAR" ? "DT Besar" : "DT Kecil"}
-                                                        {item.capacity_cubic ? ` • ${item.capacity_cubic} m³` : ""}
-                                                    </span>
-                                                )}
-                                            </div>
+                                        {items.map((item) => {
+                                            const categoryName = item.category?.name || item.vehicle_type
+                                            const badgeClass = getCategoryBadgeClass(categoryName)
+                                            const isHM = item.meter_type === "HM"
+
+                                            return (
+                                                <TableRow key={item.id} className="hover:bg-slate-50/70 transition-colors text-xs">
+                                                    {isCorporate && (
+                                                        <TableCell>
+                                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
+                                                                {item.location?.name || "N/A"}
+                                                            </span>
+                                                        </TableCell>
+                                                    )}
+                                                    <TableCell>
+                                                        <div className="font-bold text-slate-900 font-mono text-xs">
+                                                            {item.code}
+                                                        </div>
+                                                        {item.merk_model && (
+                                                            <div className="text-[10px] text-slate-500 font-sans truncate max-w-[170px]" title={item.merk_model}>
+                                                                {item.merk_model}
+                                                            </div>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="font-medium text-slate-700 font-mono text-xs">
+                                                        {item.plate_number}
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${badgeClass}`}>
+                                                                {categoryName}
+                                                            </span>
+                                                            {item.dump_truck_size && (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    {item.dump_truck_size === "BESAR" ? "DT Besar" : "DT Kecil"}
+                                                                    {item.capacity_cubic ? ` • ${item.capacity_cubic} m³` : ""}
+                                                                </span>
+                                                            )}
+                                                            {item.is_for_rent && (
+                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                                                                    <span>Unit Sewa</span>
+                                                                    {item.default_day_rate > 0 && (
+                                                                        <span className="font-mono text-slate-900 font-semibold">
+                                                                            • Rp {Number(item.default_day_rate).toLocaleString("id-ID")}/hr
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                            )}
+                                                            {item.is_for_rent && (
+                                                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                                                                    item.rental_status === "Disewa"
+                                                                        ? "bg-blue-50 text-blue-700 border-blue-200"
+                                                                        : item.rental_status === "Maintenance"
+                                                                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                                                                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                                                }`}>
+                                                                    {item.rental_status === "Disewa" ? "Sedang Disewa" : item.rental_status === "Maintenance" ? "Maintenance" : "Tersedia"}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell className="text-center">
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${isHM ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-blue-50 text-blue-800 border-blue-200"}`}>
+                                                            {isHM ? "HM" : "KM"}
+                                                        </span>
                                         </TableCell>
                                         {canManage && (
                                             <TableCell className="text-center">
@@ -656,6 +899,9 @@ export function KendaraanClient({
                     </Table>
                 )}
             </SimpleDataTable>
+        </div>
+    )
+})()}
         </div>
     )
 }

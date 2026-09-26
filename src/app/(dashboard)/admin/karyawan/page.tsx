@@ -1,4 +1,4 @@
-import { getKaryawans } from "./actions"
+import { getKaryawans, getDriverCategories } from "./actions"
 import { KaryawanClient } from "./karyawan-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
@@ -15,14 +15,15 @@ export default async function KaryawanPage() {
 
     const canManage = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
 
-    const [data, locations] = await Promise.all([
+    const [data, locations, driverCategories] = await Promise.all([
         getKaryawans(),
-        getLocations()
+        getLocations(),
+        getDriverCategories()
     ])
 
     return (
         <div className="space-y-6">
-            <KaryawanClient initialData={data} locations={locations} userRole={role} canManage={canManage} />
+            <KaryawanClient initialData={data} locations={locations} driverCategories={driverCategories} userRole={role} canManage={canManage} />
         </div>
     )
 }

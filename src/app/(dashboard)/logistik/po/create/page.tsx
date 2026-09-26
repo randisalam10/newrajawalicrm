@@ -9,10 +9,10 @@ export default async function POCreatePage() {
     if (["CEO", "FVP", "Approver"].includes(role)) {
         redirect("/logistik/approval")
     }
-    const { companies, categories, suppliers, items, signers } = await getPoFormData()
+    const { companies, categories, suppliers, items, signers, vehicles } = await getPoFormData()
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-4 w-full">
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Buat Purchase Order Baru</h1>
                 <p className="text-muted-foreground text-sm">Isi form berikut untuk membuat PO. Nomor PO akan di-generate otomatis setelah disimpan.</p>
@@ -23,6 +23,7 @@ export default async function POCreatePage() {
                 suppliers={suppliers}
                 items={items}
                 signers={signers}
+                vehicles={vehicles || []}
                 pembuatAdmin={session?.user?.username || "Admin"}
             />
         </div>

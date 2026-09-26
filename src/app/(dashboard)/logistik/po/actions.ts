@@ -286,6 +286,7 @@ export async function getPurchaseOrderById(id: string) {
                 companyGroup: true,
                 category: true,
                 location: true,
+                vehicle: { include: { category: true } },
                 ceo: { select: { id: true, username: true, employee: { select: { name: true } } } },
                 fvp: { select: { id: true, username: true, employee: { select: { name: true } } } },
                 approvedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
@@ -293,6 +294,7 @@ export async function getPurchaseOrderById(id: string) {
                 fvpApprovedBy: { select: { id: true, username: true, role: true, employee: { select: { name: true } } } },
                 items: {
                     include: {
+                        vehicle: { include: { category: true } },
                         masterItem: {
                             include: {
                                 supplier: true,
@@ -347,7 +349,17 @@ export async function createPurchaseOrder(data: {
     pic_phone?: string
     ceoId?: string | null
     fvpId?: string | null
-    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number; updateMasterPrice?: boolean }[]
+    vehicleId?: string | null
+    items: {
+        masterItemId: string
+        quantity: number
+        harga_satuan: number
+        keterangan?: string
+        subtotal: number
+        updateMasterPrice?: boolean
+        vehicleId?: string | null
+        km_hm?: string | null
+    }[]
     pembuat_admin: string
     isDraft?: boolean
 }) {
@@ -368,6 +380,9 @@ export async function createPurchaseOrder(data: {
         const projectExists = await prisma.poCompanyProject.findUnique({ where: { id: companyProjectId } })
         if (!projectExists) companyProjectId = null
     }
+
+    const resolvedVehicleId = data.vehicleId || items.find(i => i.vehicleId)?.vehicleId || null
+    const resolvedKmHm = data.km_hm_kendaraan || items.find(i => i.km_hm)?.km_hm || null
 
     let retries = 5
     let attempt = 0
@@ -391,7 +406,8 @@ export async function createPurchaseOrder(data: {
                     metode_pembayaran: data.metode_pembayaran,
                     companyProjectId,
                     locationId: data.locationId || null,
-                    km_hm_kendaraan: data.km_hm_kendaraan || null,
+                    vehicleId: resolvedVehicleId,
+                    km_hm_kendaraan: resolvedKmHm,
                     notes: data.notes || null,
                     pic_name: data.pic_name || null,
                     pic_phone: data.pic_phone || null,
@@ -407,6 +423,8 @@ export async function createPurchaseOrder(data: {
                             harga_satuan: item.harga_satuan,
                             keterangan: item.keterangan || null,
                             subtotal: item.subtotal,
+                            vehicleId: item.vehicleId || null,
+                            km_hm: item.km_hm || null,
                         }))
                     }
                 }
@@ -784,7 +802,7 @@ export async function deletePurchaseOrder(id: string) {
 
 // For PO Create form: load master data
 export async function getPoFormData() {
-    const [companies, categories, suppliers, items, signers] = await Promise.all([
+    const [companies, categories, suppliers, items, signers, vehicles] = await Promise.all([
         prisma.poCompanyGroup.findMany({ include: { projects: true }, orderBy: { name: 'asc' } }),
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
         prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
@@ -799,8 +817,105 @@ export async function getPoFormData() {
             }, 
             orderBy: { username: 'asc' } 
         }),
+        prisma.vehicle.findMany({
+            include: {
+                category: true,
+                location: true,
+                rblExpenses: {
+                    where: { kmMeter: { not: null, gt: 0 } },
+                    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+                    take: 1,
+                    select: {
+                        kmMeter: true,
+                        date: true,
+                        itemDescription: true,
+                    }
+                },
+                poItems: {
+                    where: {
+                        km_hm: { not: null },
+                        purchaseOrder: { status: { not: "CANCELLED" } }
+                    },
+                    orderBy: { purchaseOrder: { tanggal_terbit: "desc" } },
+                    take: 1,
+                    select: {
+                        km_hm: true,
+                        purchaseOrder: {
+                            select: {
+                                po_number: true,
+                                tanggal_terbit: true
+                            }
+                        },
+                        masterItem: {
+                            select: { name: true }
+                        }
+                    }
+                }
+            },
+            orderBy: [{ code: 'asc' }, { plate_number: 'asc' }]
+        }),
     ])
-    return { companies, categories, suppliers, items, signers }
+
+    const mappedVehicles = vehicles.map(v => {
+        const lastRbl = v.rblExpenses[0]
+        const lastPo = v.poItems?.[0]
+
+        let rblKm: number | null = lastRbl?.kmMeter ?? null
+        let rblDate: Date | null = lastRbl?.date ?? null
+        let rblDesc = lastRbl ? `RBL: ${lastRbl.itemDescription || 'Pengeluaran'}` : null
+
+        let poKm: number | null = null
+        let poDate: Date | null = lastPo?.purchaseOrder?.tanggal_terbit ?? null
+        let poDesc: string | null = null
+        if (lastPo?.km_hm) {
+            const parsed = parseFloat(String(lastPo.km_hm).replace(/[^0-9.]/g, ''))
+            if (!isNaN(parsed) && parsed > 0) {
+                poKm = parsed
+                poDesc = `PO ${lastPo.purchaseOrder?.po_number || ''}: ${lastPo.masterItem?.name || 'Sparepart'}`
+            }
+        }
+
+        let lastKmMeter: number | null = null
+        let lastKmDate: Date | null = null
+        let lastKmDescription: string | null = null
+        let lastKmSource: "RBL" | "PO" | null = null
+
+        if (rblKm !== null && poKm !== null) {
+            const rblTime = rblDate ? new Date(rblDate).getTime() : 0
+            const poTime = poDate ? new Date(poDate).getTime() : 0
+            if (poTime >= rblTime || poKm > rblKm) {
+                lastKmMeter = Math.max(poKm, rblKm)
+                lastKmDate = poTime >= rblTime ? poDate : rblDate
+                lastKmDescription = poTime >= rblTime ? poDesc : rblDesc
+                lastKmSource = poKm >= rblKm ? "PO" : "RBL"
+            } else {
+                lastKmMeter = rblKm
+                lastKmDate = rblDate
+                lastKmDescription = rblDesc
+                lastKmSource = "RBL"
+            }
+        } else if (poKm !== null) {
+            lastKmMeter = poKm
+            lastKmDate = poDate
+            lastKmDescription = poDesc
+            lastKmSource = "PO"
+        } else if (rblKm !== null) {
+            lastKmMeter = rblKm
+            lastKmDate = rblDate
+            lastKmDescription = rblDesc
+            lastKmSource = "RBL"
+        }
+
+        return {
+            ...v,
+            lastKmMeter,
+            lastKmDate,
+            lastKmDescription,
+            lastKmSource
+        }
+    })
+
+    return { companies, categories, suppliers, items, signers, vehicles: mappedVehicles }
 }
 
 // For PO Report tab: get filtered & grouped PO data
@@ -912,7 +1027,16 @@ export async function updatePurchaseOrder(poId: string, data: {
     pic_phone?: string
     ceoId?: string
     fvpId?: string
-    items: { masterItemId: string; quantity: number; harga_satuan: number; keterangan?: string; subtotal: number; updateMasterPrice?: boolean }[]
+    items: {
+        masterItemId: string
+        quantity: number
+        harga_satuan: number
+        keterangan?: string
+        subtotal: number
+        updateMasterPrice?: boolean
+        vehicleId?: string | null
+        km_hm?: string | null
+    }[]
     pembuat_admin: string
 }) {
     const session = await auth()
@@ -926,6 +1050,7 @@ export async function updatePurchaseOrder(poId: string, data: {
         }
 
         const { items, jabatan_kepala, ...poData } = data
+        const resolvedKmHm = poData.km_hm_kendaraan || items.find(i => i.km_hm)?.km_hm || null
 
         await prisma.$transaction(async (tx) => {
             await tx.poItem.deleteMany({
@@ -936,6 +1061,7 @@ export async function updatePurchaseOrder(poId: string, data: {
                 where: { id: poId },
                 data: {
                     ...poData,
+                    km_hm_kendaraan: resolvedKmHm,
                     companyProjectId: poData.companyProjectId || null,
                     locationId: poData.locationId || null,
                     ceoId: poData.ceoId || null,
@@ -947,6 +1073,8 @@ export async function updatePurchaseOrder(poId: string, data: {
                             harga_satuan: item.harga_satuan,
                             keterangan: item.keterangan || undefined,
                             subtotal: item.subtotal,
+                            vehicleId: item.vehicleId || null,
+                            km_hm: item.km_hm || null,
                         }))
                     }
                 }

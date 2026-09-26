@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import {
     DollarSign, Receipt, CreditCard, Clock, AlertTriangle,
     ArrowUpRight, CheckCircle2, TrendingUp, Users, Building2,
-    Layers, ChevronRight, FileText, Wallet, Calendar, AlertCircle
+    Layers, ChevronRight, FileText, Wallet, Calendar, AlertCircle,
+    Truck, Wrench
 } from "lucide-react"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(Math.round(n || 0))
@@ -55,7 +56,7 @@ export function BillingDashboard({
         return allInvoices.filter(i => i.status !== "CANCELLED")
     }, [allInvoices])
 
-    // ─── Key Financial Totals ─────────────────────────────────────────────────
+    // ─── Key Financial Totals (All Gross & Breakdown) ─────────────────────────
     const totalInvoiced = useMemo(() => {
         return activeInvoices.reduce((s, i) => s + (i.total_amount || 0), 0)
     }, [activeInvoices])
@@ -69,6 +70,91 @@ export function BillingDashboard({
 
     const totalOutstanding = Math.max(0, totalInvoiced - totalPaid)
     const collectionRate = totalInvoiced > 0 ? (totalPaid / totalInvoiced) * 100 : 0
+
+    // ─── Revenue Breakdown: ReadyMix (Cor) vs Sewa Alat ───────────────────────
+    const revenueBreakdown = useMemo(() => {
+        let rmGross = 0
+        let rmPaid = 0
+        let rmVolume = 0
+        let rmInvoiceCount = 0
+
+        let sewaGross = 0
+        let sewaPaid = 0
+        let sewaDays = 0
+        let sewaInvoiceCount = 0
+
+        for (const inv of activeInvoices) {
+            const isSewaOnly = inv.invoice_type === "SEWA"
+            const isRmOnly = inv.invoice_type === "READYMIX" || (!inv.invoice_type && !inv.items?.some((i: any) => i.item_type === "SEWA" || i.sewaTransaction))
+            const isCombined = inv.invoice_type === "COMBINED" || (!isSewaOnly && !isRmOnly)
+
+            const total = inv.total_amount || 0
+            const paid = (inv.payments || []).filter((p: any) => !p.is_cancelled).reduce((s: number, p: any) => s + (p.amount || 0), 0)
+
+            if (isSewaOnly) {
+                sewaGross += total
+                sewaPaid += paid
+                sewaInvoiceCount += 1
+                for (const it of inv.items || []) {
+                    sewaDays += it.quantity || 0
+                }
+            } else if (isRmOnly) {
+                rmGross += total
+                rmPaid += paid
+                rmInvoiceCount += 1
+                for (const it of inv.items || []) {
+                    rmVolume += it.quantity || 0
+                }
+            } else {
+                // COMBINED Invoice
+                let invRmSub = 0
+                let invSewaSub = 0
+                for (const it of inv.items || []) {
+                    if (it.item_type === "SEWA" || it.sewaTransaction) {
+                        invSewaSub += it.subtotal || (it.quantity * it.unit_price) || 0
+                        sewaDays += it.quantity || 0
+                    } else {
+                        invRmSub += it.subtotal || (it.quantity * it.unit_price) || 0
+                        rmVolume += it.quantity || 0
+                    }
+                }
+                const totalSub = (invRmSub + invSewaSub) || 1
+                const rmShare = invRmSub / totalSub
+                const sewaShare = invSewaSub / totalSub
+
+                const invRmGross = total * rmShare
+                const invSewaGross = total * sewaShare
+
+                rmGross += invRmGross
+                sewaGross += invSewaGross
+                rmPaid += paid * rmShare
+                sewaPaid += paid * sewaShare
+                rmInvoiceCount += 1
+                sewaInvoiceCount += 1
+            }
+        }
+
+        const rmOutstanding = Math.max(0, rmGross - rmPaid)
+        const sewaOutstanding = Math.max(0, sewaGross - sewaPaid)
+        const totalGross = rmGross + sewaGross
+        const rmSharePct = totalGross > 0 ? (rmGross / totalGross) * 100 : 0
+        const sewaSharePct = totalGross > 0 ? (sewaGross / totalGross) * 100 : 0
+
+        return {
+            rmGross,
+            rmPaid,
+            rmOutstanding,
+            rmVolume,
+            rmInvoiceCount,
+            rmSharePct,
+            sewaGross,
+            sewaPaid,
+            sewaOutstanding,
+            sewaDays,
+            sewaInvoiceCount,
+            sewaSharePct,
+        }
+    }, [activeInvoices])
 
     // ─── Overdue & Aging Analysis ─────────────────────────────────────────────
     const now = new Date()
@@ -129,28 +215,91 @@ export function BillingDashboard({
         return { paid, partial, issued, draft, paidVal, partialVal, issuedVal, draftVal }
     }, [allInvoices])
 
-    // ─── Unbilled Backlog / Pipeline ──────────────────────────────────────────
-    const totalUnbilledCount = unbilled.length
-    const totalUnbilledVolume = unbilled.reduce((s, tx) => s + (tx.volume_cubic || 0), 0)
-    const totalUnbilledEstValue = unbilled.reduce((s, tx) => {
-        const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
-        return s + (tx.volume_cubic * price)
-    }, 0)
+    // ─── Unbilled Backlog / Pipeline (Cor & Sewa) ──────────────────────────────
+    const unbilledBreakdown = useMemo(() => {
+        let rmCount = 0
+        let rmVolume = 0
+        let rmEstValue = 0
+
+        let sewaCount = 0
+        let sewaDays = 0
+        let sewaEstValue = 0
+
+        for (const tx of unbilled) {
+            if (tx.itemType === "SEWA") {
+                sewaCount += 1
+                const days = tx.totalDays || tx.volume_cubic || 0
+                sewaDays += days
+                const val = tx.totalPrice || (tx.pricePerDay * days) || 0
+                sewaEstValue += val
+            } else {
+                rmCount += 1
+                rmVolume += tx.volume_cubic || 0
+                const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
+                rmEstValue += (tx.volume_cubic || 0) * price
+            }
+        }
+
+        return {
+            rmCount,
+            rmVolume,
+            rmEstValue,
+            sewaCount,
+            sewaDays,
+            sewaEstValue,
+            totalEstValue: rmEstValue + sewaEstValue,
+            totalCount: unbilled.length,
+        }
+    }, [unbilled])
+
+    const totalUnbilledCount = unbilledBreakdown.totalCount
+    const totalUnbilledVolume = unbilledBreakdown.rmVolume
+    const totalUnbilledEstValue = unbilledBreakdown.totalEstValue
 
     const unbilledByCustomer = useMemo(() => {
-        const map = new Map<string, { customerName: string; txCount: number; volume: number; estValue: number }>()
+        const map = new Map<string, {
+            customerName: string
+            txCount: number
+            rmVolume: number
+            sewaDays: number
+            estValue: number
+            hasSewa: boolean
+            hasRm: boolean
+        }>()
         for (const tx of unbilled) {
-            const custId = tx.project?.customer?.id || "unknown"
-            const custName = tx.project?.customer?.customer_name || "Tanpa Nama"
-            const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
-            const val = tx.volume_cubic * price
+            const isSewa = tx.itemType === "SEWA"
+            const custId = tx.customer?.id || tx.project?.customer?.id || "unknown"
+            const custName = tx.customer?.customer_name || tx.project?.customer?.customer_name || "Tanpa Nama"
+
+            let val = 0
+            if (isSewa) {
+                const days = tx.totalDays || tx.volume_cubic || 0
+                val = tx.totalPrice || (tx.pricePerDay * days) || 0
+            } else {
+                const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
+                val = (tx.volume_cubic || 0) * price
+            }
 
             if (!map.has(custId)) {
-                map.set(custId, { customerName: custName, txCount: 0, volume: 0, estValue: 0 })
+                map.set(custId, {
+                    customerName: custName,
+                    txCount: 0,
+                    rmVolume: 0,
+                    sewaDays: 0,
+                    estValue: 0,
+                    hasSewa: false,
+                    hasRm: false,
+                })
             }
             const c = map.get(custId)!
             c.txCount += 1
-            c.volume += tx.volume_cubic
+            if (isSewa) {
+                c.sewaDays += (tx.totalDays || tx.volume_cubic || 0)
+                c.hasSewa = true
+            } else {
+                c.rmVolume += (tx.volume_cubic || 0)
+                c.hasRm = true
+            }
             c.estValue += val
         }
         return Array.from(map.values()).sort((a, b) => b.estValue - a.estValue).slice(0, 5)
@@ -208,32 +357,42 @@ export function BillingDashboard({
 
     return (
         <div className="space-y-4 pt-1">
-            {/* ─── Top Executive Summary Banner (5 Core Metrics) ──────────────── */}
+            {/* ─── Top Executive Summary Banner (5 Core Metrics with ReadyMix & Sewa Breakdown) ─── */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-                {/* 1. Total Tagihan Terbit */}
+                {/* 1. Total Tagihan Terbit (Gross) */}
                 <Card className="border-slate-200/80 shadow-2xs bg-gradient-to-br from-white to-blue-50/20">
-                    <CardContent className="p-3.5">
+                    <CardContent className="p-3.5 space-y-1.5">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                Total Invoice Terbit
+                                Total Invoice Terbit (Gross)
                             </span>
                             <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
                                 <Receipt className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="text-base sm:text-lg font-bold text-slate-900 font-mono mt-1 truncate">
+                        <div className="text-base sm:text-lg font-bold text-slate-900 font-mono truncate">
                             {fmt(totalInvoiced)}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
                             <span>{activeInvoices.length} Faktur Aktif</span>
                             <span className="text-blue-600 font-medium">{activeLocName}</span>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span className="flex items-center gap-1"><Truck className="w-3 h-3 text-blue-500" /> Cor ReadyMix</span>
+                                <span className="font-mono font-semibold text-slate-800">{fmt(revenueBreakdown.rmGross)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span className="flex items-center gap-1"><Wrench className="w-3 h-3 text-purple-500" /> Sewa Alat/CP</span>
+                                <span className="font-mono font-semibold text-purple-700">{fmt(revenueBreakdown.sewaGross)}</span>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
 
                 {/* 2. Pembayaran Masuk (Cash Collected) */}
                 <Card className="border-slate-200/80 shadow-2xs bg-gradient-to-br from-white to-emerald-50/20">
-                    <CardContent className="p-3.5">
+                    <CardContent className="p-3.5 space-y-1.5">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 Pembayaran Masuk
@@ -242,10 +401,10 @@ export function BillingDashboard({
                                 <CheckCircle2 className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="text-base sm:text-lg font-bold text-emerald-700 font-mono mt-1 truncate">
+                        <div className="text-base sm:text-lg font-bold text-emerald-700 font-mono truncate">
                             {fmt(totalPaid)}
                         </div>
-                        <div className="mt-1 space-y-1">
+                        <div className="space-y-1">
                             <div className="flex items-center justify-between text-[11px]">
                                 <span className="text-slate-500">Kolektibilitas</span>
                                 <span className="font-bold text-emerald-700 font-mono">{collectionRate.toFixed(1)}%</span>
@@ -257,12 +416,22 @@ export function BillingDashboard({
                                 />
                             </div>
                         </div>
+                        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Cor ReadyMix</span>
+                                <span className="font-mono font-semibold text-emerald-800">{fmt(revenueBreakdown.rmPaid)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Sewa Alat</span>
+                                <span className="font-mono font-semibold text-purple-800">{fmt(revenueBreakdown.sewaPaid)}</span>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 
                 {/* 3. Sisa Piutang Usaha */}
                 <Card className="border-slate-200/80 shadow-2xs bg-gradient-to-br from-white to-amber-50/20">
-                    <CardContent className="p-3.5">
+                    <CardContent className="p-3.5 space-y-1.5">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 Sisa Piutang Usaha
@@ -271,24 +440,34 @@ export function BillingDashboard({
                                 <CreditCard className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="text-base sm:text-lg font-bold text-amber-700 font-mono mt-1 truncate">
+                        <div className="text-base sm:text-lg font-bold text-amber-700 font-mono truncate">
                             {fmt(totalOutstanding)}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
                             <span>Outstanding A/R</span>
                             <button
                                 onClick={() => onNavigateTab("invoices", { status: "ISSUED" })}
-                                className="text-amber-700 font-medium hover:underline flex items-center gap-0.5"
+                                className="text-amber-700 font-medium hover:underline flex items-center gap-0.5 cursor-pointer"
                             >
                                 Periksa <ArrowUpRight className="w-3 h-3" />
                             </button>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Cor ReadyMix</span>
+                                <span className="font-mono font-semibold text-amber-800">{fmt(revenueBreakdown.rmOutstanding)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Sewa Alat</span>
+                                <span className="font-mono font-semibold text-purple-800">{fmt(revenueBreakdown.sewaOutstanding)}</span>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
 
                 {/* 4. Potensi Tagihan Unbilled Pool */}
                 <Card className="border-slate-200/80 shadow-2xs bg-gradient-to-br from-white to-orange-50/20">
-                    <CardContent className="p-3.5">
+                    <CardContent className="p-3.5 space-y-1.5">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 Belum Ditagih (Unbilled)
@@ -297,24 +476,34 @@ export function BillingDashboard({
                                 <Layers className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="text-base sm:text-lg font-bold text-orange-700 font-mono mt-1 truncate">
-                            {totalUnbilledEstValue > 0 ? fmt(totalUnbilledEstValue) : `${totalUnbilledCount} Transaksi`}
+                        <div className="text-base sm:text-lg font-bold text-orange-700 font-mono truncate">
+                            {unbilledBreakdown.totalEstValue > 0 ? fmt(unbilledBreakdown.totalEstValue) : `${unbilledBreakdown.totalCount} Transaksi`}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-                            <span>{fmtNum(totalUnbilledVolume, 1)} m³ Beton Cor</span>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                            <span>{unbilledBreakdown.totalCount} Transaksi Siap</span>
                             <button
                                 onClick={() => onNavigateTab("unbilled")}
-                                className="text-orange-700 font-medium hover:underline flex items-center gap-0.5"
+                                className="text-orange-700 font-medium hover:underline flex items-center gap-0.5 cursor-pointer"
                             >
-                                Buat Invoice <ArrowUpRight className="w-3 h-3" />
+                                Proses <ArrowUpRight className="w-3 h-3" />
                             </button>
+                        </div>
+                        <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Cor: {fmtNum(unbilledBreakdown.rmVolume, 1)} m³</span>
+                                <span className="font-mono font-semibold text-orange-800">{fmt(unbilledBreakdown.rmEstValue)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-slate-600">
+                                <span>Sewa: {unbilledBreakdown.sewaDays} Hari</span>
+                                <span className="font-mono font-semibold text-purple-800">{fmt(unbilledBreakdown.sewaEstValue)}</span>
+                            </div>
                         </div>
                     </CardContent>
                 </Card>
 
                 {/* 5. Saldo Deposito Pelanggan */}
                 <Card className="border-slate-200/80 shadow-2xs bg-gradient-to-br from-white to-purple-50/20 col-span-2 lg:col-span-1">
-                    <CardContent className="p-3.5">
+                    <CardContent className="p-3.5 space-y-1.5">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                 Saldo Deposito Aktif
@@ -323,21 +512,193 @@ export function BillingDashboard({
                                 <Wallet className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="text-base sm:text-lg font-bold text-purple-700 font-mono mt-1 truncate">
+                        <div className="text-base sm:text-lg font-bold text-purple-700 font-mono truncate">
                             {fmt(totalDeposits)}
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
                             <span>{deposits.length} Proyek Pelanggan</span>
                             <button
                                 onClick={() => onNavigateTab("deposit")}
-                                className="text-purple-700 font-medium hover:underline flex items-center gap-0.5"
+                                className="text-purple-700 font-medium hover:underline flex items-center gap-0.5 cursor-pointer"
                             >
                                 Kelola <ArrowUpRight className="w-3 h-3" />
                             </button>
                         </div>
+                        <div className="pt-1.5 border-t border-slate-100 text-[10px] text-slate-500">
+                            Dapat dipotong langsung saat pelunasan tagihan
+                        </div>
                     </CardContent>
                 </Card>
             </div>
+
+            {/* ─── Komposisi Pendapatan Usaha: Beton ReadyMix vs Sewa Alat ─── */}
+            <Card className="border-slate-200/80 shadow-2xs bg-white overflow-hidden">
+                <CardHeader className="p-3.5 pb-2.5 border-b border-slate-100 bg-slate-50/60">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-gradient-to-br from-blue-600 to-indigo-600 text-white rounded-md shadow-xs">
+                                <TrendingUp className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                                    Komposisi Pendapatan Usaha: Beton ReadyMix vs Sewa Alat & Kendaraan
+                                </CardTitle>
+                                <span className="text-[11px] text-slate-500">
+                                    Perbandingan perolehan gross invoice, realisasi kas, piutang, serta volume (m³) vs durasi sewa
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs font-mono">
+                            <span className="text-slate-500 text-[11px]">Total Omset Usaha:</span>
+                            <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{fmt(totalInvoiced)}</span>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+                    {/* Visual Segmented Progress Bar */}
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-blue-600 inline-block" />
+                                <span className="font-semibold text-slate-800">Beton ReadyMix</span>
+                                <span className="font-mono text-blue-600 font-bold">{revenueBreakdown.rmSharePct.toFixed(1)}%</span>
+                                <span className="text-slate-400 text-[11px]">({fmt(revenueBreakdown.rmGross)})</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-400 text-[11px]">({fmt(revenueBreakdown.sewaGross)})</span>
+                                <span className="font-mono text-purple-600 font-bold">{revenueBreakdown.sewaSharePct.toFixed(1)}%</span>
+                                <span className="font-semibold text-slate-800">Sewa Alat & CP</span>
+                                <span className="w-3 h-3 rounded-full bg-purple-600 inline-block" />
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-3 flex overflow-hidden p-0.5 shadow-inner">
+                            <div
+                                style={{ width: `${revenueBreakdown.rmSharePct || (totalInvoiced === 0 ? 100 : 0)}%` }}
+                                className="bg-gradient-to-r from-blue-600 to-indigo-500 h-full rounded-l-full transition-all duration-500"
+                                title={`ReadyMix: ${fmt(revenueBreakdown.rmGross)}`}
+                            />
+                            <div
+                                style={{ width: `${revenueBreakdown.sewaSharePct || 0}%` }}
+                                className="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-r-full transition-all duration-500"
+                                title={`Sewa Alat: ${fmt(revenueBreakdown.sewaGross)}`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Comparative Cards: ReadyMix vs Sewa */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {/* Column 1: ReadyMix */}
+                        <div className="p-3.5 rounded-xl border border-blue-200/80 bg-gradient-to-br from-blue-50/40 via-white to-blue-50/10 space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-blue-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-blue-600 text-white rounded-lg">
+                                        <Truck className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-xs text-blue-950 uppercase tracking-wide">Divisi Produksi Beton Cor</div>
+                                        <div className="text-[11px] text-slate-500">ReadyMix batching plant & pengiriman mixer</div>
+                                    </div>
+                                </div>
+                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-300 font-mono text-[10px]">
+                                    {revenueBreakdown.rmInvoiceCount} Faktur
+                                </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Tagihan Gross</span>
+                                    <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">{fmt(revenueBreakdown.rmGross)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Kas Diterima</span>
+                                    <span className="text-sm font-bold font-mono text-emerald-700 block mt-0.5">{fmt(revenueBreakdown.rmPaid)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Sisa Piutang</span>
+                                    <span className="text-sm font-bold font-mono text-amber-700 block mt-0.5">{fmt(revenueBreakdown.rmOutstanding)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Total Kubikasi</span>
+                                    <span className="text-sm font-bold font-mono text-blue-700 block mt-0.5">{fmtNum(revenueBreakdown.rmVolume, 1)} m³</span>
+                                </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-blue-100/40 border border-blue-200 flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-blue-900 uppercase block">Antrean Siap Tagih (Unbilled)</span>
+                                    <span className="text-slate-600 text-[11px]">
+                                        {unbilledBreakdown.rmCount} Pengiriman · {fmtNum(unbilledBreakdown.rmVolume, 1)} m³
+                                    </span>
+                                </div>
+                                <div className="text-right">
+                                    <span className="font-bold font-mono text-blue-900 text-xs block">{fmt(unbilledBreakdown.rmEstValue)}</span>
+                                    <button
+                                        onClick={() => onNavigateTab("unbilled", { type: "READYMIX" })}
+                                        className="text-[10px] text-blue-700 font-semibold hover:underline cursor-pointer"
+                                    >
+                                        Buka Cor →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Column 2: Sewa Alat & Kendaraan */}
+                        <div className="p-3.5 rounded-xl border border-purple-200/80 bg-gradient-to-br from-purple-50/40 via-white to-purple-50/10 space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-purple-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-purple-600 text-white rounded-lg">
+                                        <Wrench className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-xs text-purple-950 uppercase tracking-wide">Divisi Sewa Alat & Kendaraan</div>
+                                        <div className="text-[11px] text-slate-500">Concrete Pump, Excavator, Crane & Alat Berat</div>
+                                    </div>
+                                </div>
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-300 font-mono text-[10px]">
+                                    {revenueBreakdown.sewaInvoiceCount} Faktur
+                                </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Tagihan Gross</span>
+                                    <span className="text-sm font-bold font-mono text-purple-950 block mt-0.5">{fmt(revenueBreakdown.sewaGross)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Kas Diterima</span>
+                                    <span className="text-sm font-bold font-mono text-emerald-700 block mt-0.5">{fmt(revenueBreakdown.sewaPaid)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Sisa Piutang</span>
+                                    <span className="text-sm font-bold font-mono text-amber-700 block mt-0.5">{fmt(revenueBreakdown.sewaOutstanding)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Total Durasi Sewa</span>
+                                    <span className="text-sm font-bold font-mono text-purple-700 block mt-0.5">{revenueBreakdown.sewaDays} Hari</span>
+                                </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-purple-100/40 border border-purple-200 flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-purple-900 uppercase block">Antrean Siap Tagih (Unbilled)</span>
+                                    <span className="text-slate-600 text-[11px]">
+                                        {unbilledBreakdown.sewaCount} Transaksi · {unbilledBreakdown.sewaDays} Hari Kerja
+                                    </span>
+                                </div>
+                                <div className="text-right">
+                                    <span className="font-bold font-mono text-purple-900 text-xs block">{fmt(unbilledBreakdown.sewaEstValue)}</span>
+                                    <button
+                                        onClick={() => onNavigateTab("unbilled", { type: "SEWA" })}
+                                        className="text-[10px] text-purple-700 font-semibold hover:underline cursor-pointer"
+                                    >
+                                        Buka Sewa →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* ─── Overdue Alert Bar (If any overdue invoices exist) ──────────── */}
             {overdueInvoices.length > 0 && (
@@ -595,10 +956,10 @@ export function BillingDashboard({
                             <Layers className="w-4 h-4 text-orange-600" />
                             <div>
                                 <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                                    Pipeline Transaksi Belum Difakturkan
+                                    Pipeline Transaksi Belum Difakturkan (Cor & Sewa)
                                 </CardTitle>
                                 <span className="text-[11px] text-slate-500">
-                                    Pengiriman cor selesai yang siap ditagihkan
+                                    Pengiriman cor & sewa alat operasional yang siap ditagihkan
                                 </span>
                             </div>
                         </div>
@@ -614,7 +975,7 @@ export function BillingDashboard({
                     <CardContent className="p-3.5 space-y-2.5">
                         {unbilledByCustomer.length === 0 ? (
                             <div className="text-center py-6 text-slate-400 text-xs italic">
-                                Seluruh pengiriman beton telah berhasil difakturkan.
+                                Seluruh pengiriman beton dan sewa alat telah berhasil difakturkan.
                             </div>
                         ) : (
                             unbilledByCustomer.map((ub, idx) => (
@@ -623,8 +984,22 @@ export function BillingDashboard({
                                         <div className="font-semibold text-slate-800 truncate">
                                             {ub.customerName}
                                         </div>
-                                        <div className="text-[11px] text-slate-500">
-                                            {ub.txCount} Transaksi · <span className="font-medium text-slate-700">{fmtNum(ub.volume, 1)} m³</span>
+                                        <div className="text-[11px] text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                            <span>{ub.txCount} Transaksi</span>
+                                            <span>·</span>
+                                            {ub.hasRm && (
+                                                <span className="font-medium text-slate-700">{fmtNum(ub.rmVolume, 1)} m³</span>
+                                            )}
+                                            {ub.hasRm && ub.hasSewa && <span>+</span>}
+                                            {ub.hasSewa && (
+                                                <span className="font-medium text-purple-700">{ub.sewaDays} Hari Sewa</span>
+                                            )}
+                                            {ub.hasSewa && !ub.hasRm && (
+                                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[9px] px-1 py-0">Sewa Alat</Badge>
+                                            )}
+                                            {ub.hasRm && ub.hasSewa && (
+                                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[9px] px-1 py-0">Cor + Sewa</Badge>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="text-right shrink-0">

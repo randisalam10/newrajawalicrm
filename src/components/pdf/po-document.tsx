@@ -18,6 +18,8 @@ export type POItem = {
     quantity: number
     satuan: string
     harga: number
+    vehicle_info?: string | null
+    km_hm?: string | null
     keterangan?: string | null
 }
 
@@ -389,7 +391,14 @@ export function PODocument({ po }: { po: POData }) {
                     {po.items.map((item, i) => (
                         <View key={item.id} style={i % 2 === 0 ? s.tableRow : s.tableRowAlt}>
                             <Text style={[s.tableCell, { width: 20, textAlign: "center" }]}>{i + 1}</Text>
-                            <Text style={[s.tableCellBold, { flex: 2.2 }]}>{item.name}</Text>
+                            <View style={{ flex: 2.2, padding: "1.8 3" }}>
+                                <Text style={s.tableCellBold}>{item.name}</Text>
+                                {(item.vehicle_info || item.km_hm) && (
+                                    <Text style={{ fontSize: 5.2, color: COLORS.primary, fontFamily: "Helvetica-Bold", marginTop: 1 }}>
+                                        Unit: {item.vehicle_info || "-"} {item.km_hm ? `[KM/HM: ${item.km_hm}]` : ""}
+                                    </Text>
+                                )}
+                            </View>
                             <Text style={[s.tableCell, { flex: 1.1, color: COLORS.muted }]}>
                                 {[item.part_number, item.merk].filter(Boolean).join(" / ") || "-"}
                             </Text>

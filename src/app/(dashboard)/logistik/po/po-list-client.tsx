@@ -933,7 +933,9 @@ export function POListClient({
                                                 <tr>
                                                     <th className="px-3 py-2.5 text-center w-10">No</th>
                                                     <th className="px-3 py-2.5 text-left w-24">Kode</th>
-                                                    <th className="px-3 py-2.5 text-left min-w-[220px]">Nama Barang Pesanan</th>
+                                                    <th className="px-3 py-2.5 text-left min-w-[200px]">Nama Barang Pesanan</th>
+                                                    <th className="px-3 py-2.5 text-left min-w-[140px]">Unit Kendaraan / Alat</th>
+                                                    <th className="px-3 py-2.5 text-center w-24">KM / HM</th>
                                                     <th className="px-3 py-2.5 text-right w-20">Qty</th>
                                                     <th className="px-3 py-2.5 text-center w-20">Satuan</th>
                                                     <th className="px-3 py-2.5 text-right w-32">Harga Satuan</th>
@@ -955,6 +957,29 @@ export function POListClient({
                                                                 </div>
                                                             )}
                                                         </td>
+                                                        <td className="px-3 py-2.5">
+                                                            {item.vehicle ? (
+                                                                <div>
+                                                                    <span className="font-semibold text-slate-800 font-mono text-xs block">
+                                                                        {item.vehicle.code}
+                                                                    </span>
+                                                                    <span className="text-[10px] text-slate-500 block truncate max-w-[150px]">
+                                                                        {item.vehicle.plate_number} {item.vehicle.category?.name ? `(${item.vehicle.category.name})` : ""}
+                                                                    </span>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-slate-400">-</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-2.5 text-center font-mono">
+                                                            {item.km_hm ? (
+                                                                <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 font-semibold text-slate-700 text-[11px]">
+                                                                    {item.km_hm}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-400">-</span>
+                                                            )}
+                                                        </td>
                                                         <td className="px-3 py-2.5 text-right font-mono font-bold text-slate-900">{item.quantity}</td>
                                                         <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{item.masterItem?.satuan}</td>
                                                         <td className="px-3 py-2.5 text-right font-mono text-slate-700">
@@ -969,7 +994,7 @@ export function POListClient({
                                             </tbody>
                                             <tfoot className="bg-slate-50 border-t border-slate-200 font-semibold">
                                                 <tr>
-                                                    <td colSpan={7} className="px-4 py-3 text-right text-slate-600 uppercase tracking-wider text-xs">
+                                                    <td colSpan={9} className="px-4 py-3 text-right text-slate-600 uppercase tracking-wider text-xs">
                                                         Total Nilai Pembelian:
                                                     </td>
                                                     <td className="px-4 py-3 text-right font-mono font-bold text-base text-emerald-700">

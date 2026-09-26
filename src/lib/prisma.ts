@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client"
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
 // Pastikan jika schema Prisma baru di-generate, instance lama di globalThis di-refresh
-if (globalForPrisma.prisma && !(globalForPrisma.prisma as any).webPushSubscription) {
+if (globalForPrisma.prisma && (!(globalForPrisma.prisma as any).webPushSubscription || !(globalForPrisma.prisma as any).masterSewaAlat)) {
   try {
     globalForPrisma.prisma.$disconnect()
   } catch (e) {}

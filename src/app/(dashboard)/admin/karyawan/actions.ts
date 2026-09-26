@@ -12,7 +12,83 @@ const karyawanSchema = z.object({
     status: z.enum(["Active", "Inactive"]).default("Active"),
     join_date: z.string().min(1, "Tanggal Bergabung required"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
+    driverCategoryId: z.preprocess(val => (val === "" || val === "NONE" ? null : val), z.string().nullable().optional()),
 })
+
+export async function getDriverCategories() {
+    return await prisma.driverCategory.findMany({
+        orderBy: [{ isSystem: 'desc' }, { name: 'asc' }],
+        include: {
+            _count: { select: { employees: true } }
+        }
+    })
+}
+
+export async function createDriverCategory(data: { name: string; code?: string; description?: string }) {
+    const session = await auth()
+    if (!session?.user || ["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak" }
+    }
+    if (!data.name?.trim()) return { success: false, error: "Nama kategori wajib diisi" }
+
+    try {
+        const cleanName = data.name.trim()
+        const existing = await prisma.driverCategory.findUnique({ where: { name: cleanName } })
+        if (existing) return { success: true, category: existing }
+
+        const category = await prisma.driverCategory.create({
+            data: {
+                name: cleanName,
+                code: data.code?.trim().toUpperCase() || cleanName.slice(0, 3).toUpperCase(),
+                description: data.description?.trim() || null,
+                isSystem: false
+            }
+        })
+        revalidatePath("/admin/karyawan")
+        return { success: true, category }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function updateDriverCategory(id: string, data: { name: string; code?: string; description?: string }) {
+    const session = await auth()
+    if (!session?.user || ["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak" }
+    }
+    try {
+        const category = await prisma.driverCategory.update({
+            where: { id },
+            data: {
+                name: data.name.trim(),
+                code: data.code?.trim().toUpperCase() || null,
+                description: data.description?.trim() || null
+            }
+        })
+        revalidatePath("/admin/karyawan")
+        return { success: true, category }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
+
+export async function deleteDriverCategory(id: string) {
+    const session = await auth()
+    if (!session?.user || ["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+        return { success: false, error: "Akses ditolak" }
+    }
+    try {
+        const count = await prisma.employee.count({ where: { driverCategoryId: id } })
+        if (count > 0) {
+            return { success: false, error: `Kategori ini masih digunakan oleh ${count} karyawan.` }
+        }
+        await prisma.driverCategory.delete({ where: { id } })
+        revalidatePath("/admin/karyawan")
+        return { success: true }
+    } catch (e: any) {
+        return { success: false, error: e.message }
+    }
+}
 
 export async function getKaryawans() {
     const session = await auth()
@@ -23,7 +99,10 @@ export async function getKaryawans() {
 
     return await prisma.employee.findMany({
         where: filter,
-        include: { location: true },
+        include: { 
+            location: true,
+            driverCategory: true 
+        },
         orderBy: { name: 'asc' }
     })
 }
@@ -59,7 +138,8 @@ export async function createKaryawan(formData: FormData) {
                 position: insertData.position,
                 status: insertData.status,
                 join_date: new Date(insertData.join_date),
-                locationId: isCorporateLevel ? null : finalLocationId
+                locationId: isCorporateLevel ? null : finalLocationId,
+                driverCategoryId: insertData.driverCategoryId || null
             }
         })
         revalidatePath("/admin/karyawan")
@@ -110,7 +190,8 @@ export async function updateKaryawan(id: string, formData: FormData) {
                 position: updateData.position,
                 status: updateData.status,
                 join_date: new Date(updateData.join_date),
-                locationId: isCorporateLevel ? null : finalLocationId
+                locationId: isCorporateLevel ? null : finalLocationId,
+                driverCategoryId: updateData.driverCategoryId || null
             }
         })
         revalidatePath("/admin/karyawan")

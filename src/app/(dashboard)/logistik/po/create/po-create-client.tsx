@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-    Trash2, Plus, Info, CheckCircle, Sparkles, Zap, Check, Loader2
+    Trash2, Plus, Info, CheckCircle, Sparkles, Zap, Check, Loader2,
+    Truck, Wrench, Gauge, AlertTriangle
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Combobox } from "@/components/ui/combobox"
@@ -31,8 +32,8 @@ import { useRouter } from "next/navigation"
 
 type PoPaymentMethod = "CASH" | "CREDIT"
 
-export function POCreateClient({ companies, categories, suppliers, items, signers, pembuatAdmin }: {
-    companies: any[], categories: any[], suppliers: any[], items: any[], signers: any[], pembuatAdmin: string
+export function POCreateClient({ companies, categories, suppliers, items, signers, vehicles = [], pembuatAdmin }: {
+    companies: any[], categories: any[], suppliers: any[], items: any[], signers: any[], vehicles?: any[], pembuatAdmin: string
 }) {
     const router = useRouter()
     const [saving, setSaving] = useState(false)
@@ -54,6 +55,8 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
 
     // Item picker inputs
     const [selectedItemId, setSelectedItemId] = useState("")
+    const [inputVehicleId, setInputVehicleId] = useState("")
+    const [inputKmHm, setInputKmHm] = useState("")
     const [showPriceEditor, setShowPriceEditor] = useState(false)
     const [inputQty, setInputQty] = useState<number>(1)
     const [inputHarga, setInputHarga] = useState<number | "">("")
@@ -84,6 +87,61 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
     const filteredProjects = selectedCompany?.projects || []
     const activeCategory = categories.find((c: any) => c.id === selectedCategoryId)
     const availableItems = masterItemsList.filter((i: any) => i.supplierId === selectedSupplierId)
+
+    // Category requirement rules
+    const isSparepart = activeCategory?.kode_kategori === "SPR" || activeCategory?.name?.toLowerCase().includes("sparepart")
+    const isPengadaanBaru = activeCategory?.kode_kategori === "PEN" || activeCategory?.name?.toLowerCase().includes("pengadaan")
+    const isVehicleRequired = false // Opsional sesuai permintaan user
+    const isVehicleOptional = isSparepart || isPengadaanBaru
+    const showVehicleFields = isSparepart || isPengadaanBaru
+
+    const selectedVehicle = vehicles.find((v: any) => v.id === inputVehicleId)
+    const isHM = selectedVehicle?.meter_type === "HM" ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("batching") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("genset") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("excavator") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("loader") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("pump")
+    const meterUnitLabel = isHM ? "Hour Meter (HM)" : "Odometer (KM)"
+
+    const parsedInputMeter = React.useMemo(() => {
+        if (!inputKmHm) return null
+        const cleaned = String(inputKmHm).replace(/[^0-9.]/g, '')
+        const num = parseFloat(cleaned)
+        return (!isNaN(num) && num > 0) ? num : null
+    }, [inputKmHm])
+
+    const effectiveLastMeter = React.useMemo(() => {
+        let maxMeter = selectedVehicle?.lastKmMeter ? Number(selectedVehicle.lastKmMeter) : null
+        for (const item of poItems) {
+            if (item.vehicleId === inputVehicleId && item.km_hm) {
+                const cleaned = String(item.km_hm).replace(/[^0-9.]/g, '')
+                const val = parseFloat(cleaned)
+                if (!isNaN(val) && (maxMeter === null || val > maxMeter)) {
+                    maxMeter = val
+                }
+            }
+        }
+        return maxMeter
+    }, [selectedVehicle, poItems, inputVehicleId])
+
+    const isBackdateAnomaly = React.useMemo(() => {
+        if (!effectiveLastMeter || !parsedInputMeter) return false
+        return parsedInputMeter < effectiveLastMeter
+    }, [effectiveLastMeter, parsedInputMeter])
+
+    const vehicleOptions = React.useMemo(() => {
+        return vehicles.map((v: any) => {
+            const cat = v.category?.name || v.vehicle_type || "Unit"
+            const loc = v.location?.name ? ` • ${v.location.name}` : ""
+            const plate = v.plate_number ? ` - ${v.plate_number}` : ""
+            const spec = v.merk_model ? ` (${v.merk_model})` : ""
+            return {
+                value: v.id,
+                label: `[${v.code}]${plate} [${cat}${loc}]${spec}`,
+            }
+        })
+    }, [vehicles])
 
     const handleCompanyChange = (val: string) => {
         setSelectedCompanyId(val)
@@ -120,8 +178,27 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
         const itm = masterItemsList.find((i: any) => i.id === selectedItemId)
         if (!itm) return
 
+        // Alokasi unit kendaraan bersifat opsional. Jika diisi bersama KM/HM, tetap divalidasi agar tidak backdate
+        if (inputVehicleId && isBackdateAnomaly && effectiveLastMeter && parsedInputMeter) {
+            const confirmAdd = confirm(
+                `PERINGATAN METER BACKDATE / MUNDUR:\n\n` +
+                `Unit: ${selectedVehicle?.code} (${selectedVehicle?.plate_number})\n` +
+                `Nilai ${meterUnitLabel} yang dimasukkan: ${parsedInputMeter.toLocaleString('id-ID')}\n` +
+                `Catatan meter terakhir di sistem: ${effectiveLastMeter.toLocaleString('id-ID')} (${selectedVehicle?.lastKmSource || 'Sistem'})\n` +
+                `Selisih: ${(parsedInputMeter - effectiveLastMeter).toLocaleString('id-ID')} (LEBIH KECIL)\n\n` +
+                `Apakah Anda yakin data meter ini benar dan ingin tetap menambahkannya?`
+            )
+            if (!confirmAdd) return
+        }
+
         const qty = Number(inputQty) > 0 ? Number(inputQty) : 1
         const price = inputHarga !== "" ? Number(inputHarga) : itm.harga
+
+        const veh = vehicles.find((v: any) => v.id === inputVehicleId)
+        const vehicleText = veh ? `[${veh.code} - ${veh.plate_number}${inputKmHm ? ` | ${inputKmHm}` : ""}]` : ""
+        const fullKeterangan = inputKeterangan.trim()
+            ? (vehicleText ? `${vehicleText} ${inputKeterangan.trim()}` : inputKeterangan.trim())
+            : (vehicleText || undefined)
 
         setPoItems([...poItems, {
             ...itm,
@@ -129,8 +206,14 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
             masterHarga: itm.harga,
             harga: price,
             quantity: qty,
-            keterangan: inputKeterangan,
-            updateMasterPrice: inputUpdateMaster
+            keterangan: fullKeterangan,
+            rawKeterangan: inputKeterangan,
+            updateMasterPrice: inputUpdateMaster,
+            vehicleId: inputVehicleId || null,
+            vehicleCode: veh?.code || null,
+            vehiclePlate: veh?.plate_number || null,
+            vehicleCategory: veh?.category?.name || veh?.vehicle_type || null,
+            km_hm: inputKmHm || null,
         }])
 
         setSelectedItemId("")
@@ -139,6 +222,7 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
         setInputHarga("")
         setInputKeterangan("")
         setInputUpdateMaster(false)
+        // Note: we intentionally keep inputVehicleId and inputKmHm so user doesn't have to reselect for next item in same PO!
     }
 
     // Direct update master price from picker
@@ -262,7 +346,9 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                     harga_satuan: item.harga,
                     keterangan: item.keterangan || undefined,
                     subtotal: item.harga * item.quantity,
-                    updateMasterPrice: item.updateMasterPrice || false
+                    updateMasterPrice: item.updateMasterPrice || false,
+                    vehicleId: item.vehicleId || undefined,
+                    km_hm: item.km_hm || undefined,
                 }))
             })
 
@@ -328,8 +414,8 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
     }
 
     return (
-        <form onSubmit={handleSubmit} className="max-w-6xl space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form onSubmit={handleSubmit} className="w-full space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Bagian Kiri */}
                 <Card className="shadow-sm">
                     <CardHeader className="bg-slate-50/50 border-b pb-4">
@@ -351,8 +437,8 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                             <Combobox options={categoryOptions} value={selectedCategoryId} onChange={setSelectedCategoryId} placeholder="Pilih Kategori..." />
                         </div>
                         {activeCategory?.require_hm_km && (
-                            <div className="space-y-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                                <Label className="text-amber-800 font-semibold">KM/HM Kendaraan *</Label>
+                            <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-md">
+                                <Label className="text-slate-800 font-semibold">KM/HM Kendaraan (Opsional)</Label>
                                 <Input value={kmHm} onChange={e => setKmHm(e.target.value)} placeholder="Contoh: 15.000 KM" />
                             </div>
                         )}
@@ -578,6 +664,64 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                                     </div>
                                 )}
 
+                                {/* Alokasi Unit Kendaraan / Alat & KM/HM untuk Kategori Sparepart atau Pengadaan Baru */}
+                                {showVehicleFields && (
+                                    <div className="p-3 rounded-lg border space-y-2 bg-slate-50 border-slate-200">
+                                        <div className="flex items-center justify-between text-xs">
+                                            <span className="font-semibold flex items-center gap-1.5 text-slate-800">
+                                                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                                <span>Alokasi Unit Kendaraan / Alat</span>
+                                                <span className="text-slate-400 font-normal text-[11px]">(Opsional)</span>
+                                            </span>
+                                            {selectedVehicle && (
+                                                <span className="text-[10px] font-mono text-blue-700 bg-white px-2 py-0.5 rounded border border-blue-200 font-medium">
+                                                    {selectedVehicle.category?.name || selectedVehicle.vehicle_type} {selectedVehicle.location?.name ? `• ${selectedVehicle.location.name}` : ""}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                                            <div className="md:col-span-8 space-y-1">
+                                                <Label className="text-xs font-medium text-slate-700">Pilih Kendaraan / Alat (Opsional)</Label>
+                                                <Combobox
+                                                    options={vehicleOptions}
+                                                    value={inputVehicleId}
+                                                    onChange={setInputVehicleId}
+                                                    placeholder="Pilih unit armada, mixer, alat berat, genset (jika ada)..."
+                                                />
+                                            </div>
+                                            <div className="md:col-span-4 space-y-1">
+                                                <Label className="text-xs font-medium text-slate-700">{meterUnitLabel} (Opsional)</Label>
+                                                <Input
+                                                    placeholder={isHM ? "Misal: 2.450 HM" : "Misal: 15.000 KM"}
+                                                    value={inputKmHm}
+                                                    onChange={e => setInputKmHm(e.target.value)}
+                                                    className={cn("h-9 text-xs bg-white", isBackdateAnomaly && "border-rose-400 focus:ring-rose-500")}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {effectiveLastMeter && (
+                                            <div className="flex items-center justify-between flex-wrap gap-1.5 text-[11px] bg-white px-2.5 py-1.5 rounded border border-slate-200 mt-1">
+                                                <div className="flex items-center gap-1.5 text-slate-600">
+                                                    <span className="font-medium text-slate-500">Catatan Meter Terakhir:</span>
+                                                    <span className="font-mono font-bold text-slate-900">
+                                                        {Number(effectiveLastMeter).toLocaleString('id-ID')} {isHM ? "HM" : "KM"}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400">
+                                                        ({selectedVehicle?.lastKmSource || "Sistem"}{selectedVehicle?.lastKmDate ? ` • ${new Date(selectedVehicle.lastKmDate).toLocaleDateString('id-ID')}` : ""})
+                                                    </span>
+                                                </div>
+                                                {isBackdateAnomaly && (
+                                                    <div className="flex items-center gap-1 text-rose-700 font-semibold text-[11px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                                                        <span>Nilai lebih kecil dari meter terakhir (potensi backdate)</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 {/* Baris standar input PO */}
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                                     <div className="md:col-span-2 space-y-1">
@@ -594,7 +738,7 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                                     <div className="md:col-span-7 space-y-1">
                                         <Label className="text-xs font-medium">Keterangan Khusus (Opsional)</Label>
                                         <Input 
-                                            placeholder="Plat nomor / lokasi..." 
+                                            placeholder="Catatan pengerjaan / part number..." 
                                             value={inputKeterangan} 
                                             onChange={e => setInputKeterangan(e.target.value)} 
                                             className="h-9 text-xs"
@@ -626,22 +770,48 @@ export function POCreateClient({ companies, categories, suppliers, items, signer
                                 <thead className="bg-slate-100 border-b">
                                     <tr>
                                         <th className="py-2.5 px-4 text-left font-semibold text-slate-600">Info Barang</th>
-                                        <th className="py-2.5 px-4 text-center font-semibold text-slate-600 w-24">Qty</th>
-                                        <th className="py-2.5 px-4 text-left font-semibold text-slate-600 w-20">Satuan</th>
-                                        <th className="py-2.5 px-4 text-right font-semibold text-slate-600 w-44">Harga Satuan</th>
-                                        <th className="py-2.5 px-4 text-left font-semibold text-slate-600">Keterangan Khusus</th>
+                                        <th className="py-2.5 px-4 text-left font-semibold text-slate-600 w-44">Unit Kendaraan / Alat</th>
+                                        <th className="py-2.5 px-4 text-center font-semibold text-slate-600 w-28">KM / HM</th>
+                                        <th className="py-2.5 px-4 text-center font-semibold text-slate-600 w-20">Qty</th>
+                                        <th className="py-2.5 px-4 text-left font-semibold text-slate-600 w-16">Satuan</th>
+                                        <th className="py-2.5 px-4 text-right font-semibold text-slate-600 w-36">Harga Satuan</th>
+                                        <th className="py-2.5 px-4 text-left font-semibold text-slate-600">Keterangan</th>
                                         <th className="py-2.5 px-4 text-right font-semibold text-slate-600 w-32">Total Harga</th>
                                         <th className="py-2.5 px-4 w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {poItems.map((item) => (
-                                        <tr key={item.cartId} className="border-b hover:bg-slate-50/50">
+                                        <tr key={item.cartId} className="border-b hover:bg-slate-50/50 text-xs">
                                             <td className="py-3 px-4">
-                                                <div className="font-medium text-slate-900">{item.name}</div>
-                                                <div className="text-xs text-slate-500 mt-0.5">
-                                                    Part/Tipe: {item.part_number || "-"} | Merk: {item.merk || "-"}
+                                                <div className="font-semibold text-slate-900">{item.name}</div>
+                                                <div className="text-[11px] text-slate-500 mt-0.5">
+                                                    Part: {item.part_number || "-"} | Merk: {item.merk || "-"}
                                                 </div>
+                                            </td>
+                                            <td className="py-2 px-4">
+                                                {item.vehicleCode ? (
+                                                    <div>
+                                                        <div className="font-bold text-slate-800 font-mono flex items-center gap-1 text-xs">
+                                                            <Truck className="w-3 h-3 text-blue-600" />
+                                                            {item.vehicleCode}
+                                                        </div>
+                                                        <div className="text-[10px] text-slate-500 truncate max-w-[140px]">
+                                                            {item.vehiclePlate} {item.vehicleCategory ? `(${item.vehicleCategory})` : ""}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">-</span>
+                                                )}
+                                            </td>
+                                            <td className="py-2 px-4 text-center font-mono">
+                                                {item.km_hm ? (
+                                                    <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 font-semibold text-slate-700 text-[11px]">
+                                                        {item.km_hm}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs">-</span>
+                                                )}
                                             </td>
                                             <td className="py-2 px-4">
                                                 <Input

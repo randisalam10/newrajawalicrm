@@ -5,7 +5,7 @@ import { isCorporateUser, getLocationFilter, hasPermission } from "@/lib/rbac"
 import { redirect } from "next/navigation"
 
 export const metadata = {
-    title: "Material Agregat | BP ERP System",
+    title: "Material Agregat | RajawaliMix",
     description: "Pencatatan material agregat masuk per batching plant",
 }
 

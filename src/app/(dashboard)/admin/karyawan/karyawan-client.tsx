@@ -29,19 +29,22 @@ import {
 } from "@/components/ui/select"
 import {
     Plus, Pencil, Trash2, Search, X, RotateCcw,
-    Users, UserCheck, Truck, HardHat, Shield, Building2, Filter
+    Users, UserCheck, Truck, HardHat, Shield, Building2, Filter, Tag, Loader2
 } from "lucide-react"
-import { createKaryawan, updateKaryawan, deleteKaryawan } from "./actions"
+import { createKaryawan, updateKaryawan, deleteKaryawan, createDriverCategory, deleteDriverCategory } from "./actions"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
+import { toast } from "sonner"
 
 export function KaryawanClient({
     initialData,
     locations,
+    driverCategories = [],
     userRole,
     canManage = true,
 }: {
     initialData: any[]
     locations: any[]
+    driverCategories?: any[]
     userRole: string
     canManage?: boolean
 }) {
@@ -49,6 +52,14 @@ export function KaryawanClient({
     const [open, setOpen] = useState(false)
     const [editData, setEditData] = useState<any>(null)
     const [selectedPosition, setSelectedPosition] = useState<string>("Sopir")
+
+    // Driver Categories state
+    const [categories, setCategories] = useState<any[]>(driverCategories || [])
+    const [isManageCategoriesOpen, setIsManageCategoriesOpen] = useState(false)
+    const [newCategoryName, setNewCategoryName] = useState("")
+    const [newCategoryCode, setNewCategoryCode] = useState("")
+    const [newCategoryDesc, setNewCategoryDesc] = useState("")
+    const [isSavingCategory, setIsSavingCategory] = useState(false)
 
     // Filter states
     const [searchQuery, setSearchQuery] = useState<string>("")
@@ -196,11 +207,23 @@ export function KaryawanClient({
                     </div>
                     <p className="text-xs sm:text-sm text-slate-500">Kelola master data Pegawai (Sopir, Operator, Admin).</p>
                 </div>
-                {canManage && (
-                    <>
-                        <Button onClick={handleOpenNew} className="shadow-xs bg-slate-900 hover:bg-slate-800 text-white gap-1.5 h-9 text-xs">
-                            <Plus className="w-4 h-4" /> Tambah Karyawan
-                        </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsManageCategoriesOpen(true)}
+                        className="h-9 text-xs gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
+                    >
+                        <Tag className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Kategori Driver/Operator ({categories.length})</span>
+                    </Button>
+
+                    {canManage && (
+                        <>
+                            <Button onClick={handleOpenNew} className="shadow-xs bg-slate-900 hover:bg-slate-800 text-white gap-1.5 h-9 text-xs">
+                                <Plus className="w-4 h-4" /> Tambah Karyawan
+                            </Button>
                         <Dialog open={open} onOpenChange={setOpen}>
                             <DialogContent className="sm:max-w-[425px]">
                             <DialogHeader>
@@ -244,6 +267,34 @@ export function KaryawanClient({
                                     </div>
                                 </div>
 
+                                {["Sopir", "Operator"].includes(selectedPosition) && (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <Label htmlFor="driverCategoryId">Kategori {selectedPosition} / Unit</Label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsManageCategoriesOpen(true)}
+                                                className="text-[11px] text-blue-600 hover:text-blue-800 underline font-medium"
+                                            >
+                                                + Kelola Kategori
+                                            </button>
+                                        </div>
+                                        <Select name="driverCategoryId" defaultValue={editData?.driverCategoryId || "NONE"}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Pilih Kategori (opsional)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="NONE">-- Tanpa Kategori Khusus --</SelectItem>
+                                                {categories.map((cat: any) => (
+                                                    <SelectItem key={cat.id} value={cat.id}>
+                                                        {cat.name} {cat.code ? `(${cat.code})` : ''}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <Label htmlFor="join_date">Tanggal Bergabung *</Label>
                                     <Input id="join_date" name="join_date" type="date" defaultValue={editData?.join_date} required />
@@ -273,6 +324,7 @@ export function KaryawanClient({
                         </Dialog>
                     </>
                 )}
+                </div>
             </div>
 
             {/* ── 2. Kartu Ringkasan Interaktif (Quick Filter Stat Cards) ── */}
@@ -559,7 +611,14 @@ export function KaryawanClient({
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            {getPositionBadge(item.position)}
+                                            <div className="flex flex-col gap-1 items-start">
+                                                {getPositionBadge(item.position)}
+                                                {item.driverCategory && (
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                                        {item.driverCategory.name}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${item.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
@@ -589,6 +648,124 @@ export function KaryawanClient({
                     </Table>
                 )}
             </SimpleDataTable>
+
+            {/* ── Dialog Kelola Kategori Driver / Operator ── */}
+            <Dialog open={isManageCategoriesOpen} onOpenChange={setIsManageCategoriesOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Tag className="w-5 h-5 text-blue-600" />
+                            Kategori Driver & Operator
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2">
+                        <p className="text-xs text-slate-500">
+                            Kategori pengelompokan penugasan untuk Sopir dan Operator (misal: Operator Concrete Pump, Operator Excavator, Sopir Mixer, dll).
+                        </p>
+
+                        {/* List Categories */}
+                        <div className="border border-slate-200 rounded-lg overflow-hidden max-h-[220px] overflow-y-auto divide-y divide-slate-100">
+                            {categories.length === 0 ? (
+                                <div className="p-4 text-center text-xs text-slate-400">Belum ada kategori driver</div>
+                            ) : (
+                                categories.map((cat) => (
+                                    <div key={cat.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50">
+                                        <div>
+                                            <span className="font-semibold text-slate-800">{cat.name}</span>
+                                            {cat.code && <span className="ml-1.5 px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded text-[10px] font-mono">{cat.code}</span>}
+                                            {cat.description && <p className="text-[11px] text-slate-400 mt-0.5">{cat.description}</p>}
+                                        </div>
+                                        {canManage && !cat.isSystem && (
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 text-slate-400 hover:text-rose-600"
+                                                onClick={async () => {
+                                                    if (!confirm(`Hapus kategori "${cat.name}"?`)) return
+                                                    const res = await deleteDriverCategory(cat.id)
+                                                    if (res.success) {
+                                                        toast.success("Kategori berhasil dihapus")
+                                                        setCategories(prev => prev.filter(c => c.id !== cat.id))
+                                                    } else {
+                                                        toast.error(res.error || "Gagal menghapus")
+                                                    }
+                                                }}
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Form Add Category */}
+                        {canManage && (
+                            <form
+                                onSubmit={async (e) => {
+                                    e.preventDefault()
+                                    if (!newCategoryName.trim()) {
+                                        toast.error("Nama kategori wajib diisi")
+                                        return
+                                    }
+                                    setIsSavingCategory(true)
+                                    try {
+                                        const res = await createDriverCategory({
+                                            name: newCategoryName.trim(),
+                                            code: newCategoryCode.trim() || undefined,
+                                            description: newCategoryDesc.trim() || undefined
+                                        })
+                                        if (res.success && res.category) {
+                                            toast.success("Kategori baru ditambahkan")
+                                            setCategories(prev => [...prev, res.category])
+                                            setNewCategoryName("")
+                                            setNewCategoryCode("")
+                                            setNewCategoryDesc("")
+                                        } else {
+                                            toast.error(res.error || "Gagal menambahkan kategori")
+                                        }
+                                    } finally {
+                                        setIsSavingCategory(false)
+                                    }
+                                }}
+                                className="space-y-2.5 pt-2 border-t border-slate-100"
+                            >
+                                <Label className="text-xs font-semibold">Tambah Kategori Baru</Label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="col-span-2">
+                                        <Input
+                                            placeholder="Nama (e.g. Operator Crane)"
+                                            value={newCategoryName}
+                                            onChange={e => setNewCategoryName(e.target.value)}
+                                            className="h-8 text-xs"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <Input
+                                            placeholder="Kode (e.g. CRN)"
+                                            value={newCategoryCode}
+                                            onChange={e => setNewCategoryCode(e.target.value)}
+                                            className="h-8 text-xs font-mono uppercase"
+                                        />
+                                    </div>
+                                </div>
+                                <Input
+                                    placeholder="Deskripsi singkat (opsional)"
+                                    value={newCategoryDesc}
+                                    onChange={e => setNewCategoryDesc(e.target.value)}
+                                    className="h-8 text-xs"
+                                />
+                                <Button type="submit" disabled={isSavingCategory} size="sm" className="w-full h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700">
+                                    {isSavingCategory ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                                    Simpan Kategori Baru
+                                </Button>
+                            </form>
+                        )}
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

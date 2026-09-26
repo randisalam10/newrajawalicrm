@@ -44,17 +44,89 @@ export async function getRblVehicles() {
                     itemDescription: true,
                     receiptNo: true
                 }
+            },
+            poItems: {
+                where: {
+                    km_hm: { not: null },
+                    purchaseOrder: { status: { not: "CANCELLED" } }
+                },
+                orderBy: { purchaseOrder: { tanggal_terbit: "desc" } },
+                take: 1,
+                select: {
+                    km_hm: true,
+                    purchaseOrder: {
+                        select: {
+                            po_number: true,
+                            tanggal_terbit: true
+                        }
+                    },
+                    masterItem: {
+                        select: { name: true }
+                    }
+                }
             }
         },
         orderBy: [{ location: { name: "asc" } }, { code: "asc" }]
     })
 
-    return vehicles.map(v => ({
-        ...v,
-        lastKmMeter: v.rblExpenses[0]?.kmMeter ?? null,
-        lastKmDate: v.rblExpenses[0]?.date ?? null,
-        lastKmDescription: v.rblExpenses[0]?.itemDescription ?? null
-    }))
+    return vehicles.map(v => {
+        const lastRbl = v.rblExpenses[0]
+        const lastPo = v.poItems?.[0]
+
+        let rblKm: number | null = lastRbl?.kmMeter ?? null
+        let rblDate: Date | null = lastRbl?.date ?? null
+        let rblDesc = lastRbl ? `RBL: ${lastRbl.itemDescription || 'Pengeluaran'}` : null
+
+        let poKm: number | null = null
+        let poDate: Date | null = lastPo?.purchaseOrder?.tanggal_terbit ?? null
+        let poDesc: string | null = null
+        if (lastPo?.km_hm) {
+            const parsed = parseFloat(String(lastPo.km_hm).replace(/[^0-9.]/g, ''))
+            if (!isNaN(parsed) && parsed > 0) {
+                poKm = parsed
+                poDesc = `PO ${lastPo.purchaseOrder?.po_number || ''}: ${lastPo.masterItem?.name || 'Sparepart'}`
+            }
+        }
+
+        let lastKmMeter: number | null = null
+        let lastKmDate: Date | null = null
+        let lastKmDescription: string | null = null
+        let lastKmSource: "RBL" | "PO" | null = null
+
+        if (rblKm !== null && poKm !== null) {
+            const rblTime = rblDate ? new Date(rblDate).getTime() : 0
+            const poTime = poDate ? new Date(poDate).getTime() : 0
+            if (poTime >= rblTime || poKm > rblKm) {
+                lastKmMeter = Math.max(poKm, rblKm)
+                lastKmDate = poTime >= rblTime ? poDate : rblDate
+                lastKmDescription = poTime >= rblTime ? poDesc : rblDesc
+                lastKmSource = poKm >= rblKm ? "PO" : "RBL"
+            } else {
+                lastKmMeter = rblKm
+                lastKmDate = rblDate
+                lastKmDescription = rblDesc
+                lastKmSource = "RBL"
+            }
+        } else if (poKm !== null) {
+            lastKmMeter = poKm
+            lastKmDate = poDate
+            lastKmDescription = poDesc
+            lastKmSource = "PO"
+        } else if (rblKm !== null) {
+            lastKmMeter = rblKm
+            lastKmDate = rblDate
+            lastKmDescription = rblDesc
+            lastKmSource = "RBL"
+        }
+
+        return {
+            ...v,
+            lastKmMeter,
+            lastKmDate,
+            lastKmDescription,
+            lastKmSource
+        }
+    })
 }
 
 export async function getActiveBudget(locationId?: string) {
@@ -1044,10 +1116,96 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         orderBy: [{ date: "desc" }, { trip_sequence: "asc" }]
     })
 
-    // 5. Aggregate per vehicle
+    // 5. Fetch PO Items (Sparepart & Alat) for these vehicles
+    const poItemWhere: any = {
+        vehicleId: { in: vehicleIds },
+        purchaseOrder: {
+            status: { not: "CANCELLED" }
+        }
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        poItemWhere.purchaseOrder = {
+            status: { not: "CANCELLED" },
+            tanggal_terbit: dateWhere
+        }
+    }
+
+    let poItems: any[] = []
+    try {
+        const [rawPoItems, allSuppliers] = await Promise.all([
+            prisma.poItem.findMany({
+                where: poItemWhere,
+                include: {
+                    purchaseOrder: {
+                        select: {
+                            id: true,
+                            po_number: true,
+                            tanggal_terbit: true,
+                            status: true,
+                            supplierId: true,
+                            category: { select: { name: true, kode_kategori: true } },
+                        }
+                    },
+                    masterItem: {
+                        include: {
+                            supplier: { select: { name: true } }
+                        }
+                    },
+                    vehicle: {
+                        select: {
+                            id: true,
+                            code: true,
+                            plate_number: true,
+                            meter_type: true
+                        }
+                    }
+                },
+                orderBy: { purchaseOrder: { tanggal_terbit: "desc" } }
+            }),
+            prisma.supplier.findMany({ select: { id: true, name: true } })
+        ])
+
+        const supplierMap = new Map(allSuppliers.map(s => [s.id, s.name]))
+        poItems = rawPoItems.map(p => ({
+            ...p,
+            supplierName: (p.purchaseOrder?.supplierId ? supplierMap.get(p.purchaseOrder.supplierId) : null) || p.masterItem?.supplier?.name || "-"
+        }))
+    } catch (e) {
+        console.error("Failed to fetch poItems for vehicle report:", e)
+    }
+
+    // 6. Fetch Sewa Transactions for these vehicles
+    const sewaWhere: any = {
+        vehicleId: { in: vehicleIds },
+        status: { not: "Cancelled" }
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        sewaWhere.date = dateWhere
+    }
+
+    let sewaTransactions: any[] = []
+    try {
+        sewaTransactions = await prisma.sewaTransaction.findMany({
+            where: sewaWhere,
+            include: {
+                customer: { select: { id: true, customer_name: true } },
+                project: { select: { id: true, name: true } },
+                operator: { select: { id: true, name: true } },
+                vehicle: { select: { id: true, code: true, plate_number: true } },
+                location: { select: { id: true, name: true } }
+            },
+            orderBy: { date: "desc" }
+        })
+    } catch (e) {
+        console.error("Failed to fetch sewaTransactions for vehicle report:", e)
+    }
+
+    // 7. Aggregate per vehicle
     const vehicleAnalytics = vehicles.map(veh => {
         const vehExpenses = expenses.filter(e => e.vehicleId === veh.id)
         const vehTransactions = transactions.filter(t => t.vehicleId === veh.id)
+        const vehPoItems = poItems.filter(p => p.vehicleId === veh.id)
+        const vehSewaTransactions = sewaTransactions.filter(s => s.vehicleId === veh.id)
 
         // RBL Costs Breakdown
         let fuelLiters = 0
@@ -1055,13 +1213,13 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         let lubricantQty = 0
         let lubricantCost = 0
         let otherCost = 0
-        let totalCost = 0
+        let rblTotalCost = 0
 
         let minKm: number | null = null
         let maxKm: number | null = null
 
         for (const e of vehExpenses) {
-            totalCost += e.amount || 0
+            rblTotalCost += e.amount || 0
             const catName = (e.category || "").toLowerCase()
             if (catName.includes("bbm") || catName.includes("solar") || catName.includes("bakar")) {
                 fuelLiters += e.quantity || 0
@@ -1079,6 +1237,94 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             }
         }
 
+        // PO Sparepart & Equipment Costs Breakdown & Meter Synchronization
+        let sparepartCost = 0
+        for (const p of vehPoItems) {
+            const itemSubtotal = p.subtotal || ((p.harga_satuan || 0) * (p.quantity || 0))
+            sparepartCost += itemSubtotal
+
+            const rawMeter = p.km_hm || p.purchaseOrder?.km_hm_kendaraan
+            if (rawMeter) {
+                const cleaned = String(rawMeter).replace(/[^0-9.]/g, '')
+                const parsedMeter = parseFloat(cleaned)
+                if (!isNaN(parsedMeter) && parsedMeter > 0) {
+                    if (minKm === null || parsedMeter < minKm) minKm = parsedMeter
+                    if (maxKm === null || parsedMeter > maxKm) maxKm = parsedMeter
+                }
+            }
+        }
+
+        // Unified Meter & Event Timeline for Vehicle Inspection (Audit Trail KM/HM)
+        const meterEvents: Array<{
+            id: string
+            type: "RBL" | "PO"
+            date: Date | string
+            meter: number
+            description: string
+            referenceNo: string
+            amount: number
+            isBackdateAnomaly?: boolean
+        }> = []
+
+        for (const e of vehExpenses) {
+            if (e.kmMeter !== null && e.kmMeter !== undefined && e.kmMeter > 0) {
+                meterEvents.push({
+                    id: `rbl_${e.id}`,
+                    type: "RBL",
+                    date: e.date,
+                    meter: e.kmMeter,
+                    description: `${e.categoryRef?.name || e.category || 'BBM/Operasional'}: ${e.itemDescription}`,
+                    referenceNo: e.receiptNo || e.budget?.code || "-",
+                    amount: e.amount || 0,
+                })
+            }
+        }
+
+        for (const p of vehPoItems) {
+            const rawMeter = p.km_hm || p.purchaseOrder?.km_hm_kendaraan
+            if (rawMeter) {
+                const cleaned = String(rawMeter).replace(/[^0-9.]/g, '')
+                const parsedMeter = parseFloat(cleaned)
+                if (!isNaN(parsedMeter) && parsedMeter > 0) {
+                    const itemSubtotal = p.subtotal || ((p.harga_satuan || 0) * (p.quantity || 0))
+                    meterEvents.push({
+                        id: `po_${p.id}`,
+                        type: "PO",
+                        date: p.purchaseOrder?.tanggal_terbit || new Date(),
+                        meter: parsedMeter,
+                        description: `Suku Cadang: ${p.masterItem?.name || 'Sparepart'} (${p.quantity || 1} ${p.masterItem?.satuan || 'PCS'})`,
+                        referenceNo: p.purchaseOrder?.po_number || "-",
+                        amount: itemSubtotal,
+                    })
+                }
+            }
+        }
+
+        // Sort meter events chronologically (date ascending)
+        meterEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
+        // Check for backdate anomalies (where a later date has a smaller meter)
+        let runningMaxMeter = 0
+        for (const evt of meterEvents) {
+            if (runningMaxMeter > 0 && evt.meter < runningMaxMeter) {
+                evt.isBackdateAnomaly = true
+            } else {
+                runningMaxMeter = Math.max(runningMaxMeter, evt.meter)
+            }
+        }
+
+        // Grand Total Cost (Total Cost of Ownership = RBL Operasional + PO Sparepart/Alat)
+        const grandTotalCost = rblTotalCost + sparepartCost
+
+        // Sewa & Rental Revenue Breakdown
+        let rentalRevenue = 0
+        let rentalDays = 0
+        for (const s of vehSewaTransactions) {
+            rentalRevenue += s.total_price || 0
+            rentalDays += s.total_days || 0
+        }
+        const netProfit = rentalRevenue - grandTotalCost
+
         // Production / Delivery stats
         const totalTrips = vehTransactions.length
         const totalVolume = vehTransactions.reduce((s, t) => s + (t.volume_cubic || 0), 0)
@@ -1086,13 +1332,15 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
 
         // Efficiency Metrics
         const fuelPerCubic = totalVolume > 0 ? fuelLiters / totalVolume : 0
-        const costPerTrip = totalTrips > 0 ? totalCost / totalTrips : 0
-        const costPerCubic = totalVolume > 0 ? totalCost / totalVolume : 0
+        const costPerTrip = totalTrips > 0 ? grandTotalCost / totalTrips : 0
+        const costPerCubic = totalVolume > 0 ? grandTotalCost / totalVolume : 0
 
         return {
             vehicle: veh,
             stats: {
-                totalCost,
+                totalCost: rblTotalCost,
+                sparepartCost,
+                grandTotalCost,
                 fuelLiters,
                 fuelCost,
                 lubricantQty,
@@ -1106,10 +1354,20 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
                 fuelPerCubic,
                 costPerTrip,
                 costPerCubic,
+                rentalRevenue,
+                rentalDays,
+                rentalCount: vehSewaTransactions.length,
+                netProfit,
                 expenseCount: vehExpenses.length,
+                poItemCount: vehPoItems.length,
+                meterCount: meterEvents.length,
+                hasBackdateAnomaly: meterEvents.some(m => m.isBackdateAnomaly),
             },
+            meterEvents,
             recentExpenses: (filters.vehicleId && filters.vehicleId !== "all") ? vehExpenses : vehExpenses.slice(0, 25),
             recentTransactions: (filters.vehicleId && filters.vehicleId !== "all") ? vehTransactions : vehTransactions.slice(0, 25),
+            recentPoItems: (filters.vehicleId && filters.vehicleId !== "all") ? vehPoItems : vehPoItems.slice(0, 25),
+            recentSewaTransactions: (filters.vehicleId && filters.vehicleId !== "all") ? vehSewaTransactions : vehSewaTransactions.slice(0, 25),
         }
     })
 
@@ -1117,10 +1375,17 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
     const overallSummary = {
         totalVehicles: vehicles.length,
         totalCost: vehicleAnalytics.reduce((s, v) => s + v.stats.totalCost, 0),
+        totalSparepartCost: vehicleAnalytics.reduce((s, v) => s + v.stats.sparepartCost, 0),
+        grandTotalCost: vehicleAnalytics.reduce((s, v) => s + v.stats.grandTotalCost, 0),
         totalFuelLiters: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelLiters, 0),
         totalFuelCost: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelCost, 0),
         totalTrips: vehicleAnalytics.reduce((s, v) => s + v.stats.totalTrips, 0),
         totalVolume: vehicleAnalytics.reduce((s, v) => s + v.stats.totalVolume, 0),
+        totalPoItems: poItems.length,
+        totalRentalRevenue: vehicleAnalytics.reduce((s, v) => s + v.stats.rentalRevenue, 0),
+        totalRentalDays: vehicleAnalytics.reduce((s, v) => s + v.stats.rentalDays, 0),
+        totalSewaCount: sewaTransactions.length,
+        netRentalProfit: vehicleAnalytics.reduce((s, v) => s + v.stats.rentalRevenue, 0) - vehicleAnalytics.reduce((s, v) => s + v.stats.grandTotalCost, 0),
     }
 
     return {
@@ -1129,6 +1394,8 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         vehicleAnalytics,
         allExpenses: expenses,
         allTransactions: transactions,
+        allPoItems: poItems,
+        allSewaTransactions: sewaTransactions,
         vehicles,
     }
 }

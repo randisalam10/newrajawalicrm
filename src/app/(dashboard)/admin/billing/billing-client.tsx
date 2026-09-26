@@ -19,12 +19,14 @@ import {
 import {
     ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
     FileText, Plus, Search, Loader2, Upload, Receipt, TrendingUp,
-    Package, Tag, DollarSign, X, Eye, Printer, BarChart3
+    Package, Tag, DollarSign, X, Eye, Printer, BarChart3,
+    ImageIcon, Download, Check, Truck, Wrench, Paperclip
 } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
-import { createInvoice, recordPayment, cancelInvoice, cancelPayment, addDeposit, getInvoicesGroupedByCustomer, getUnbilledTransactions, getDepositSummary, getInvoiceDetail, getNextInvoiceSeq, getCustomerInvoiceSeq } from "./actions"
+import { createInvoice, recordPayment, updatePaymentProof, cancelInvoice, cancelPayment, addDeposit, getInvoicesGroupedByCustomer, getUnbilledTransactions, getDepositSummary, getInvoiceDetail, getNextInvoiceSeq, getCustomerInvoiceSeq } from "./actions"
 import { BillingDashboard } from "./billing-dashboard"
+import { compressImage } from "@/lib/image-compress"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(n))
 const fmtDate = (d: any) => d ? format(new Date(d), "dd MMM yyyy", { locale: idLocale }) : "-"
@@ -72,7 +74,10 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     // Unbilled state
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
     const [unbilledSearch, setUnbilledSearch] = useState("")
+    const [unbilledTypeFilter, setUnbilledTypeFilter] = useState<"ALL" | "READYMIX" | "SEWA">("ALL")
     const [groupBy, setGroupBy] = useState<"flat" | "date" | "mutu" | "customer">("date")
+    // Groups are collapsed / minimized by default (empty set).
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
     const [showCreateDialog, setShowCreateDialog] = useState(false)
 
     // Invoice list state
@@ -91,10 +96,13 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [depositPage, setDepositPage] = useState(1)
     const PAGE_SIZE = 25
 
-    // Payment dialog
+    // Payment dialog & compression
     const [showPaymentDialog, setShowPaymentDialog] = useState(false)
     const [paymentForm, setPaymentForm] = useState({ amount: "", method: "TRANSFER", referenceNo: "", notes: "", proofFile: null as File | null, proofUrl: "" })
+    const [compressionInfo, setCompressionInfo] = useState<{ origSize: number; compSize: number; previewUrl: string } | null>(null)
     const [paymentLoading, setPaymentLoading] = useState(false)
+    const [uploadingProofPaymentId, setUploadingProofPaymentId] = useState<string | null>(null)
+    const [proofPreviewModalUrl, setProofPreviewModalUrl] = useState<string | null>(null)
 
     // Deposit state
     const [showDepositDialog, setShowDepositDialog] = useState(false)
@@ -142,14 +150,21 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const unbilled: any[] = data?.unbilled ?? []
 
     const filteredUnbilled = useMemo(() => {
-        const q = unbilledSearch.toLowerCase()
-        return unbilled.filter(tx =>
-            !q ||
-            tx.project?.name?.toLowerCase().includes(q) ||
-            tx.project?.customer?.customer_name?.toLowerCase().includes(q) ||
-            tx.concreteQuality?.name?.toLowerCase().includes(q)
-        )
-    }, [unbilled, unbilledSearch])
+        const q = unbilledSearch.toLowerCase().trim()
+        return unbilled.filter(tx => {
+            if (unbilledTypeFilter === "READYMIX" && tx.itemType === "SEWA") return false
+            if (unbilledTypeFilter === "SEWA" && tx.itemType !== "SEWA") return false
+
+            if (!q) return true
+            const custName = (tx.customer?.customer_name || tx.project?.customer?.customer_name || "").toLowerCase()
+            const projName = (tx.project?.name || tx.lokasi_proyek || "").toLowerCase()
+            const mutuName = (tx.concreteQuality?.name || "").toLowerCase()
+            const equipName = (tx.equipment?.nama_alat || "").toLowerCase()
+            const operName = (tx.operator?.name || "").toLowerCase()
+            const doNum = (tx.sewaNumber || "").toLowerCase()
+            return custName.includes(q) || projName.includes(q) || mutuName.includes(q) || equipName.includes(q) || operName.includes(q) || doNum.includes(q)
+        })
+    }, [unbilled, unbilledSearch, unbilledTypeFilter])
 
     const groupedUnbilled = useMemo(() => {
         if (groupBy === "flat") return [{ key: "all", label: "Semua", items: filteredUnbilled }]
@@ -169,20 +184,20 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         if (groupBy === "customer") {
             const map = new Map<string, any[]>()
             for (const tx of filteredUnbilled) {
-                const key = tx.project?.customer?.id ?? "-"
+                const key = tx.customer?.id ?? tx.project?.customer?.id ?? "-"
                 if (!map.has(key)) map.set(key, [])
                 map.get(key)!.push(tx)
             }
             return Array.from(map.entries()).map(([key, items]) => ({
                 key,
-                label: items[0]?.project?.customer?.customer_name ?? key,
+                label: items[0]?.customer?.customer_name ?? items[0]?.project?.customer?.customer_name ?? key,
                 items,
             }))
         }
-        // by mutu
+        // by mutu / alat
         const map = new Map<string, any[]>()
         for (const tx of filteredUnbilled) {
-            const key = tx.concreteQuality?.name ?? "-"
+            const key = tx.itemType === "SEWA" ? (tx.equipment?.nama_alat ?? "Sewa Alat") : (tx.concreteQuality?.name ?? "-")
             if (!map.has(key)) map.set(key, [])
             map.get(key)!.push(tx)
         }
@@ -190,7 +205,8 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     }, [filteredUnbilled, groupBy])
 
     const selectedTxList = filteredUnbilled.filter(tx => selectedTxIds.has(tx.id))
-    const selectedVolume = selectedTxList.reduce((s: number, tx: any) => s + tx.volume_cubic, 0)
+    const selectedVolume = selectedTxList.filter((tx: any) => tx.itemType !== "SEWA").reduce((s: number, tx: any) => s + (tx.volume_cubic || 0), 0)
+    const selectedDays = selectedTxList.filter((tx: any) => tx.itemType === "SEWA").reduce((s: number, tx: any) => s + (tx.totalDays || 0), 0)
 
     const toggleTx = (id: string) => {
         setSelectedTxIds(prev => {
@@ -215,11 +231,37 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         }
     }
 
+    const isGroupExpanded = (key: string) => {
+        // If user is searching, auto-expand so they see matches immediately
+        if (unbilledSearch.trim().length > 0) return true
+        return expandedGroups.has(key)
+    }
+
+    const toggleGroupExpand = (key: string) => {
+        setExpandedGroups(prev => {
+            const next = new Set(prev)
+            if (next.has(key)) next.delete(key)
+            else next.add(key)
+            return next
+        })
+    }
+
+    const allGroupKeys = useMemo(() => groupedUnbilled.map(g => g.key), [groupedUnbilled])
+    const isAllExpanded = allGroupKeys.length > 0 && allGroupKeys.every(k => expandedGroups.has(k))
+    const toggleExpandAll = () => {
+        if (isAllExpanded) {
+            setExpandedGroups(new Set())
+        } else {
+            setExpandedGroups(new Set(allGroupKeys))
+        }
+    }
+
     // Check if tx has price set for its mutu
     const hasMissingPrices = (txIds: string[]) => {
         return txIds.some(id => {
             const tx = unbilled.find(t => t.id === id)
             if (!tx) return false
+            if (tx.itemType === "SEWA") return false // Sewa uses negotiated/direct tariff
             const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)
             return !price
         })
@@ -227,20 +269,32 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
     const handleCreateInvoice = async () => {
         if (selectedTxList.length === 0) return
-        const projectId = selectedTxList[0].projectId
-        const allSameProject = selectedTxList.every(tx => tx.projectId === projectId)
-        if (!allSameProject) {
-            setCreateError("Pilih transaksi dari 1 proyek yang sama.")
+        const isSewa = selectedTxList.some(tx => tx.itemType === "SEWA")
+        const isMix = selectedTxList.some(tx => tx.itemType === "READYMIX")
+        const isCombined = isSewa && isMix
+
+        const firstTx = selectedTxList[0]
+        const custId = firstTx.customerId || firstTx.customer?.id || firstTx.project?.customerId || firstTx.project?.customer?.id
+        const allSameCustomer = selectedTxList.every(tx => {
+            const cId = tx.customerId || tx.customer?.id || tx.project?.customerId || tx.project?.customer?.id
+            return cId === custId
+        })
+        if (!allSameCustomer) {
+            setCreateError("Pilih transaksi dari 1 customer yang sama.")
             return
         }
-        if (hasMissingPrices(selectedTxList.map(tx => tx.id))) {
-            setCreateError("Ada mutu yang belum memiliki harga. Set harga di menu Customer terlebih dahulu.")
+
+        // Validate ReadyMix pricing
+        const readyMixTxIds = selectedTxList.filter(tx => tx.itemType === "READYMIX").map(tx => tx.id)
+        if (readyMixTxIds.length > 0 && hasMissingPrices(readyMixTxIds)) {
+            setCreateError("Ada mutu beton yang belum memiliki harga. Set harga di menu Customer terlebih dahulu.")
             return
         }
+
         setCreateError("")
         setCreateLoading(true)
         const res = await createInvoice({
-            projectId,
+            projectId: firstTx.projectId,
             transactionIds: selectedTxList.map(tx => tx.id),
             initialsOverride: invoiceForm.initialsOverride || undefined,
             customerSeqOverride: invoiceForm.customerSeqOverride ? Number(invoiceForm.customerSeqOverride) : undefined,
@@ -267,6 +321,59 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         setSheetLoading(false)
     }
 
+    const handleProofFileSelected = async (file: File | null) => {
+        if (!file) {
+            setPaymentForm(f => ({ ...f, proofFile: null, proofUrl: "" }))
+            setCompressionInfo(null)
+            return
+        }
+
+        if (file.type.startsWith("image/")) {
+            try {
+                const compressed = await compressImage(file, { maxWidth: 1600, maxHeight: 1600, quality: 0.8 })
+                const previewUrl = URL.createObjectURL(compressed)
+                setCompressionInfo({
+                    origSize: file.size,
+                    compSize: compressed.size,
+                    previewUrl,
+                })
+                setPaymentForm(f => ({ ...f, proofFile: compressed }))
+            } catch {
+                setPaymentForm(f => ({ ...f, proofFile: file }))
+            }
+        } else {
+            setPaymentForm(f => ({ ...f, proofFile: file }))
+            setCompressionInfo(null)
+        }
+    }
+
+    const handleDirectProofUpload = async (paymentId: string, file: File) => {
+        setUploadingProofPaymentId(paymentId)
+        try {
+            let fileToUpload = file
+            if (file.type.startsWith("image/")) {
+                fileToUpload = await compressImage(file, { maxWidth: 1600, maxHeight: 1600, quality: 0.8 })
+            }
+            const fd = new FormData()
+            fd.append("file", fileToUpload)
+            fd.append("folder", "payments")
+            const up = await fetch("/api/upload", { method: "POST", body: fd })
+            const json = await up.json()
+            if (json.url) {
+                await updatePaymentProof(paymentId, json.url)
+                if (invoiceDetail) {
+                    const detail = await getInvoiceDetail(invoiceDetail.id)
+                    setInvoiceDetail(detail)
+                }
+                await reload()
+            }
+        } catch (e: any) {
+            console.error("Gagal mengunggah bukti bayar:", e)
+        } finally {
+            setUploadingProofPaymentId(null)
+        }
+    }
+
     const handleRecordPayment = async () => {
         if (!invoiceDetail) return
         setPaymentLoading(true)
@@ -274,6 +381,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         if (paymentForm.proofFile) {
             const fd = new FormData()
             fd.append("file", paymentForm.proofFile)
+            fd.append("folder", "payments")
             const up = await fetch("/api/upload", { method: "POST", body: fd })
             const json = await up.json()
             if (json.url) proofUrl = json.url
@@ -291,6 +399,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         if (res.success) {
             setShowPaymentDialog(false)
             setPaymentForm({ amount: "", method: "TRANSFER", referenceNo: "", notes: "", proofFile: null, proofUrl: "" })
+            setCompressionInfo(null)
             const detail = await getInvoiceDetail(invoiceDetail.id)
             setInvoiceDetail(detail)
             await reload()
@@ -450,6 +559,9 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             if (filter?.status) {
                                 setStatusFilter(filter.status)
                             }
+                            if (filter?.type) {
+                                setUnbilledTypeFilter(filter.type)
+                            }
                         }}
                         isCorporate={isCorporate}
                     />
@@ -459,14 +571,49 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                 <TabsContent value="unbilled" className="mt-4">
                     <Card>
                         <CardHeader className="pb-3">
-                            <div className="flex flex-wrap items-center gap-2 justify-between">
-                                <CardTitle className="text-base">Transaksi Belum Ditagih</CardTitle>
-                                <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-3 justify-between">
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <CardTitle className="text-base">Transaksi Belum Ditagih (Unbilled)</CardTitle>
+                                    {/* Type filter toggles */}
+                                    <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-100 text-xs gap-0.5 shadow-2xs">
+                                        <button
+                                            type="button"
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "ALL" ? "bg-white font-bold text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-600 hover:text-slate-900"}`}
+                                            onClick={() => setUnbilledTypeFilter("ALL")}
+                                        >
+                                            <span>Semua</span>
+                                            <span className="bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full text-[10px] font-mono">{unbilled.length}</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "READYMIX" ? "bg-blue-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-blue-700"}`}
+                                            onClick={() => setUnbilledTypeFilter("READYMIX")}
+                                        >
+                                            <Truck className="w-3.5 h-3.5" />
+                                            <span>Cor ReadyMix</span>
+                                            <span className={`${unbilledTypeFilter === "READYMIX" ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                                {unbilled.filter(t => t.itemType !== "SEWA").length}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "SEWA" ? "bg-purple-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-purple-700"}`}
+                                            onClick={() => setUnbilledTypeFilter("SEWA")}
+                                        >
+                                            <Wrench className="w-3.5 h-3.5" />
+                                            <span>Sewa Alat & CP</span>
+                                            <span className={`${unbilledTypeFilter === "SEWA" ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                                {unbilled.filter(t => t.itemType === "SEWA").length}
+                                            </span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
                                     <div className="relative">
-                                        <Search className="absolute left-2 top-2 w-3.5 h-3.5 text-slate-400" />
+                                        <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
                                         <Input
-                                            className="pl-7 h-8 w-48 text-sm"
-                                            placeholder="Cari proyek/mutu..."
+                                            className="pl-8 h-8 w-44 sm:w-52 text-xs"
+                                            placeholder="Cari customer/proyek/alat..."
                                             value={unbilledSearch}
                                             onChange={e => setUnbilledSearch(e.target.value)}
                                         />
@@ -476,14 +623,35 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="flat">Flat List</SelectItem>
+                                            <SelectItem value="flat">Flat List (Tanpa Grup)</SelectItem>
                                             <SelectItem value="date">Group by Tanggal</SelectItem>
                                             <SelectItem value="customer">Group by Customer</SelectItem>
-                                            <SelectItem value="mutu">Group by Mutu</SelectItem>
+                                            <SelectItem value="mutu">Group by Mutu / Alat</SelectItem>
                                         </SelectContent>
                                     </Select>
-                                     {canManage && (
-                                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={selectAll}>
+                                    {groupBy !== "flat" && groupedUnbilled.length > 0 && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-8 text-xs flex items-center gap-1.5 cursor-pointer text-slate-700 hover:bg-slate-100"
+                                            onClick={toggleExpandAll}
+                                            title={isAllExpanded ? "Ciutkan / minimize semua grup" : "Bentangkan semua grup"}
+                                        >
+                                            {isAllExpanded ? (
+                                                <>
+                                                    <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                                                    <span>Ciutkan Semua</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <ChevronDown className="w-3.5 h-3.5 text-blue-600" />
+                                                    <span>Buka Semua</span>
+                                                </>
+                                            )}
+                                        </Button>
+                                    )}
+                                    {canManage && (
+                                        <Button variant="outline" size="sm" className="h-8 text-xs cursor-pointer" onClick={selectAll}>
                                             {selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0 ? "Batal Pilih" : "Pilih Semua"}
                                         </Button>
                                     )}
@@ -494,7 +662,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             {filteredUnbilled.length === 0 ? (
                                 <div className="text-center py-12 text-slate-400">
                                     <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-green-400" />
-                                    <p className="text-sm">Semua transaksi sudah ditagih</p>
+                                    <p className="text-sm">Tidak ada transaksi yang cocok</p>
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
@@ -506,91 +674,163 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         <input type="checkbox"
                                                             checked={selectedTxIds.size === filteredUnbilled.length && filteredUnbilled.length > 0}
                                                             onChange={selectAll}
-                                                            className="rounded"
+                                                            className="rounded cursor-pointer"
                                                         />
                                                     </TableHead>
                                                 )}
                                                 <TableHead className="text-xs">Tanggal</TableHead>
                                                 <TableHead className="text-xs">Customer / Proyek</TableHead>
-                                                <TableHead className="text-xs">Mutu</TableHead>
-                                                <TableHead className="text-xs text-right">TM</TableHead>
-                                                <TableHead className="text-xs text-right">Vol (m³)</TableHead>
-                                                <TableHead className="text-xs text-right">Harga/m³</TableHead>
+                                                <TableHead className="text-xs">Mutu / Alat</TableHead>
+                                                <TableHead className="text-xs text-right">TM / Unit</TableHead>
+                                                <TableHead className="text-xs text-right">Vol / Durasi</TableHead>
+                                                <TableHead className="text-xs text-right">Tarif</TableHead>
                                                 <TableHead className="text-xs text-right">Nilai</TableHead>
                                                 <TableHead className="text-xs">Cabang/BP</TableHead>
                                                 <TableHead className="text-xs">Status</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {groupedUnbilled.map(group => (
-                                                <React.Fragment key={group.key}>
-                                                    {groupBy !== "flat" && (
-                                                        <TableRow
-                                                            className={`bg-slate-50 hover:bg-slate-100 ${canManage ? "cursor-pointer" : ""}`}
-                                                            onClick={() => canManage && selectGroup(group.items)}
-                                                        >
-                                                            {canManage && (
-                                                                <TableCell className="px-3">
-                                                                    <input type="checkbox"
-                                                                        checked={group.items.every((tx: any) => selectedTxIds.has(tx.id))}
-                                                                        onChange={() => selectGroup(group.items)}
-                                                                        className="rounded"
-                                                                        onClick={e => e.stopPropagation()}
-                                                                    />
-                                                                </TableCell>
-                                                            )}
-                                                            <TableCell colSpan={canManage ? 9 : 9} className="py-1.5 font-semibold text-xs text-slate-700">
-                                                                {groupBy === "date" ? `📅 ${group.label}` : groupBy === "customer" ? `👤 ${group.label}` : `🔷 Mutu ${group.label}`}
-                                                                <span className="ml-2 text-slate-400 font-normal">
-                                                                    ({group.items.length} tx · {group.items.reduce((s: number, tx: any) => s + tx.volume_cubic, 0).toFixed(2)} m³)
-                                                                </span>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    )}
-                                                    {group.items.map((tx: any) => {
-                                                        const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price
-                                                        const nilai = price ? tx.volume_cubic * price : null
-                                                        return (
+                                            {groupedUnbilled.map(group => {
+                                                const isExpanded = isGroupExpanded(group.key)
+                                                const readyMixItems = group.items.filter((i: any) => i.itemType !== "SEWA")
+                                                const sewaItems = group.items.filter((i: any) => i.itemType === "SEWA")
+                                                const rmVol = readyMixItems.reduce((s: number, tx: any) => s + (tx.volume_cubic || 0), 0)
+                                                const sewaDays = sewaItems.reduce((s: number, tx: any) => s + (tx.totalDays || 0), 0)
+                                                const groupSubtotal = group.items.reduce((s: number, tx: any) => {
+                                                    if (tx.itemType === "SEWA") {
+                                                        return s + (tx.totalPrice || (tx.pricePerDay * tx.totalDays) || 0)
+                                                    }
+                                                    const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price ?? 0
+                                                    return s + (tx.volume_cubic * price)
+                                                }, 0)
+
+                                                return (
+                                                    <React.Fragment key={group.key}>
+                                                        {groupBy !== "flat" && (
                                                             <TableRow
-                                                                key={tx.id}
-                                                                className={`text-xs ${canManage ? "cursor-pointer" : ""} ${selectedTxIds.has(tx.id) ? "bg-blue-50" : ""}`}
-                                                                onClick={() => canManage && toggleTx(tx.id)}
+                                                                className="bg-slate-100/75 hover:bg-slate-200/75 cursor-pointer select-none transition-colors border-y border-slate-200"
+                                                                onClick={() => toggleGroupExpand(group.key)}
                                                             >
                                                                 {canManage && (
-                                                                    <TableCell className="px-3">
-                                                                        <input type="checkbox" checked={selectedTxIds.has(tx.id)} onChange={() => toggleTx(tx.id)} className="rounded" onClick={e => e.stopPropagation()} />
+                                                                    <TableCell className="px-3 w-8" onClick={e => e.stopPropagation()}>
+                                                                        <input type="checkbox"
+                                                                            checked={group.items.length > 0 && group.items.every((tx: any) => selectedTxIds.has(tx.id))}
+                                                                            onChange={() => selectGroup(group.items)}
+                                                                            className="rounded cursor-pointer"
+                                                                        />
                                                                     </TableCell>
                                                                 )}
-                                                                <TableCell className="whitespace-nowrap">{fmtDate(tx.date)}</TableCell>
-                                                                <TableCell>
-                                                                    <div className="font-medium text-slate-800">{tx.project?.customer?.customer_name}</div>
-                                                                    <div className="text-slate-400">{tx.project?.name}</div>
-                                                                </TableCell>
-                                                                <TableCell>{tx.concreteQuality?.name}</TableCell>
-                                                                <TableCell className="text-right">1</TableCell>
-                                                                <TableCell className="text-right">{tx.volume_cubic.toFixed(2)}</TableCell>
-                                                                <TableCell className="text-right">
-                                                                    {price ? fmt(price) : (
-                                                                        <span className="flex items-center gap-1 justify-end text-amber-600">
-                                                                            <AlertTriangle className="w-3 h-3" /> Belum diset
-                                                                        </span>
-                                                                    )}
-                                                                </TableCell>
-                                                                <TableCell className="text-right">{nilai ? fmt(nilai) : "-"}</TableCell>
-                                                                <TableCell>
-                                                                    <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{tx.location?.name ?? "-"}</span>
-                                                                </TableCell>
-                                                                <TableCell>
-                                                                    {tx.status === "Pending"
-                                                                        ? <span className="flex items-center gap-1 text-amber-600"><Clock className="w-3 h-3" />Retase Pending</span>
-                                                                        : <span className="flex items-center gap-1 text-green-600"><CheckCircle2 className="w-3 h-3" />Confirmed</span>
-                                                                    }
+                                                                <TableCell colSpan={canManage ? 9 : 9} className="py-2 text-xs">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="p-0.5 rounded text-slate-500">
+                                                                                {isExpanded ? (
+                                                                                    <ChevronDown className="w-4 h-4 text-blue-600" />
+                                                                                ) : (
+                                                                                    <ChevronRight className="w-4 h-4 text-slate-600" />
+                                                                                )}
+                                                                            </span>
+                                                                            <span className="font-semibold text-slate-800">
+                                                                                {groupBy === "date" ? `📅 ${group.label}` : groupBy === "customer" ? `👤 ${group.label}` : `🔷 ${group.label}`}
+                                                                            </span>
+                                                                            <span className="text-slate-500 font-normal">
+                                                                                ({group.items.length} tx
+                                                                                {rmVol > 0 ? ` · ${rmVol.toFixed(2)} m³` : ""}
+                                                                                {sewaDays > 0 ? ` · ${sewaDays} hari sewa` : ""}
+                                                                                {groupSubtotal > 0 ? ` · ${fmt(groupSubtotal)}` : ""})
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2 mr-2">
+                                                                            {!isExpanded ? (
+                                                                                <span className="text-[11px] text-slate-500 font-medium bg-slate-200/70 px-2 py-0.5 rounded">
+                                                                                    Diciutkan (Klik untuk buka)
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="text-[11px] text-slate-400 font-normal">
+                                                                                    Klik baris untuk menciutkan
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
                                                                 </TableCell>
                                                             </TableRow>
-                                                        )
-                                                    })}
-                                                </React.Fragment>
-                                            ))}
+                                                        )}
+                                                        {isExpanded && group.items.map((tx: any) => {
+                                                            const isSewa = tx.itemType === "SEWA"
+                                                            const price = isSewa
+                                                                ? tx.pricePerDay
+                                                                : tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price
+                                                            const nilai = isSewa
+                                                                ? (tx.totalPrice || (tx.pricePerDay * tx.totalDays))
+                                                                : (price ? tx.volume_cubic * price : null)
+
+                                                            return (
+                                                                <TableRow
+                                                                    key={tx.id}
+                                                                    className={`text-xs ${canManage ? "cursor-pointer" : ""} ${selectedTxIds.has(tx.id) ? "bg-blue-50" : "hover:bg-slate-50/60"}`}
+                                                                    onClick={() => canManage && toggleTx(tx.id)}
+                                                                >
+                                                                    {canManage && (
+                                                                        <TableCell className="px-3">
+                                                                            <input type="checkbox" checked={selectedTxIds.has(tx.id)} onChange={() => toggleTx(tx.id)} className="rounded cursor-pointer" onClick={e => e.stopPropagation()} />
+                                                                        </TableCell>
+                                                                    )}
+                                                                    <TableCell className="whitespace-nowrap font-mono">{fmtDate(tx.date)}</TableCell>
+                                                                    <TableCell>
+                                                                        <div className="font-medium text-slate-800">
+                                                                            {tx.customer?.customer_name || tx.project?.customer?.customer_name}
+                                                                        </div>
+                                                                        <div className="text-slate-400">
+                                                                            {tx.project?.name || tx.lokasi_proyek || (isSewa ? "Sewa Alat" : "-")}
+                                                                        </div>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        {isSewa ? (
+                                                                            <div className="space-y-0.5">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="font-medium text-slate-800">{tx.equipment?.nama_alat}</span>
+                                                                                    <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] px-1 py-0 font-semibold">
+                                                                                        Sewa
+                                                                                    </Badge>
+                                                                                </div>
+                                                                                <div className="text-[11px] text-slate-400">
+                                                                                    {tx.sewaNumber && <span className="font-mono text-slate-500 mr-1.5">{tx.sewaNumber}</span>}
+                                                                                    {tx.operator?.name && `Op: ${tx.operator.name}`}
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span>{tx.concreteQuality?.name}</span>
+                                                                        )}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right font-mono">
+                                                                        {isSewa ? "1 Unit" : "1 TM"}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right font-mono font-medium">
+                                                                        {isSewa ? `${tx.totalDays} Hari` : `${tx.volume_cubic.toFixed(2)} m³`}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right font-mono">
+                                                                        {price ? (isSewa ? `${fmt(price)}/hr` : fmt(price)) : (
+                                                                            <span className="flex items-center gap-1 justify-end text-amber-600">
+                                                                                <AlertTriangle className="w-3 h-3" /> Belum diset
+                                                                            </span>
+                                                                        )}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right font-mono font-medium">{nilai ? fmt(nilai) : "-"}</TableCell>
+                                                                    <TableCell>
+                                                                        <span className="text-xs text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{tx.location?.name ?? "-"}</span>
+                                                                    </TableCell>
+                                                                    <TableCell>
+                                                                        {tx.status === "Pending"
+                                                                            ? <span className="flex items-center gap-1 text-amber-600"><Clock className="w-3 h-3" />Pending</span>
+                                                                            : <span className="flex items-center gap-1 text-green-600"><CheckCircle2 className="w-3 h-3" />Confirmed</span>
+                                                                        }
+                                                                    </TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })}
+                                                    </React.Fragment>
+                                                )
+                                            })}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -598,15 +838,25 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
                             {/* Sticky bottom bar */}
                             {canManage && selectedTxIds.size > 0 && (
-                                <div className="sticky bottom-0 bg-blue-700 text-white px-4 py-3 flex items-center justify-between rounded-b-lg">
-                                    <span className="text-sm font-medium">
-                                        ☑ {selectedTxIds.size} transaksi dipilih &nbsp;·&nbsp; {selectedVolume.toFixed(2)} m³
-                                    </span>
+                                <div className="sticky bottom-0 bg-blue-700 text-white px-4 py-3 flex items-center justify-between rounded-b-lg shadow-lg">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm font-medium">
+                                            ☑ {selectedTxIds.size} transaksi dipilih
+                                            {selectedVolume > 0 && selectedDays === 0 && ` · ${selectedVolume.toFixed(2)} m³`}
+                                            {selectedDays > 0 && selectedVolume === 0 && ` · ${selectedDays} hari sewa`}
+                                            {selectedVolume > 0 && selectedDays > 0 && ` · ${selectedVolume.toFixed(2)} m³ + ${selectedDays} hari`}
+                                        </span>
+                                        {selectedTxList.some(tx => tx.itemType === "SEWA") && selectedTxList.some(tx => tx.itemType === "READYMIX") && (
+                                            <Badge className="bg-gradient-to-r from-blue-500 to-purple-600 text-white text-xs border border-white/20 shadow-xs">
+                                                ⚡ Siap Digabung: Invoice Terpadu (Cor + Sewa)
+                                            </Badge>
+                                        )}
+                                    </div>
                                     <Button
-                                        className="bg-white text-blue-700 hover:bg-blue-50 h-8"
+                                        className="bg-white text-blue-700 hover:bg-blue-50 h-8 font-semibold cursor-pointer shadow-sm"
                                         onClick={async () => {
-                                            // fetch customer seq when opening dialog
-                                            const custId = unbilled.find((t: any) => selectedTxIds.has(t.id))?.project?.customer?.id
+                                            const first = unbilled.find((t: any) => selectedTxIds.has(t.id))
+                                            const custId = first?.customerId || first?.customer?.id || first?.project?.customerId || first?.project?.customer?.id
                                             if (custId) {
                                                 const seq = await getCustomerInvoiceSeq(custId)
                                                 setCustomerSeqDefault(seq)
@@ -615,7 +865,10 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             setShowCreateDialog(true)
                                         }}
                                     >
-                                        <FileText className="w-4 h-4 mr-1.5" /> Buat Invoice
+                                        <FileText className="w-4 h-4 mr-1.5" />
+                                        {selectedTxList.some(tx => tx.itemType === "SEWA") && selectedTxList.some(tx => tx.itemType === "READYMIX")
+                                            ? "Buat Invoice Terpadu"
+                                            : "Buat Invoice"}
                                     </Button>
                                 </div>
                             )}
@@ -745,7 +998,14 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                             const isCancelled = inv.status === "CANCELLED"
                                                             return (
                                                                 <TableRow key={inv.id} className={`text-xs hover:bg-blue-50/50 ${isCancelled ? 'opacity-50 bg-red-50/30' : ''}`}>
-                                                                    <TableCell className={`font-mono font-medium pl-6 text-slate-700 ${isCancelled ? 'line-through' : ''}`}>{inv.invoice_number}</TableCell>
+                                                                    <TableCell className={`font-mono font-medium pl-6 text-slate-700 ${isCancelled ? 'line-through' : ''}`}>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <span>{inv.invoice_number}</span>
+                                                                            {inv.invoice_type === "SEWA" && (
+                                                                                <span className="text-[9px] bg-purple-100 text-purple-700 font-semibold px-1.5 py-0.5 rounded">SEWA</span>
+                                                                            )}
+                                                                        </div>
+                                                                    </TableCell>
                                                                     <TableCell className="text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[12rem]" title={inv.projectName}>{inv.projectName}</TableCell>
                                                                     <TableCell className="whitespace-nowrap">{fmtDate(inv.issue_date)}</TableCell>
                                                                     <TableCell className="text-right">{fmt(inv.total_amount)}</TableCell>
@@ -839,45 +1099,91 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                         <DialogTitle>Buat Invoice Baru</DialogTitle>
                     </DialogHeader>
                     {selectedTxList.length > 0 && (() => {
-                        const projectId = selectedTxList[0].projectId
-                        const allSameProject = selectedTxList.every(tx => tx.projectId === projectId)
-                        const proj = selectedTxList[0].project
-                        const cust = proj?.customer
+                        const isSewa = selectedTxList.some(tx => tx.itemType === "SEWA")
+                        const isMix = selectedTxList.some(tx => tx.itemType === "READYMIX")
+                        const isCombined = isSewa && isMix
+                        const firstTx = selectedTxList[0]
+                        const proj = firstTx.project
+                        const cust = firstTx.customer || proj?.customer
+                        const custName = cust?.customer_name || "Customer"
+
                         // Auto-generate initials from customer name
-                        const autoInitials = cust
-                            ? cust.customer_name
-                                .replace(/^(pt\.|pt|cv\.|cv|pak|bu)\s*/i, "")
-                                .trim()
-                                .split(/\s+/)
-                                .map((w: string) => w[0]?.toUpperCase() ?? "")
-                                .join("")
-                                .slice(0, 4)
-                            : "XXX"
+                        const autoInitials = custName
+                            .replace(/^(pt\.|pt|cv\.|cv|pak|bu)\s*/i, "")
+                            .trim()
+                            .split(/\s+/)
+                            .map((w: string) => w[0]?.toUpperCase() ?? "")
+                            .join("")
+                            .slice(0, 4) || "XXX"
+
                         const displayInitials = invoiceForm.initialsOverride || autoInitials
                         const now = new Date()
                         const month = now.getMonth() + 1
                         const year = now.getFullYear()
-                        const previewNum = `###/INV/${displayInitials}/${month}/${year}`
 
-                        const subtotal = selectedTxList.reduce((s: number, tx: any) => {
+                        const rmSubtotal = selectedTxList.filter((t: any) => t.itemType !== "SEWA").reduce((s: number, tx: any) => {
                             const price = proj?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price ?? 0
                             return s + tx.volume_cubic * price
                         }, 0)
-                        const taxRate = invoiceForm.includePpn ? (proj?.tax_ppn ?? 0) / 100 : 0
-                        const total = subtotal + subtotal * taxRate
+                        const sewaSubtotal = selectedTxList.filter((t: any) => t.itemType === "SEWA").reduce((s: number, tx: any) => {
+                            return s + (tx.totalPrice || (tx.pricePerDay * tx.totalDays) || 0)
+                        }, 0)
+                        const subtotal = rmSubtotal + sewaSubtotal
+                        const rmTaxRate = (proj?.tax_ppn ?? 0) / 100
+                        const sewaTaxRate = 0.11
+                        const rmPpn = invoiceForm.includePpn ? rmSubtotal * rmTaxRate : 0
+                        const sewaPpn = invoiceForm.includePpn ? sewaSubtotal * sewaTaxRate : 0
+                        const ppnTotal = rmPpn + sewaPpn
+                        const total = subtotal + ppnTotal
 
                         return (
                             <div className="space-y-4">
-                                {!allSameProject && (
-                                    <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                                        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                                        Pilih transaksi dari 1 proyek yang sama saja.
+                                {isCombined ? (
+                                    <div className="bg-gradient-to-r from-blue-50/70 to-purple-50/70 border border-indigo-200 rounded-lg p-3 text-sm space-y-2">
+                                        <div className="flex items-center justify-between">
+                                            <div className="font-bold text-slate-900">{custName}</div>
+                                            <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white text-[10px]">
+                                                ⚡ Invoice Terpadu (Cor + Sewa)
+                                            </Badge>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-indigo-100">
+                                            <div className="bg-white/80 p-2 rounded border border-blue-100">
+                                                <div className="font-semibold text-blue-900 flex items-center gap-1">
+                                                    <Truck className="w-3.5 h-3.5" /> Cor ReadyMix
+                                                </div>
+                                                <div className="text-slate-600 text-[11px] mt-0.5">
+                                                    {selectedTxList.filter((t: any) => t.itemType !== "SEWA").length} transaksi · {selectedVolume.toFixed(2)} m³
+                                                </div>
+                                            </div>
+                                            <div className="bg-white/80 p-2 rounded border border-purple-100">
+                                                <div className="font-semibold text-purple-900 flex items-center gap-1">
+                                                    <Wrench className="w-3.5 h-3.5" /> Sewa Alat/CP
+                                                </div>
+                                                <div className="text-slate-600 text-[11px] mt-0.5">
+                                                    {selectedTxList.filter((t: any) => t.itemType === "SEWA").length} transaksi · {selectedDays} hari sewa
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : isSewa ? (
+                                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-sm space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <div className="font-semibold text-purple-900">{custName}</div>
+                                            <Badge className="bg-purple-600 text-white text-[10px]">Invoice Sewa Alat</Badge>
+                                        </div>
+                                        <div className="text-purple-700 text-xs">
+                                            {firstTx.lokasi_proyek || proj?.name || "Penyewaan Alat & Kendaraan"}
+                                        </div>
+                                        <div className="text-slate-500 text-xs">
+                                            {selectedTxList.length} transaksi sewa · {selectedDays} hari sewa
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
+                                        <div className="font-medium">{custName} — {proj?.name}</div>
+                                        <div className="text-slate-500">{selectedTxList.length} transaksi · {selectedVolume.toFixed(2)} m³</div>
                                     </div>
                                 )}
-                                <div className="bg-slate-50 rounded-lg p-3 text-sm space-y-1">
-                                    <div className="font-medium">{cust?.customer_name} — {proj?.name}</div>
-                                    <div className="text-slate-500">{selectedTxList.length} transaksi · {selectedVolume.toFixed(2)} m³</div>
-                                </div>
 
                                 {/* ── Invoice Number Builder ──────────── */}
                                 <div className="space-y-2">
@@ -902,7 +1208,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                 <span className="text-[10px] text-slate-400">urutan ke-{invoiceForm.customerSeqOverride || customerSeqDefault}</span>
                                                 <button
                                                     type="button"
-                                                    className="text-[10px] text-blue-500 hover:underline"
+                                                    className="text-[10px] text-blue-500 hover:underline cursor-pointer"
                                                     onClick={() => setInvoiceForm(f => ({ ...f, customerSeqOverride: "1" }))}
                                                 >reset ke 1</button>
                                             </div>
@@ -932,9 +1238,9 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     <label className="flex items-center gap-2 text-sm cursor-pointer">
                                         <input type="checkbox" checked={invoiceForm.includePpn}
                                             onChange={e => setInvoiceForm(f => ({ ...f, includePpn: e.target.checked }))}
-                                            className="rounded"
+                                            className="rounded cursor-pointer"
                                         />
-                                        PPN {proj?.tax_ppn ?? 0}%
+                                        PPN {isCombined ? `Campuran (Cor: ${proj?.tax_ppn ?? 0}%, Sewa: 11%)` : isSewa ? "11%" : `${proj?.tax_ppn ?? 0}%`}
                                     </label>
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
@@ -954,9 +1260,21 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     </div>
                                 </div>
                                 <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1 text-sm">
-                                    <div className="flex justify-between"><span className="text-slate-600">Subtotal</span><span>{fmt(subtotal)}</span></div>
-                                    {invoiceForm.includePpn && <div className="flex justify-between text-slate-500"><span>PPN {proj?.tax_ppn}%</span><span>{fmt(subtotal * taxRate)}</span></div>}
-                                    <div className="flex justify-between font-bold border-t border-blue-200 pt-1 mt-1"><span>Total</span><span className="text-blue-700">{fmt(total)}</span></div>
+                                    {isCombined && (
+                                        <>
+                                            <div className="flex justify-between text-xs text-slate-600">
+                                                <span>Subtotal ReadyMix ({selectedVolume.toFixed(2)} m³)</span>
+                                                <span className="font-mono">{fmt(rmSubtotal)}</span>
+                                            </div>
+                                            <div className="flex justify-between text-xs text-slate-600">
+                                                <span>Subtotal Sewa Alat ({selectedDays} Hari)</span>
+                                                <span className="font-mono">{fmt(sewaSubtotal)}</span>
+                                            </div>
+                                        </>
+                                    )}
+                                    <div className="flex justify-between"><span className="text-slate-600">Subtotal Tagihan</span><span className="font-mono font-medium">{fmt(subtotal)}</span></div>
+                                    {invoiceForm.includePpn && <div className="flex justify-between text-slate-500"><span>PPN {isCombined ? "Campuran" : (isSewa ? "11%" : `${proj?.tax_ppn}%`)}</span><span className="font-mono">{fmt(ppnTotal)}</span></div>}
+                                    <div className="flex justify-between font-bold border-t border-blue-200 pt-1 mt-1"><span>Total</span><span className="text-blue-700 font-mono">{fmt(total)}</span></div>
                                 </div>
                                 {createError && (
                                     <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
@@ -993,10 +1311,13 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                         {invoiceDetail && (
                             <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                                 <span className="font-semibold text-slate-800">
-                                    {invoiceDetail.project?.customer?.customer_name}
+                                    {invoiceDetail.customer?.customer_name || invoiceDetail.project?.customer?.customer_name}
                                 </span>
                                 <span>·</span>
-                                <span>Proyek: <strong className="text-slate-700">{invoiceDetail.project?.name}</strong></span>
+                                <span>
+                                    {invoiceDetail.invoice_type === "SEWA" ? "Kategori: " : "Proyek: "}
+                                    <strong className="text-slate-700">{invoiceDetail.project?.name || "Penyewaan Alat & Kendaraan"}</strong>
+                                </span>
                                 <span>·</span>
                                 <span>Terbit: {fmtDate(invoiceDetail.issue_date)}</span>
                                 {invoiceDetail.due_date && (
@@ -1017,11 +1338,65 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                         </div>
                     ) : invoiceDetail ? (
                         <div className="p-5 space-y-4">
-                            {/* Summary per date */}
+                            {/* Summary per date or items */}
                             {(() => {
+                                const isSewaInvoice = invoiceDetail.invoice_type === "SEWA" || invoiceDetail.items.some((i: any) => i.item_type === "SEWA" || i.sewaTransaction)
+
+                                if (isSewaInvoice) {
+                                    return (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                                                    Rincian Penyewaan Alat & Kendaraan
+                                                </h3>
+                                                <span className="text-xs text-slate-500 font-mono">
+                                                    {invoiceDetail.items.length} Item Sewa
+                                                </span>
+                                            </div>
+                                            <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                                <Table>
+                                                    <TableHeader>
+                                                        <TableRow className="bg-slate-50 text-[11px]">
+                                                            <TableHead className="text-xs">No. Transaksi / DO</TableHead>
+                                                            <TableHead className="text-xs">Alat & Operator</TableHead>
+                                                            <TableHead className="text-xs text-right">Durasi</TableHead>
+                                                            <TableHead className="text-xs text-right">Tarif / Hari</TableHead>
+                                                            <TableHead className="text-xs text-right">Nilai Tagihan</TableHead>
+                                                        </TableRow>
+                                                    </TableHeader>
+                                                    <TableBody>
+                                                        {invoiceDetail.items.map((item: any) => {
+                                                            const stx = item.sewaTransaction
+                                                            return (
+                                                                <TableRow key={item.id} className="text-xs hover:bg-slate-50/70">
+                                                                    <TableCell className="font-mono">{stx?.sewa_number || item.description || "-"}</TableCell>
+                                                                    <TableCell>
+                                                                        <div className="font-medium text-slate-800">{stx?.equipment?.nama_alat || item.description}</div>
+                                                                        {stx?.operator?.name && <div className="text-[11px] text-slate-400">Op: {stx.operator.name}</div>}
+                                                                    </TableCell>
+                                                                    <TableCell className="text-right font-mono">{item.quantity} Hari</TableCell>
+                                                                    <TableCell className="text-right font-mono">{fmt(item.unit_price)}</TableCell>
+                                                                    <TableCell className="text-right font-mono font-medium">{fmt(item.subtotal)}</TableCell>
+                                                                </TableRow>
+                                                            )
+                                                        })}
+                                                        <TableRow className="bg-slate-50 font-bold text-xs">
+                                                            <TableCell colSpan={2}>Total Sewa</TableCell>
+                                                            <TableCell className="text-right font-mono">{invoiceDetail.items.reduce((s: number, i: any) => s + i.quantity, 0)} Hari</TableCell>
+                                                            <TableCell className="text-right font-mono">-</TableCell>
+                                                            <TableCell className="text-right font-mono font-bold text-slate-900">{fmt(invoiceDetail.subtotal)}</TableCell>
+                                                        </TableRow>
+                                                    </TableBody>
+                                                </Table>
+                                            </div>
+                                        </div>
+                                    )
+                                }
+
                                 const byDate = new Map<string, { tms: number; volume: number; nilai: number }>()
                                 for (const item of invoiceDetail.items) {
-                                    const key = format(new Date(item.transaction.date), "yyyy-MM-dd")
+                                    const itemDate = item.transaction?.date || item.sewaTransaction?.date || invoiceDetail.issue_date
+                                    const key = itemDate ? format(new Date(itemDate), "yyyy-MM-dd") : "Lainnya"
                                     if (!byDate.has(key)) byDate.set(key, { tms: 0, volume: 0, nilai: 0 })
                                     const d = byDate.get(key)!
                                     d.tms += 1
@@ -1137,12 +1512,44 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                             {p.is_cancelled && p.cancel_reason && (
                                                                 <div className="text-rose-600 mt-0.5 text-[11px]">Alasan Batal: {p.cancel_reason}</div>
                                                             )}
-                                                            {p.proof_url && !p.is_cancelled && (
-                                                                <a href={p.proof_url} target="_blank" rel="noopener noreferrer"
-                                                                    className="inline-flex items-center gap-1 mt-1 text-blue-600 hover:underline text-[11px]">
-                                                                    📎 Lihat Bukti Bayar
-                                                                </a>
-                                                            )}
+                                                            {p.proof_url && !p.is_cancelled ? (
+                                                                <div className="mt-1 flex items-center gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setProofPreviewModalUrl(p.proof_url)}
+                                                                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 hover:bg-blue-100 text-[11px] font-medium transition-colors cursor-pointer"
+                                                                    >
+                                                                        <Paperclip className="w-3 h-3 text-blue-500" />
+                                                                        <span>Lihat Lampiran Bukti</span>
+                                                                    </button>
+                                                                </div>
+                                                            ) : !p.is_cancelled && canManage && invoiceDetail.status !== "CANCELLED" ? (
+                                                                <div className="mt-1">
+                                                                    <label className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-[11px] font-medium transition-colors cursor-pointer">
+                                                                        {uploadingProofPaymentId === p.id ? (
+                                                                            <>
+                                                                                <Loader2 className="w-3 h-3 animate-spin text-amber-600" />
+                                                                                <span>Mengunggah...</span>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <Upload className="w-3 h-3 text-amber-600" />
+                                                                                <span>+ Unggah Bukti Bayar</span>
+                                                                            </>
+                                                                        )}
+                                                                        <input
+                                                                            type="file"
+                                                                            accept="image/*,application/pdf"
+                                                                            className="hidden"
+                                                                            disabled={uploadingProofPaymentId === p.id}
+                                                                            onChange={e => {
+                                                                                const f = e.target.files?.[0]
+                                                                                if (f) handleDirectProofUpload(p.id, f)
+                                                                            }}
+                                                                        />
+                                                                    </label>
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                         <div className="flex items-center gap-2 flex-shrink-0">
                                                             <span className={`font-mono font-bold whitespace-nowrap ${p.is_cancelled ? 'text-slate-400 line-through' : 'text-emerald-700'
@@ -1248,18 +1655,38 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 <div className="mt-1">
                                     <label className="flex items-center justify-center gap-2 cursor-pointer border-2 border-dashed border-slate-200 rounded-lg px-4 py-3 text-sm text-slate-500 hover:border-blue-400 hover:text-blue-600 transition-colors bg-slate-50 hover:bg-blue-50">
                                         <span>📎</span>
-                                        <span>{paymentForm.proofFile ? paymentForm.proofFile.name : "Pilih file (JPG, PNG, PDF — maks 5MB)"}</span>
+                                        <span>{paymentForm.proofFile ? paymentForm.proofFile.name : "Pilih foto slip / PDF (otomatis dikompres)"}</span>
                                         <input type="file" accept="image/*,application/pdf" className="hidden"
-                                            onChange={e => {
-                                                const f = e.target.files?.[0] ?? null
-                                                setPaymentForm(prev => ({ ...prev, proofFile: f, proofUrl: "" }))
-                                            }} />
+                                            onChange={e => handleProofFileSelected(e.target.files?.[0] ?? null)} />
                                     </label>
                                     {paymentForm.proofFile && (
-                                        <button type="button" className="text-xs text-red-500 mt-1 hover:underline"
-                                            onClick={() => setPaymentForm(f => ({ ...f, proofFile: null }))}>
-                                            ✕ Hapus file
-                                        </button>
+                                        <div className="mt-2 space-y-1.5">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <span className="text-slate-600 truncate max-w-[200px]">{paymentForm.proofFile.name}</span>
+                                                <button type="button" className="text-xs text-red-500 hover:underline"
+                                                    onClick={() => handleProofFileSelected(null)}>
+                                                    ✕ Hapus file
+                                                </button>
+                                            </div>
+                                            {compressionInfo && (
+                                                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded p-2 text-[11px] text-emerald-800">
+                                                    {compressionInfo.previewUrl && (
+                                                        <img src={compressionInfo.previewUrl} alt="Preview" className="w-10 h-10 rounded object-cover border border-emerald-300 flex-shrink-0" />
+                                                    )}
+                                                    <div className="min-w-0">
+                                                        <div className="font-semibold text-emerald-900">Gambar Berhasil Dikompresi ✨</div>
+                                                        <div className="text-[10px] text-emerald-700">
+                                                            {(compressionInfo.origSize / 1024).toFixed(0)} KB → {(compressionInfo.compSize / 1024).toFixed(0)} KB
+                                                            {compressionInfo.origSize > compressionInfo.compSize && (
+                                                                <span className="font-bold ml-1 text-emerald-800">
+                                                                    (hemat {Math.round((1 - compressionInfo.compSize / compressionInfo.origSize) * 100)}%)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -1344,6 +1771,48 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             {cancelPaymentLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ya, Batalkan Pembayaran"}
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {/* ═══ PROOF PREVIEW LIGHTBOX DIALOG ═════════════════════════════════ */}
+            <Dialog open={!!proofPreviewModalUrl} onOpenChange={open => { if (!open) setProofPreviewModalUrl(null) }}>
+                <DialogContent className="max-w-2xl p-4">
+                    <DialogHeader>
+                        <DialogTitle className="text-sm font-semibold flex items-center justify-between">
+                            <span>Bukti Pembayaran</span>
+                            {proofPreviewModalUrl && (
+                                <a
+                                    href={proofPreviewModalUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1 font-normal"
+                                >
+                                    Buka di Tab Baru ↗
+                                </a>
+                            )}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="mt-2 flex flex-col items-center justify-center bg-slate-950 rounded-lg p-2 min-h-[300px] max-h-[70vh] overflow-hidden">
+                        {proofPreviewModalUrl && (
+                            proofPreviewModalUrl.toLowerCase().endsWith(".pdf") ? (
+                                <iframe
+                                    src={proofPreviewModalUrl}
+                                    className="w-full h-[60vh] rounded border-0"
+                                    title="Bukti Bayar PDF"
+                                />
+                            ) : (
+                                <img
+                                    src={proofPreviewModalUrl}
+                                    alt="Bukti Pembayaran"
+                                    className="max-h-[65vh] w-auto object-contain rounded"
+                                />
+                            )
+                        )}
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                        <Button size="sm" variant="outline" onClick={() => setProofPreviewModalUrl(null)}>
+                            Tutup
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
         </div>

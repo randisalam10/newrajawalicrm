@@ -13,7 +13,20 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
         where: { id },
         include: {
             items: {
-                include: { masterItem: true }
+                include: {
+                    masterItem: true,
+                    vehicle: {
+                        select: {
+                            id: true,
+                            code: true,
+                            plate_number: true,
+                            vehicle_type: true,
+                            meter_type: true,
+                            category: { select: { name: true } },
+                            location: { select: { name: true } }
+                        }
+                    }
+                }
             }
         }
     })
@@ -23,7 +36,7 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
         redirect("/logistik/po")
     }
 
-    const { companies, categories, suppliers, items } = await getPoFormData()
+    const { companies, categories, suppliers, items, vehicles } = await getPoFormData()
 
     return (
         <div className="space-y-4">
@@ -37,6 +50,7 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
                 categories={categories}
                 suppliers={suppliers}
                 items={items}
+                vehicles={vehicles}
                 pembuatAdmin={session?.user?.username || po.pembuat_admin}
             />
         </div>

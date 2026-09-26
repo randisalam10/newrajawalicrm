@@ -14,6 +14,7 @@ export type InvoiceData = {
     id: string
     invoice_number: string
     status: string
+    invoice_type?: string
     issue_date: Date | string
     due_date?: Date | string | null
     include_ppn: boolean
@@ -22,24 +23,39 @@ export type InvoiceData = {
     total_amount: number
     paid_amount: number
     notes?: string | null
-    project: {
+    project?: {
         name: string
         customer: { customer_name: string; address: string }
-    }
+    } | null
+    customer?: { customer_name: string; address: string } | null
     location: { name: string }
     items: Array<{
         id: string
         quantity: number
         unit_price: number
         subtotal: number
-        transaction: {
+        item_type?: string
+        description?: string | null
+        transaction?: {
             id: string
             date: Date | string
             volume_cubic?: number
             trip_sequence?: number
             concreteQuality: { name: string }
             vehicle?: { plate_number: string } | null
-        }
+        } | null
+        sewaTransaction?: {
+            id: string
+            sewa_number: string
+            date: Date | string
+            start_date: Date | string
+            end_date: Date | string
+            total_days: number
+            price_per_day: number
+            total_price: number
+            equipment?: { nama_alat: string; kode_alat: string } | null
+            operator?: { name: string } | null
+        } | null
     }>
     payments: Array<{
         id: string
@@ -52,7 +68,7 @@ export type InvoiceData = {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const fmt = (n: number) => "Rp " + n.toLocaleString("id-ID")
+const fmt = (n: number) => "Rp " + Math.round(n).toLocaleString("id-ID")
 const fmtDate = (d: Date | string | null | undefined) =>
     d ? format(new Date(d), "dd MMMM yyyy", { locale: idLocale }) : "-"
 
@@ -92,21 +108,29 @@ const s = StyleSheet.create({
 
 // ─── Document ─────────────────────────────────────────────────────────────────
 export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
-    // Group items by date
+    const readyMixItems = invoice.items.filter(item => item.item_type !== "SEWA" && item.transaction)
+    const sewaItems = invoice.items.filter(item => item.item_type === "SEWA" || item.sewaTransaction)
+
+    // Group readyMix items by date
     const byDate = new Map<string, { date: Date; tms: number; volume: number; nilai: number; mutu: string[] }>()
-    for (const item of invoice.items) {
+    for (const item of readyMixItems) {
+        if (!item.transaction) continue
         const key = format(new Date(item.transaction.date), "yyyy-MM-dd")
         if (!byDate.has(key)) byDate.set(key, { date: new Date(item.transaction.date), tms: 0, volume: 0, nilai: 0, mutu: [] })
         const d = byDate.get(key)!
         d.tms += 1
         d.volume += item.quantity
         d.nilai += item.subtotal
-        const qName = item.transaction.concreteQuality.name
+        const qName = item.transaction.concreteQuality?.name ?? "-"
         if (!d.mutu.includes(qName)) d.mutu.push(qName)
     }
     const dateRows = Array.from(byDate.values())
     const activePayments = invoice.payments.filter(p => !p.is_cancelled)
-    const totalVolume = invoice.items.reduce((s, i) => s + i.quantity, 0)
+    const totalVolume = readyMixItems.reduce((s, i) => s + i.quantity, 0)
+
+    const custName = invoice.customer?.customer_name || invoice.project?.customer?.customer_name || "Pelanggan"
+    const custAddress = invoice.customer?.address || invoice.project?.customer?.address || "-"
+    const projName = invoice.project?.name || "Penyewaan Alat & Kendaraan"
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const badgeStyle: Record<string, any> = {
@@ -115,7 +139,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
     }
 
     return (
-        <Document title={invoice.invoice_number} author="PT. Rajawali Mix">
+        <Document title={invoice.invoice_number} author="PT. Rajawali Puncak Jayawijaya">
 
             {/* ═══════════ HALAMAN 1: INVOICE UTAMA ═══════════ */}
             <Page size="A4" style={shared.page}>
@@ -123,8 +147,8 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
                 {/* ── HEADER ─────────────────────────────────────────────────────── */}
                 <View style={shared.headerRow}>
                     <View>
-                        <Text style={shared.companyName}>PT. RAJAWALI MIX</Text>
-                        <Text style={shared.companySub}>Batching Plant — {invoice.location.name}</Text>
+                        <Text style={shared.companyName}>PT. RAJAWALI PUNCAK JAYAWIJAYA</Text>
+                        <Text style={shared.companySub}>Batching Plant & Penyewaan Alat Berat — Cabang {invoice.location?.name || "Pusat"}</Text>
                     </View>
                     <View style={shared.docTitleBox}>
                         <Text style={shared.docTitle}>Invoice</Text>
@@ -143,44 +167,85 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
                 <View style={shared.infoGrid}>
                     <View style={shared.infoBox}>
                         <Text style={shared.infoLabel}>Dari</Text>
-                        <Text style={shared.infoValue}>PT. Rajawali Mix</Text>
-                        <Text style={shared.infoSub}>Batching Plant — {invoice.location.name}</Text>
+                        <Text style={shared.infoValue}>PT. Rajawali Puncak Jayawijaya</Text>
+                        <Text style={shared.infoSub}>Cabang {invoice.location?.name || "Pusat"}</Text>
                     </View>
                     <View style={shared.infoBox}>
                         <Text style={shared.infoLabel}>Kepada</Text>
-                        <Text style={shared.infoValue}>{invoice.project.customer.customer_name}</Text>
-                        <Text style={shared.infoSub}>{invoice.project.name}</Text>
-                        <Text style={shared.infoSub}>{invoice.project.customer.address}</Text>
+                        <Text style={shared.infoValue}>{custName}</Text>
+                        <Text style={shared.infoSub}>{projName}</Text>
+                        <Text style={shared.infoSub}>{custAddress}</Text>
                     </View>
                 </View>
 
-                {/* ── RINGKASAN PER TANGGAL ──────────────────────────────────────── */}
-                <Text style={shared.sectionTitle}>Ringkasan per Tanggal Kirim</Text>
-                <View style={shared.table}>
-                    <View style={shared.tableHead}>
-                        <Text style={[shared.tableHeadCell, { flex: 1.4 }]}>Tanggal</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>Mutu</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.7, textAlign: "right" }]}>Total TM</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Kubikasi (m³)</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.2, textAlign: "right" }]}>Nilai</Text>
-                    </View>
-                    {dateRows.map((row, i) => (
-                        <View key={i} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
-                            <Text style={[shared.tableCell, { flex: 1.4 }]}>{fmtDate(row.date)}</Text>
-                            <Text style={[shared.tableCell, { flex: 1.2 }]}>{row.mutu.join(", ")}</Text>
-                            <Text style={[shared.tableCell, { flex: 0.7, textAlign: "right" }]}>{row.tms} TM</Text>
-                            <Text style={[shared.tableCell, { flex: 0.9, textAlign: "right" }]}>{row.volume.toFixed(2)}</Text>
-                            <Text style={[shared.tableCell, { flex: 1.2, textAlign: "right" }]}>{fmt(row.nilai)}</Text>
+                {/* ── TABEL SEWA ALAT (JIKA ADA) ─────────────────────────────────── */}
+                {sewaItems.length > 0 && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={shared.sectionTitle}>Rincian Sewa Alat & Kendaraan</Text>
+                        <View style={shared.table}>
+                            <View style={shared.tableHead}>
+                                <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>No. DO Sewa</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 1.8 }]}>Unit Alat & Operator</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 0.8, textAlign: "right" }]}>Durasi</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 1.1, textAlign: "right" }]}>Tarif / Hari</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 1.2, textAlign: "right" }]}>Total</Text>
+                            </View>
+                            {sewaItems.map((item, i) => {
+                                const sw = item.sewaTransaction
+                                const alatName = sw?.equipment ? `${sw.equipment.nama_alat} (${sw.equipment.kode_alat})` : (item.description || "Sewa Alat")
+                                const opName = sw?.operator?.name ? ` • Op: ${sw.operator.name}` : ""
+                                return (
+                                    <View key={item.id} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
+                                        <Text style={[shared.tableCell, { flex: 1.2, fontFamily: "Helvetica-Bold", color: "#1d4ed8" }]}>{sw?.sewa_number || "-"}</Text>
+                                        <Text style={[shared.tableCell, { flex: 1.8 }]}>{alatName}{opName}</Text>
+                                        <Text style={[shared.tableCell, { flex: 0.8, textAlign: "right" }]}>{item.quantity} Hari</Text>
+                                        <Text style={[shared.tableCell, { flex: 1.1, textAlign: "right" }]}>{fmt(item.unit_price)}</Text>
+                                        <Text style={[shared.tableCell, { flex: 1.2, textAlign: "right", fontFamily: "Helvetica-Bold" }]}>{fmt(item.subtotal)}</Text>
+                                    </View>
+                                )
+                            })}
+                            <View style={shared.tableTotalRow}>
+                                <Text style={[shared.tableTotalCell, { flex: 1.2 }]}>Total Sewa</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 1.8 }]}>{sewaItems.length} Transaksi DO</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 0.8, textAlign: "right" }]}>{sewaItems.reduce((s, i) => s + i.quantity, 0)} Hari</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 1.1, textAlign: "right" }]}> </Text>
+                                <Text style={[shared.tableTotalCell, { flex: 1.2, textAlign: "right" }]}>{fmt(sewaItems.reduce((s, i) => s + i.subtotal, 0))}</Text>
+                            </View>
                         </View>
-                    ))}
-                    <View style={shared.tableTotalRow}>
-                        <Text style={[shared.tableTotalCell, { flex: 1.4 }]}>Total</Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.2 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>{invoice.items.length} TM</Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>{totalVolume.toFixed(2)}</Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.2, textAlign: "right" }]}>{fmt(invoice.subtotal)}</Text>
                     </View>
-                </View>
+                )}
+
+                {/* ── TABEL READYMIX (JIKA ADA) ───────────────────────────────────── */}
+                {readyMixItems.length > 0 && (
+                    <View style={{ marginBottom: 12 }}>
+                        <Text style={shared.sectionTitle}>Ringkasan per Tanggal Kirim (ReadyMix)</Text>
+                        <View style={shared.table}>
+                            <View style={shared.tableHead}>
+                                <Text style={[shared.tableHeadCell, { flex: 1.4 }]}>Tanggal</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>Mutu</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 0.7, textAlign: "right" }]}>Total TM</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Kubikasi (m³)</Text>
+                                <Text style={[shared.tableHeadCell, { flex: 1.2, textAlign: "right" }]}>Nilai</Text>
+                            </View>
+                            {dateRows.map((row, i) => (
+                                <View key={i} style={i % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
+                                    <Text style={[shared.tableCell, { flex: 1.4 }]}>{fmtDate(row.date)}</Text>
+                                    <Text style={[shared.tableCell, { flex: 1.2 }]}>{row.mutu.join(", ")}</Text>
+                                    <Text style={[shared.tableCell, { flex: 0.7, textAlign: "right" }]}>{row.tms} TM</Text>
+                                    <Text style={[shared.tableCell, { flex: 0.9, textAlign: "right" }]}>{row.volume.toFixed(2)}</Text>
+                                    <Text style={[shared.tableCell, { flex: 1.2, textAlign: "right" }]}>{fmt(row.nilai)}</Text>
+                                </View>
+                            ))}
+                            <View style={shared.tableTotalRow}>
+                                <Text style={[shared.tableTotalCell, { flex: 1.4 }]}>Total</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 1.2 }]}> </Text>
+                                <Text style={[shared.tableTotalCell, { flex: 0.7, textAlign: "right" }]}>{readyMixItems.length} TM</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>{totalVolume.toFixed(2)}</Text>
+                                <Text style={[shared.tableTotalCell, { flex: 1.2, textAlign: "right" }]}>{fmt(readyMixItems.reduce((s, i) => s + i.subtotal, 0))}</Text>
+                            </View>
+                        </View>
+                    </View>
+                )}
 
                 {/* ── SUMMARY BOX ────────────────────────────────────────────────── */}
                 <View style={s.summaryBox}>
@@ -190,7 +255,7 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
                     </View>
                     {invoice.include_ppn && invoice.tax_amount > 0 && (
                         <View style={s.summaryRow}>
-                            <Text style={s.summaryLabel}>PPN</Text>
+                            <Text style={s.summaryLabel}>PPN (11%)</Text>
                             <Text style={s.summaryValue}>{fmt(invoice.tax_amount)}</Text>
                         </View>
                     )}
@@ -241,12 +306,12 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Diterima oleh,</Text>
                         <View style={shared.signLine} />
-                        <Text style={shared.signName}>( {invoice.project.customer.customer_name} )</Text>
+                        <Text style={shared.signName}>( {custName} )</Text>
                     </View>
                     <View style={shared.signBox}>
                         <Text style={shared.signLabel}>Hormat kami,</Text>
                         <View style={shared.signLine} />
-                        <Text style={shared.signName}>( PT. Rajawali Mix )</Text>
+                        <Text style={shared.signName}>( PT. Rajawali Puncak Jayawijaya )</Text>
                     </View>
                 </View>
 
@@ -256,74 +321,74 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
 
             </Page>
 
-            {/* ═══════════ HALAMAN 2: LAMPIRAN TRANSAKSI ═══════════ */}
-            <Page size="A4" style={shared.page}>
+            {/* ═══════════ HALAMAN 2: LAMPIRAN TRANSAKSI READYMIX ═══════════ */}
+            {readyMixItems.length > 0 && (
+                <Page size="A4" style={shared.page}>
+                    <View style={shared.headerRow}>
+                        <View>
+                            <Text style={shared.companyName}>Lampiran Invoice</Text>
+                            <Text style={shared.companySub}>No. Invoice: {invoice.invoice_number}</Text>
+                        </View>
+                        <View style={shared.docTitleBox}>
+                            <Text style={shared.docMeta}>Kepada: {custName}</Text>
+                            <Text style={shared.docMeta}>Proyek: {projName}</Text>
+                        </View>
+                    </View>
 
-                <View style={shared.headerRow}>
-                    <View>
-                        <Text style={shared.companyName}>Lampiran Invoice</Text>
-                        <Text style={shared.companySub}>No. Invoice: {invoice.invoice_number}</Text>
-                    </View>
-                    <View style={shared.docTitleBox}>
-                        <Text style={shared.docMeta}>Kepada: {invoice.project.customer.customer_name}</Text>
-                        <Text style={shared.docMeta}>Proyek: {invoice.project.name}</Text>
-                    </View>
-                </View>
-
-                <Text style={shared.sectionTitle}>Daftar Surat Jalan / Transaksi</Text>
-                <View style={shared.table}>
-                    <View style={shared.tableHead}>
-                        <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>No</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1 }]}>Tanggal</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>No. SJ</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 1 }]}>No. Polisi</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.9 }]}>Mutu</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.8, textAlign: "right" }]}>Volume (m³)</Text>
-                        <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Subtotal</Text>
-                    </View>
-                    {invoice.items.map((item, idx) => (
-                        <View key={item.id} style={idx % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
-                            <Text style={[shared.tableCell, { flex: 0.4 }]}>{idx + 1}</Text>
-                            <Text style={[shared.tableCell, { flex: 1 }]}>
-                                {format(new Date(item.transaction.date), "dd/MM/yyyy")}
+                    <Text style={shared.sectionTitle}>Daftar Surat Jalan / Transaksi</Text>
+                    <View style={shared.table}>
+                        <View style={shared.tableHead}>
+                            <Text style={[shared.tableHeadCell, { flex: 0.4 }]}>No</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1 }]}>Tanggal</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1.2 }]}>No. SJ</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 1 }]}>No. Polisi</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.9 }]}>Mutu</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.8, textAlign: "right" }]}>Volume (m³)</Text>
+                            <Text style={[shared.tableHeadCell, { flex: 0.9, textAlign: "right" }]}>Subtotal</Text>
+                        </View>
+                        {readyMixItems.map((item, idx) => (
+                            <View key={item.id} style={idx % 2 === 0 ? shared.tableRow : shared.tableRowAlt}>
+                                <Text style={[shared.tableCell, { flex: 0.4 }]}>{idx + 1}</Text>
+                                <Text style={[shared.tableCell, { flex: 1 }]}>
+                                    {item.transaction?.date ? format(new Date(item.transaction.date), "dd/MM/yyyy") : "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 1.2 }]}>
+                                    {item.transaction?.id?.substring(0, 8).toUpperCase() ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 1 }]}>
+                                    {item.transaction?.vehicle?.plate_number ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.9 }]}>
+                                    {item.transaction?.concreteQuality?.name ?? "-"}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.8, textAlign: "right" }]}>
+                                    {item.quantity.toFixed(2)}
+                                </Text>
+                                <Text style={[shared.tableCell, { flex: 0.9, textAlign: "right" }]}>
+                                    {fmt(item.subtotal)}
+                                </Text>
+                            </View>
+                        ))}
+                        <View style={shared.tableTotalRow}>
+                            <Text style={[shared.tableTotalCell, { flex: 0.4 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1.2 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 1 }]}> </Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.9 }]}>Total</Text>
+                            <Text style={[shared.tableTotalCell, { flex: 0.8, textAlign: "right" }]}>
+                                {totalVolume.toFixed(2)}
                             </Text>
-                            <Text style={[shared.tableCell, { flex: 1.2 }]}>
-                                {item.transaction.id.substring(0, 8).toUpperCase()}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 1 }]}>
-                                {item.transaction.vehicle?.plate_number ?? "-"}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.9 }]}>
-                                {item.transaction.concreteQuality.name}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.8, textAlign: "right" }]}>
-                                {item.quantity.toFixed(2)}
-                            </Text>
-                            <Text style={[shared.tableCell, { flex: 0.9, textAlign: "right" }]}>
-                                {fmt(item.subtotal)}
+                            <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>
+                                {fmt(readyMixItems.reduce((s, i) => s + i.subtotal, 0))}
                             </Text>
                         </View>
-                    ))}
-                    <View style={shared.tableTotalRow}>
-                        <Text style={[shared.tableTotalCell, { flex: 0.4 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1.2 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 1 }]}> </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.9 }]}>Total</Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.8, textAlign: "right" }]}>
-                            {totalVolume.toFixed(2)}
-                        </Text>
-                        <Text style={[shared.tableTotalCell, { flex: 0.9, textAlign: "right" }]}>
-                            {fmt(invoice.subtotal)}
-                        </Text>
                     </View>
-                </View>
 
-                <Text style={shared.pageNumber} render={({ pageNumber, totalPages }) =>
-                    `Halaman ${pageNumber} dari ${totalPages}`
-                } fixed />
-
-            </Page>
+                    <Text style={shared.pageNumber} render={({ pageNumber, totalPages }) =>
+                        `Halaman ${pageNumber} dari ${totalPages}`
+                    } fixed />
+                </Page>
+            )}
         </Document>
     )
 }

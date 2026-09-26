@@ -20,7 +20,8 @@ export default async function PrintPOPage({
             category: true,
             items: {
                 include: {
-                    masterItem: true
+                    masterItem: true,
+                    vehicle: true
                 }
             }
         }
@@ -116,6 +117,8 @@ export default async function PrintPOPage({
             name: item.masterItem?.name || "-",
             part_number: item.masterItem?.part_number || null,
             merk: item.masterItem?.merk || null,
+            vehicle_info: (item as any).vehicle ? `${(item as any).vehicle.code} (${(item as any).vehicle.plate_number})` : null,
+            km_hm: (item as any).km_hm || null,
             quantity: item.quantity,
             satuan: item.masterItem?.satuan || "PCS",
             harga: item.harga_satuan,

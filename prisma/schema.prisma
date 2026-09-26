@@ -178,18 +178,23 @@ model WebPushSubscription {
 }
 
 model Employee {
-  id                    String                  @id @default(uuid())
-  name                  String
-  position              Position
-  status                EmployeeStatus          @default(Active)
-  join_date             DateTime
-  user                  User?
-  location              Location?               @relation(fields: [locationId], references: [id])
-  locationId            String?
-  driver_transactions   ProductionTransaction[] @relation("SopirRelation")
-  operator_transactions ProductionTransaction[] @relation("OperatorRelation")
-  retase_commissions    Retase[]                @relation("DriverRetase")
-  driver_aggregate_incomings AggregateIncoming[] @relation("DriverAggregate")
+  id                         String                  @id @default(uuid())
+  name                       String
+  position                   Position
+  status                     EmployeeStatus          @default(Active)
+  join_date                  DateTime
+  user                       User?
+  location                   Location?               @relation(fields: [locationId], references: [id])
+  locationId                 String?
+  driverCategoryId           String?
+  driverCategory             DriverCategory?         @relation(fields: [driverCategoryId], references: [id])
+  driver_transactions        ProductionTransaction[] @relation("SopirRelation")
+  operator_transactions      ProductionTransaction[] @relation("OperatorRelation")
+  operator_sewa_transactions SewaTransaction[]       @relation("OperatorSewaRelation")
+  retase_commissions         Retase[]                @relation("DriverRetase")
+  driver_aggregate_incomings AggregateIncoming[]     @relation("DriverAggregate")
+
+  @@index([driverCategoryId])
 }
 
 model Location {
@@ -211,6 +216,8 @@ model Location {
   sharedProjects         Project[]               @relation("ProjectSharedLocations") // Added
   purchaseOrders         PurchaseOrder[]
   rblBudgets             RblBudget[]
+  sewaTransactions       SewaTransaction[]
+  sewaEquipments         MasterSewaAlat[]
 }
 
 model Vehicle {
@@ -230,7 +237,21 @@ model Vehicle {
   capacity_cubic     Float?                  // Kapasitas bak (m³) spesifikasi referensi
   aggregateIncomings AggregateIncoming[]
 
+  // Equipment & Vehicle Meter Specifications
+  meter_type         String?                 @default("KM") // "KM" | "HM"
+  merk_model         String?                 // e.g. "Sicoma 60m³/h", "Perkins 150 kVA", "Komatsu PC200-8"
+  poItems            PoItem[]
+  purchaseOrders     PurchaseOrder[]
+
+  // Rental & Sewa Integration
+  is_for_rent        Boolean                 @default(false) // Tag / flag unit tersedia untuk disewakan
+  default_day_rate   Float?                  @default(0)     // Tarif sewa acuan per hari (Rp)
+  rental_status      String?                 @default("Tersedia") // "Tersedia" | "Disewa" | "Maintenance" | "Nonaktif"
+  rental_notes       String?                 // Catatan spesifikasi sewa
+  sewaTransactions   SewaTransaction[]
+
   @@index([categoryId])
+  @@index([is_for_rent])
 }
 
 model VehicleCategory {
@@ -256,6 +277,8 @@ model Customer {
   locationId String
 
   sharedLocations Location[] @relation("CustomerSharedLocations") // Added
+  sewaTransactions SewaTransaction[]
+  invoices         Invoice[]
 }
 
 model Project {
@@ -275,6 +298,7 @@ model Project {
   concretePlans ConcretePlan[]
 
   sharedLocations Location[] @relation("ProjectSharedLocations")
+  sewaTransactions SewaTransaction[]
 }
 
 model ProjectPrice {
@@ -458,8 +482,11 @@ model AuditLog {
 model Invoice {
   id             String        @id @default(uuid())
   invoice_number String        @unique
-  project        Project       @relation(fields: [projectId], references: [id])
-  projectId      String
+  project        Project?      @relation(fields: [projectId], references: [id])
+  projectId      String?
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  customerId     String?
+  invoice_type   String        @default("READYMIX") // "READYMIX", "SEWA", "MIXED"
   issue_date     DateTime      @default(now())
   due_date       DateTime?
   period_start   DateTime?
@@ -483,20 +510,26 @@ model Invoice {
   @@index([locationId, status])
   @@index([issue_date])
   @@index([projectId])
+  @@index([customerId])
   @@index([status])
 }
 
 model InvoiceItem {
-  id            String                @id @default(uuid())
-  invoice       Invoice               @relation(fields: [invoiceId], references: [id])
-  invoiceId     String
-  transaction   ProductionTransaction @relation(fields: [transactionId], references: [id])
-  transactionId String                @unique
-  quantity      Float
-  unit_price    Float
-  subtotal      Float
+  id                String                 @id @default(uuid())
+  invoice           Invoice                @relation(fields: [invoiceId], references: [id])
+  invoiceId         String
+  transaction       ProductionTransaction? @relation(fields: [transactionId], references: [id])
+  transactionId     String?                @unique
+  sewaTransaction   SewaTransaction?       @relation(fields: [sewaTransactionId], references: [id])
+  sewaTransactionId String?                @unique
+  description       String?                // Keterangan / rincian item (misal sewa alat, dsb)
+  item_type         String                 @default("READYMIX") // "READYMIX" | "SEWA"
+  quantity          Float
+  unit_price        Float
+  subtotal          Float
 
   @@index([invoiceId])
+  @@index([sewaTransactionId])
 }
 
 model Payment {
@@ -712,6 +745,10 @@ model PurchaseOrder {
   location   Location? @relation(fields: [locationId], references: [id])
   locationId String?
 
+  // Terikat kendaraan / alat (opsional)
+  vehicleId  String?
+  vehicle    Vehicle?  @relation(fields: [vehicleId], references: [id])
+
   status PurchaseOrderStatus @default(DRAFT)
   notes  String?
 
@@ -777,8 +814,14 @@ model PoItem {
   keterangan      String? // e.g. "Plat DT 8258 RI"
   subtotal        Float
 
+  // Unit Kendaraan / Alat & KM/HM
+  vehicleId       String?
+  vehicle         Vehicle?      @relation(fields: [vehicleId], references: [id])
+  km_hm           String?       // Nilai KM atau HM saat sparepart dipesan
+
   @@index([purchaseOrderId])
   @@index([masterItemId])
+  @@index([vehicleId])
 }
 
 enum RblStatus {
@@ -881,4 +924,90 @@ model RblCategory {
 
   expenses         RblExpense[]
 }
+
+// ─── SEWA ALAT / KENDARAAN (RENTAL EQUIPMENT) ───────────────────────────────
+
+model DriverCategory {
+  id          String     @id @default(uuid())
+  name        String     @unique // e.g. "Sopir Mixer", "Sopir Dump Truck", "Operator Concrete Pump", "Operator Excavator", "Operator Crane"
+  code        String?    // e.g. "MIX", "DT", "CP", "EXC"
+  description String?
+  isSystem    Boolean    @default(false)
+  employees   Employee[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model MasterSewaAlat {
+  id               String            @id @default(uuid())
+  kode_alat        String            @unique // e.g. CP-01, EXC-01, CR-01, DT-01
+  nama_alat        String            // e.g. Concrete Pump Sany 37m, Excavator Komatsu PC200
+  kategori         String            // e.g. Concrete Pump, Excavator, Crane, Bulldozer, Wheel Loader, Dump Truck, Lainnya
+  merk_model       String?           // e.g. Sany HBT60, Komatsu PC200-8
+  nomor_seri_plat  String?           // Plat No Kendaraan atau No. Seri Unit
+  default_day_rate Float?            @default(0) // Referensi tarif sewa harian (Rp)
+  status           String            @default("Tersedia") // Tersedia, Disewa, Maintenance, Nonaktif
+  keterangan       String?           // Catatan kondisi / kapasitas / spesifikasi
+  locationId       String?
+  location         Location?         @relation(fields: [locationId], references: [id])
+  transactions     SewaTransaction[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([locationId])
+  @@index([kategori])
+  @@index([status])
+}
+
+model SewaTransaction {
+  id            String         @id @default(uuid())
+  sewa_number   String         @unique // Auto-generated: SWA/2026/03/001
+  date          DateTime       @default(now()) // Tanggal DO / transaksi dibuat
+
+  customerId    String
+  customer      Customer       @relation(fields: [customerId], references: [id])
+
+  projectId     String?
+  project       Project?       @relation(fields: [projectId], references: [id])
+  lokasi_proyek String?        // Catatan teks alamat/lokasi proyek
+
+  equipmentId   String?
+  equipment     MasterSewaAlat? @relation(fields: [equipmentId], references: [id])
+
+  vehicleId     String?
+  vehicle       Vehicle?        @relation(fields: [vehicleId], references: [id])
+
+  operatorId    String
+  operator      Employee       @relation("OperatorSewaRelation", fields: [operatorId], references: [id])
+
+  date_mode     String         @default("RANGE") // "RANGE" (berurutan) atau "DATES" (tidak berurutan / acak)
+  start_date    DateTime       // Tanggal mulai
+  end_date      DateTime       // Tanggal selesai
+  rental_dates  String         // JSON Array tanggal string: ["2026-03-01", "2026-03-05", ...]
+  total_days    Int            // Total jumlah hari sewa
+
+  price_per_day Float          @default(0) // Free input harga per hari (opsional)
+  total_price   Float          @default(0) // Free input total harga sewa
+
+  status        String         @default("Active") // "Pending", "Active", "Completed", "Cancelled"
+  notes         String?        // Instruksi khusus / catatan pekerjaan
+
+  locationId    String
+  location      Location       @relation(fields: [locationId], references: [id])
+
+  invoiceItem   InvoiceItem?
+
+  createdById   String?        // Employee ID pembuat transaksi
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([date])
+  @@index([locationId, date])
+  @@index([customerId])
+  @@index([equipmentId])
+  @@index([vehicleId])
+  @@index([operatorId])
+  @@index([status])
+}
+
 

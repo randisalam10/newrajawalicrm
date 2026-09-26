@@ -20,8 +20,8 @@ export default async function KendaraanPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div className="flex flex-col space-y-1">
-                    <h1 className="text-3xl font-bold tracking-tight">Data Kendaraan</h1>
-                    <p className="text-slate-500">Kelola master data armada, truk mixer, loader, dan kategori alat.</p>
+                    <h1 className="text-3xl font-bold tracking-tight">Data Kendaraan & Alat</h1>
+                    <p className="text-slate-500">Kelola master data armada kendaraan, alat berat, batching plant, genset, dan peralatan operasional.</p>
                 </div>
                 {!canManage && (
                     <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-medium w-fit">
