@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,7 +40,7 @@ export function ProduksiClient({
     locations?: any[]
     canCreate?: boolean
 }) {
-    const { projects = [], vehicles = [], drivers = [], qualities = [], workItems = [] } = masters || {}
+    const { projects = [], vehicles = [], drivers = [], qualities = [], workItems = [], operators = [] } = masters || {}
     const [loading, setLoading] = useState(false)
 
     // Master Cabang state (for SuperAdmin)
@@ -54,6 +54,7 @@ export function ProduksiClient({
     const activeDrivers = userRole === 'SuperAdminBP' && selectedLocationId ? drivers.filter((d: any) => d.locationId === selectedLocationId) : drivers
     const activeQualities = userRole === 'SuperAdminBP' && selectedLocationId ? qualities.filter((q: any) => q.locationId === selectedLocationId) : qualities
     const activeWorkItems = userRole === 'SuperAdminBP' && selectedLocationId ? workItems.filter((w: any) => w.locationId === selectedLocationId) : workItems
+    const activeOperators = userRole === 'SuperAdminBP' && selectedLocationId ? operators.filter((o: any) => o.locationId === selectedLocationId) : operators
 
     // Combobox states
     const [openCustomer, setOpenCustomer] = useState(false)
@@ -68,11 +69,23 @@ export function ProduksiClient({
     const [openDriver, setOpenDriver] = useState(false)
     const [selectedDriverId, setSelectedDriverId] = useState<string>("")
 
+    const [openOperator, setOpenOperator] = useState(false)
+    const [selectedOperatorId, setSelectedOperatorId] = useState<string>("")
+
     const [openQuality, setOpenQuality] = useState(false)
     const [selectedQualityId, setSelectedQualityId] = useState<string>("")
 
     const [openWorkItem, setOpenWorkItem] = useState(false)
     const [selectedWorkItemId, setSelectedWorkItemId] = useState<string>("")
+
+    // Auto-select operator jika di cabang BP hanya ada 1 operator aktif
+    useEffect(() => {
+        if (activeOperators.length === 1) {
+            setSelectedOperatorId(activeOperators[0].id)
+        } else if (activeOperators.length === 0) {
+            setSelectedOperatorId("")
+        }
+    }, [activeOperators, selectedLocationId])
 
     // Derive unique customers from active projects
     const uniqueCustomers: any[] = []
@@ -124,6 +137,11 @@ export function ProduksiClient({
         // Add locationId manually to formData if superadmin
         if (userRole === 'SuperAdminBP' && selectedLocationId) {
             formData.append("locationId", selectedLocationId)
+        }
+
+        // Add operatorId if selected
+        if (selectedOperatorId) {
+            formData.append("operatorId", selectedOperatorId)
         }
 
         setLoading(true)
@@ -358,8 +376,15 @@ export function ProduksiClient({
                     </div>
 
                     <div className="space-y-4 border p-4 rounded-lg bg-slate-50/50">
-                        <h3 className="font-semibold text-sm text-slate-500 uppercase">2. Informasi Armada & Driver</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-semibold text-sm text-slate-500 uppercase">2. Informasi Armada, Driver & Operator</h3>
+                            {activeOperators.length === 1 && (
+                                <span className="text-[11px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    ✓ Operator Otomatis (1 di BP ini)
+                                </span>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
                             <div className="space-y-2 flex flex-col">
                                 <Label>Truk Mixer *</Label>
@@ -454,6 +479,57 @@ export function ProduksiClient({
                                                                 )}
                                                             />
                                                             {d.name}
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+
+                            <div className="space-y-2 flex flex-col">
+                                <Label>Operator Batching Plant</Label>
+                                <Popover open={openOperator} onOpenChange={setOpenOperator}>
+                                    <PopoverTrigger asChild>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            aria-expanded={openOperator}
+                                            className="w-full justify-between"
+                                            disabled={!canCreate}
+                                        >
+                                            {selectedOperatorId
+                                                ? (() => {
+                                                    const o = activeOperators.find((o: any) => o.id === selectedOperatorId);
+                                                    return o ? o.name : "-- Pilih Operator BP --"
+                                                })()
+                                                : (activeOperators.length === 0 ? "Belum ada operator BP" : "-- Pilih Operator BP --")}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Cari operator..." />
+                                            <CommandList>
+                                                <CommandEmpty>Operator tidak ditemukan.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {activeOperators.map((o: any) => (
+                                                        <CommandItem
+                                                            key={o.id}
+                                                            value={o.name}
+                                                            onSelect={() => {
+                                                                setSelectedOperatorId(o.id === selectedOperatorId ? "" : o.id)
+                                                                setOpenOperator(false)
+                                                            }}
+                                                        >
+                                                            <Check
+                                                                className={cn(
+                                                                    "mr-2 h-4 w-4",
+                                                                    selectedOperatorId === o.id ? "opacity-100" : "opacity-0"
+                                                                )}
+                                                            />
+                                                            {o.name} {o.location?.name ? `(${o.location.name})` : ''}
                                                         </CommandItem>
                                                     ))}
                                                 </CommandGroup>

@@ -20,7 +20,8 @@ import {
     ChevronDown, ChevronRight, AlertTriangle, Clock, CheckCircle2,
     FileText, Plus, Search, Loader2, Upload, Receipt, TrendingUp,
     Package, Tag, DollarSign, X, Eye, Printer, BarChart3,
-    ImageIcon, Download, Check, Truck, Wrench, Paperclip
+    ImageIcon, Download, Check, Truck, Wrench, Paperclip,
+    Percent, Scale, ShieldAlert
 } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
@@ -75,6 +76,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
     const [unbilledSearch, setUnbilledSearch] = useState("")
     const [unbilledTypeFilter, setUnbilledTypeFilter] = useState<"ALL" | "READYMIX" | "SEWA">("ALL")
+    const [filterNoPriceOnly, setFilterNoPriceOnly] = useState(false)
     const [groupBy, setGroupBy] = useState<"flat" | "date" | "mutu" | "customer">("date")
     // Groups are collapsed / minimized by default (empty set).
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -84,6 +86,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set())
     const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set())
     const [statusFilter, setStatusFilter] = useState("all")
+    const [ppnFilter, setPpnFilter] = useState<"all" | "PPN" | "NON_PPN">("all")
     const [invoiceSearch, setInvoiceSearch] = useState("")
     const [invoiceSort, setInvoiceSort] = useState("newest")
     const [selectedInvoice, setSelectedInvoice] = useState<any>(null)
@@ -95,6 +98,8 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [invoicePage, setInvoicePage] = useState(1)
     const [depositPage, setDepositPage] = useState(1)
     const PAGE_SIZE = 25
+    const UNBILLED_FLAT_PAGE_SIZE = 50
+    const UNBILLED_GROUP_PAGE_SIZE = 15
 
     // Payment dialog & compression
     const [showPaymentDialog, setShowPaymentDialog] = useState(false)
@@ -149,11 +154,32 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     // ── Unbilled Pool ─────────────────────────────────────────────────────────
     const unbilled: any[] = data?.unbilled ?? []
 
+    const noPriceTxCount = useMemo(() => {
+        return unbilled.filter((tx: any) => {
+            if (tx.itemType === "SEWA") {
+                const val = tx.totalPrice || (tx.pricePerDay * (tx.totalDays || tx.volume_cubic || 0)) || 0
+                return val <= 0
+            }
+            const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
+            return !price || price <= 0
+        }).length
+    }, [unbilled])
+
     const filteredUnbilled = useMemo(() => {
         const q = unbilledSearch.toLowerCase().trim()
         return unbilled.filter(tx => {
             if (unbilledTypeFilter === "READYMIX" && tx.itemType === "SEWA") return false
             if (unbilledTypeFilter === "SEWA" && tx.itemType !== "SEWA") return false
+
+            if (filterNoPriceOnly) {
+                if (tx.itemType === "SEWA") {
+                    const val = tx.totalPrice || (tx.pricePerDay * (tx.totalDays || tx.volume_cubic || 0)) || 0
+                    if (val > 0) return false
+                } else {
+                    const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
+                    if (price > 0) return false
+                }
+            }
 
             if (!q) return true
             const custName = (tx.customer?.customer_name || tx.project?.customer?.customer_name || "").toLowerCase()
@@ -164,7 +190,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
             const doNum = (tx.sewaNumber || "").toLowerCase()
             return custName.includes(q) || projName.includes(q) || mutuName.includes(q) || equipName.includes(q) || operName.includes(q) || doNum.includes(q)
         })
-    }, [unbilled, unbilledSearch, unbilledTypeFilter])
+    }, [unbilled, unbilledSearch, unbilledTypeFilter, filterNoPriceOnly])
 
     const groupedUnbilled = useMemo(() => {
         if (groupBy === "flat") return [{ key: "all", label: "Semua", items: filteredUnbilled }]
@@ -203,6 +229,17 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         }
         return Array.from(map.entries()).map(([key, items]) => ({ key, label: key, items }))
     }, [filteredUnbilled, groupBy])
+
+    // Paginated groups or items for rendering
+    const displayedGroups = useMemo(() => {
+        if (groupBy === "flat") {
+            const start = (unbilledPage - 1) * UNBILLED_FLAT_PAGE_SIZE
+            const pagedItems = filteredUnbilled.slice(start, start + UNBILLED_FLAT_PAGE_SIZE)
+            return [{ key: "all", label: "Semua", items: pagedItems }]
+        }
+        const start = (unbilledPage - 1) * UNBILLED_GROUP_PAGE_SIZE
+        return groupedUnbilled.slice(start, start + UNBILLED_GROUP_PAGE_SIZE)
+    }, [groupedUnbilled, filteredUnbilled, groupBy, unbilledPage])
 
     const selectedTxList = filteredUnbilled.filter(tx => selectedTxIds.has(tx.id))
     const selectedVolume = selectedTxList.filter((tx: any) => tx.itemType !== "SEWA").reduce((s: number, tx: any) => s + (tx.volume_cubic || 0), 0)
@@ -454,9 +491,57 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     // ── Per-group summary ─────────────────────────────────────────────────────
     const invoiceSummary = useMemo(() => {
         const grouped: any[] = data?.grouped ?? []
-        const totalPiutang = grouped.reduce((s: number, c: any) => s + (c.totalAmount - c.totalPaid), 0)
-        const totalInvoice = grouped.reduce((s: number, c: any) => s + c.projects.reduce((ps: number, p: any) => ps + p.invoices.length, 0), 0)
-        return { totalPiutang, totalInvoice }
+        let totalPiutang = 0
+        let totalInvoice = 0
+        let ppnCount = 0
+        let nonPpnCount = 0
+        let ppnGross = 0
+        let ppnPaid = 0
+        let ppnPiutang = 0
+        let nonPpnGross = 0
+        let nonPpnPaid = 0
+        let nonPpnPiutang = 0
+
+        for (const cg of grouped) {
+            for (const pg of cg.projects) {
+                for (const inv of pg.invoices) {
+                    if (inv.status === "CANCELLED") continue
+                    totalInvoice++
+                    const remaining = Math.max(0, (inv.total_amount || 0) - (inv.paid_amount || 0))
+                    totalPiutang += remaining
+                    const isPpn = inv.include_ppn === true || (inv.tax_amount || 0) > 0
+                    if (isPpn) {
+                        ppnCount++
+                        ppnGross += inv.total_amount || 0
+                        ppnPaid += inv.paid_amount || 0
+                        ppnPiutang += remaining
+                    } else {
+                        nonPpnCount++
+                        nonPpnGross += inv.total_amount || 0
+                        nonPpnPaid += inv.paid_amount || 0
+                        nonPpnPiutang += remaining
+                    }
+                }
+            }
+        }
+
+        const nonPpnPaidTaxLiability = nonPpnPaid * 0.11 // Kewajiban setor PPN 11% perusahaan atas kas masuk diterima
+        const nonPpnGrossTaxLiability = nonPpnGross * 0.11 // Total potensi PPN 11% perusahaan
+
+        return {
+            totalPiutang,
+            totalInvoice,
+            ppnCount,
+            nonPpnCount,
+            ppnGross,
+            ppnPaid,
+            ppnPiutang,
+            nonPpnGross,
+            nonPpnPaid,
+            nonPpnPiutang,
+            nonPpnPaidTaxLiability,
+            nonPpnGrossTaxLiability,
+        }
     }, [data])
 
     // Flat invoice list (filter + sort + paginate globally)
@@ -472,11 +557,25 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                     if (statusFilter === "UNPAID") statusMatch = sisa > 0
                     else if (statusFilter === "PAID") statusMatch = sisa <= 0
                     else if (statusFilter !== "all") statusMatch = inv.status === statusFilter
+
+                    const isPpn = inv.include_ppn === true || (inv.tax_amount || 0) > 0
+                    let ppnMatch = true
+                    if (ppnFilter === "PPN") ppnMatch = isPpn
+                    else if (ppnFilter === "NON_PPN") ppnMatch = !isPpn
+
                     const searchMatch = !invoiceSearch ||
                         inv.invoice_number.toLowerCase().includes(loweredSearch) ||
                         pg.projectName.toLowerCase().includes(loweredSearch) ||
                         cg.customerName.toLowerCase().includes(loweredSearch)
-                    if (statusMatch && searchMatch) allInvs.push({ ...inv, projectName: pg.projectName, customerName: cg.customerName, customerId: cg.customerId })
+                    if (statusMatch && ppnMatch && searchMatch) {
+                        allInvs.push({
+                            ...inv,
+                            isPpn,
+                            projectName: pg.projectName,
+                            customerName: cg.customerName,
+                            customerId: cg.customerId
+                        })
+                    }
                 }
             }
         }
@@ -486,7 +585,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
             return invoiceSort === "newest" ? db - da : da - db
         })
         return allInvs
-    }, [data, statusFilter, invoiceSearch, invoiceSort])
+    }, [data, statusFilter, ppnFilter, invoiceSearch, invoiceSort])
 
 
     if (!mounted) {
@@ -562,6 +661,16 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             if (filter?.type) {
                                 setUnbilledTypeFilter(filter.type)
                             }
+                            if (filter?.ppnFilter) {
+                                setPpnFilter(filter.ppnFilter)
+                            }
+                            if (filter?.noPriceOnly !== undefined) {
+                                setFilterNoPriceOnly(filter.noPriceOnly)
+                                if (filter.noPriceOnly) {
+                                    setUnbilledTypeFilter("ALL")
+                                }
+                                setUnbilledPage(1)
+                            }
                         }}
                         isCorporate={isCorporate}
                     />
@@ -578,33 +687,64 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-100 text-xs gap-0.5 shadow-2xs">
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "ALL" ? "bg-white font-bold text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-600 hover:text-slate-900"}`}
-                                            onClick={() => setUnbilledTypeFilter("ALL")}
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "ALL" && !filterNoPriceOnly ? "bg-white font-bold text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-600 hover:text-slate-900"}`}
+                                            onClick={() => {
+                                                setUnbilledTypeFilter("ALL")
+                                                setFilterNoPriceOnly(false)
+                                                setUnbilledPage(1)
+                                            }}
                                         >
                                             <span>Semua</span>
                                             <span className="bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded-full text-[10px] font-mono">{unbilled.length}</span>
                                         </button>
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "READYMIX" ? "bg-blue-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-blue-700"}`}
-                                            onClick={() => setUnbilledTypeFilter("READYMIX")}
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "READYMIX" && !filterNoPriceOnly ? "bg-blue-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-blue-700"}`}
+                                            onClick={() => {
+                                                setUnbilledTypeFilter("READYMIX")
+                                                setFilterNoPriceOnly(false)
+                                                setUnbilledPage(1)
+                                            }}
                                         >
                                             <Truck className="w-3.5 h-3.5" />
                                             <span>Cor ReadyMix</span>
-                                            <span className={`${unbilledTypeFilter === "READYMIX" ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                            <span className={`${unbilledTypeFilter === "READYMIX" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
                                                 {unbilled.filter(t => t.itemType !== "SEWA").length}
                                             </span>
                                         </button>
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "SEWA" ? "bg-purple-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-purple-700"}`}
-                                            onClick={() => setUnbilledTypeFilter("SEWA")}
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "SEWA" && !filterNoPriceOnly ? "bg-purple-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-purple-700"}`}
+                                            onClick={() => {
+                                                setUnbilledTypeFilter("SEWA")
+                                                setFilterNoPriceOnly(false)
+                                                setUnbilledPage(1)
+                                            }}
                                         >
                                             <Wrench className="w-3.5 h-3.5" />
                                             <span>Sewa Alat & CP</span>
-                                            <span className={`${unbilledTypeFilter === "SEWA" ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                            <span className={`${unbilledTypeFilter === "SEWA" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
                                                 {unbilled.filter(t => t.itemType === "SEWA").length}
                                             </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${filterNoPriceOnly ? "bg-amber-600 font-bold text-white shadow-xs" : "text-amber-800 hover:text-amber-950"}`}
+                                            onClick={() => {
+                                                const next = !filterNoPriceOnly
+                                                setFilterNoPriceOnly(next)
+                                                if (next) setUnbilledTypeFilter("ALL")
+                                                setUnbilledPage(1)
+                                            }}
+                                            title="Filter transaksi yang belum diset harganya di Master Proyek"
+                                        >
+                                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+                                            <span>Belum Ada Harga</span>
+                                            {noPriceTxCount > 0 && (
+                                                <span className={`${filterNoPriceOnly ? "bg-white/20 text-white" : "bg-amber-200 text-amber-900"} px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold`}>
+                                                    {noPriceTxCount}
+                                                </span>
+                                            )}
                                         </button>
                                     </div>
                                 </div>
@@ -690,7 +830,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {groupedUnbilled.map(group => {
+                                            {displayedGroups.map(group => {
                                                 const isExpanded = isGroupExpanded(group.key)
                                                 const readyMixItems = group.items.filter((i: any) => i.itemType !== "SEWA")
                                                 const sewaItems = group.items.filter((i: any) => i.itemType === "SEWA")
@@ -760,6 +900,9 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                             const price = isSewa
                                                                 ? tx.pricePerDay
                                                                 : tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price
+                                                            const hasNoPrice = isSewa
+                                                                ? (!price && !tx.totalPrice)
+                                                                : (!price || price <= 0)
                                                             const nilai = isSewa
                                                                 ? (tx.totalPrice || (tx.pricePerDay * tx.totalDays))
                                                                 : (price ? tx.volume_cubic * price : null)
@@ -767,7 +910,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                             return (
                                                                 <TableRow
                                                                     key={tx.id}
-                                                                    className={`text-xs ${canManage ? "cursor-pointer" : ""} ${selectedTxIds.has(tx.id) ? "bg-blue-50" : "hover:bg-slate-50/60"}`}
+                                                                    className={`text-xs ${canManage ? "cursor-pointer" : ""} ${selectedTxIds.has(tx.id) ? "bg-blue-50" : hasNoPrice ? "bg-amber-50/60 hover:bg-amber-100/60" : "hover:bg-slate-50/60"}`}
                                                                     onClick={() => canManage && toggleTx(tx.id)}
                                                                 >
                                                                     {canManage && (
@@ -810,8 +953,8 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                                     </TableCell>
                                                                     <TableCell className="text-right font-mono">
                                                                         {price ? (isSewa ? `${fmt(price)}/hr` : fmt(price)) : (
-                                                                            <span className="flex items-center gap-1 justify-end text-amber-600">
-                                                                                <AlertTriangle className="w-3 h-3" /> Belum diset
+                                                                            <span className="inline-flex items-center gap-1 justify-end text-amber-800 bg-amber-100/90 px-1.5 py-0.5 rounded font-semibold text-[10px]" title="Harga belum diset di Master Proyek">
+                                                                                <AlertTriangle className="w-3 h-3 text-amber-600 shrink-0" /> Belum diset
                                                                             </span>
                                                                         )}
                                                                     </TableCell>
@@ -834,6 +977,16 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                         </TableBody>
                                     </Table>
                                 </div>
+                            )}
+
+                            {/* Pagination Bar for Unbilled */}
+                            {filteredUnbilled.length > 0 && (
+                                <PaginationBar
+                                    page={unbilledPage}
+                                    total={groupBy === "flat" ? filteredUnbilled.length : groupedUnbilled.length}
+                                    perPage={groupBy === "flat" ? UNBILLED_FLAT_PAGE_SIZE : UNBILLED_GROUP_PAGE_SIZE}
+                                    onPageChange={setUnbilledPage}
+                                />
                             )}
 
                             {/* Sticky bottom bar */}
@@ -878,48 +1031,118 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
 
                 {/* ═══ TAB 2: INVOICE LIST ═════════════════════════════════════════════════ */}
                 <TabsContent value="invoices" className="mt-4 space-y-3">
-                    <div className="flex items-center gap-3 justify-between">
-                        <div className="flex flex-col items-start justify-center">
-                            <div className="flex items-center gap-2">
-                                <Receipt className="w-5 h-5 text-blue-600" />
-                                <span className="font-semibold text-slate-800 text-lg">{fmt(invoiceSummary.totalPiutang)}</span>
+                    {/* Summary & Filters Header */}
+                    <div className="flex flex-col gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+                        {/* Metrics Bar */}
+                        <div className="flex items-center justify-between flex-wrap gap-3 pb-2.5 border-b border-slate-100">
+                            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded-md">
+                                        <Receipt className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Total Piutang Usaha</div>
+                                        <div className="font-bold text-slate-900 text-sm font-mono">{fmt(invoiceSummary.totalPiutang)}</div>
+                                    </div>
+                                </div>
+                                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                    <div>
+                                        <div className="text-[10px] text-slate-500 font-semibold uppercase">Pakai PPN (11%)</div>
+                                        <div className="font-bold text-emerald-700 text-xs font-mono">
+                                            {invoiceSummary.ppnCount} Faktur · {fmt(invoiceSummary.ppnGross)}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                                    <div>
+                                        <div className="text-[10px] text-amber-800 font-semibold uppercase">Non-PPN (0%)</div>
+                                        <div className="font-bold text-amber-900 text-xs font-mono">
+                                            {invoiceSummary.nonPpnCount} Faktur · {fmt(invoiceSummary.nonPpnGross)}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <span className="text-[10px] text-slate-500 font-medium tracking-wide uppercase">TOTAL PIUTANG</span>
+
+                            {/* Alert Box for Non-PPN Tax Liability */}
+                            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-lg px-2.5 py-1 text-xs">
+                                <div className="p-1 bg-amber-100 text-amber-800 rounded">
+                                    <Percent className="w-3.5 h-3.5" />
+                                </div>
+                                <div>
+                                    <div className="text-[10px] text-amber-900 font-bold uppercase">
+                                        Kewajiban Setor PPN 11% (Kas Masuk)
+                                    </div>
+                                    <div className="font-mono font-bold text-amber-900 text-xs">
+                                        {fmt(invoiceSummary.nonPpnPaidTaxLiability)}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="relative w-48">
-                                <Search className="w-4 h-4 absolute left-2.5 top-2 text-slate-400" />
-                                <input
-                                    type="text"
-                                    placeholder="Cari no. invoice/proyek..."
-                                    className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                                    value={invoiceSearch}
-                                    onChange={e => setInvoiceSearch(e.target.value)}
-                                />
+
+                        {/* Search & Filter Controls */}
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <div className="relative w-44 sm:w-52">
+                                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Cari no. invoice/proyek..."
+                                        className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                        value={invoiceSearch}
+                                        onChange={e => { setInvoiceSearch(e.target.value); setInvoicePage(1); }}
+                                    />
+                                </div>
+                                <Select value={invoiceSort} onValueChange={setInvoiceSort}>
+                                    <SelectTrigger className="h-8 w-28 text-xs bg-white border-slate-200">
+                                        <SelectValue placeholder="Urutkan" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="newest">Terbaru</SelectItem>
+                                        <SelectItem value="oldest">Terlama</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setInvoicePage(1); }}>
+                                    <SelectTrigger className="h-8 w-36 text-xs">
+                                        <SelectValue placeholder="Filter status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Semua Status</SelectItem>
+                                        <SelectItem value="UNPAID" className="text-red-600 font-medium">Belum Lunas / Sisa</SelectItem>
+                                        <SelectItem value="PAID" className="text-green-600 font-medium">Lunas</SelectItem>
+                                        <hr className="my-1 border-slate-100" />
+                                        {Object.entries(STATUS_CONFIG).filter(([k]) => k !== 'PAID').map(([k, v]) => (
+                                            <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                {/* Dropdown Filter Pajak (PPN / Non-PPN) */}
+                                <Select value={ppnFilter} onValueChange={v => { setPpnFilter(v as any); setInvoicePage(1); }}>
+                                    <SelectTrigger className="h-8 w-44 text-xs bg-white border-slate-200">
+                                        <SelectValue placeholder="Filter Pajak" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">Semua Pajak (PPN & Non-PPN)</SelectItem>
+                                        <SelectItem value="PPN">
+                                            <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                                                Pakai PPN (11%)
+                                            </div>
+                                        </SelectItem>
+                                        <SelectItem value="NON_PPN">
+                                            <div className="flex items-center gap-1.5 text-amber-800 font-medium">
+                                                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                                                Non-PPN (0% - Wajib Setor)
+                                            </div>
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
-                            <Select value={invoiceSort} onValueChange={setInvoiceSort}>
-                                <SelectTrigger className="h-8 w-28 text-xs bg-white border-slate-200">
-                                    <SelectValue placeholder="Urutkan" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="newest">Terbaru</SelectItem>
-                                    <SelectItem value="oldest">Terlama</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="h-8 w-36 text-xs">
-                                    <SelectValue placeholder="Filter status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Semua Status</SelectItem>
-                                    <SelectItem value="UNPAID" className="text-red-600 font-medium">Belum Lunas / Sisa</SelectItem>
-                                    <SelectItem value="PAID" className="text-green-600 font-medium">Lunas</SelectItem>
-                                    <hr className="my-1 border-slate-100" />
-                                    {Object.entries(STATUS_CONFIG).filter(([k]) => k !== 'PAID').map(([k, v]) => (
-                                        <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+
                             <button
                                 onClick={async () => {
                                     const next = !showCancelledInvoices
@@ -930,7 +1153,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     setData((prev: any) => ({ ...prev, grouped }))
                                     setIsLoading(false)
                                 }}
-                                className={`h-8 px-2.5 text-xs rounded border flex items-center gap-1.5 transition-colors ${showCancelledInvoices
+                                className={`h-8 px-2.5 text-xs rounded border flex items-center gap-1.5 transition-colors cursor-pointer ${showCancelledInvoices
                                         ? 'bg-red-50 border-red-200 text-red-700'
                                         : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
                                     }`}
@@ -945,7 +1168,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                         <Card>
                             <CardContent className="py-12 text-center text-slate-400">
                                 <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                                <p className="text-sm">Belum ada invoice yang cocok</p>
+                                <p className="text-sm">Belum ada invoice yang cocok dengan filter</p>
                             </CardContent>
                         </Card>
                     ) : (() => {
@@ -967,10 +1190,11 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             <TableRow>
                                                 <TableHead className="text-xs">No. Invoice</TableHead>
                                                 <TableHead className="text-xs">Customer / Proyek</TableHead>
+                                                <TableHead className="text-xs">Pajak (PPN)</TableHead>
                                                 <TableHead className="text-xs">Tanggal</TableHead>
-                                                <TableHead className="text-xs text-right">Total</TableHead>
+                                                <TableHead className="text-xs text-right">Total Tagihan</TableHead>
                                                 <TableHead className="text-xs text-right">Terbayar</TableHead>
-                                                <TableHead className="text-xs text-right">Sisa</TableHead>
+                                                <TableHead className="text-xs text-right">Sisa Piutang</TableHead>
                                                 <TableHead className="text-xs">Status</TableHead>
                                                 <TableHead className="w-10"></TableHead>
                                             </TableRow>
@@ -979,14 +1203,23 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             {customerOrder.map(custId => {
                                                 const invs = customerGroups[custId]
                                                 const custPiutang = invs.reduce((s: number, i: any) => s + (i.total_amount - i.paid_amount), 0)
+                                                const custNonPpnInvs = invs.filter((i: any) => !i.isPpn && i.status !== "CANCELLED")
+                                                const custNonPpnPaid = custNonPpnInvs.reduce((s: number, i: any) => s + (i.paid_amount || 0), 0)
+                                                const custNonPpnLiability = custNonPpnPaid * 0.11
+
                                                 return (
                                                     <React.Fragment key={custId}>
                                                         <TableRow className="bg-slate-100/50 hover:bg-slate-100/50">
-                                                            <TableCell colSpan={8} className="py-2">
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-2">
+                                                            <TableCell colSpan={9} className="py-2">
+                                                                <div className="flex items-center justify-between flex-wrap gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
                                                                         <span className="font-semibold text-xs text-slate-800">👤 {invs[0].customerName}</span>
                                                                         <span className="text-slate-400 text-[10px]">({invs.length} invoice)</span>
+                                                                        {custNonPpnInvs.length > 0 && (
+                                                                            <Badge variant="outline" className="bg-amber-50 text-amber-900 border-amber-300 text-[10px] py-0 font-medium">
+                                                                                ⚠️ {custNonPpnInvs.length} Non-PPN (Beban PPN Kas Masuk: {fmt(custNonPpnLiability)})
+                                                                            </Badge>
+                                                                        )}
                                                                     </div>
                                                                     {custPiutang > 0 && <span className="text-xs font-semibold text-red-600">Piutang: {fmt(custPiutang)}</span>}
                                                                 </div>
@@ -996,6 +1229,9 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                             const sisa = inv.total_amount - inv.paid_amount
                                                             const cfg = STATUS_CONFIG[inv.status] ?? STATUS_CONFIG.DRAFT
                                                             const isCancelled = inv.status === "CANCELLED"
+                                                            const isPpn = inv.isPpn
+                                                            const nonPpnTax = (!isPpn && !isCancelled) ? (inv.paid_amount * 0.11) : 0
+
                                                             return (
                                                                 <TableRow key={inv.id} className={`text-xs hover:bg-blue-50/50 ${isCancelled ? 'opacity-50 bg-red-50/30' : ''}`}>
                                                                     <TableCell className={`font-mono font-medium pl-6 text-slate-700 ${isCancelled ? 'line-through' : ''}`}>
@@ -1007,6 +1243,24 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell className="text-slate-500 whitespace-nowrap overflow-hidden text-ellipsis max-w-[12rem]" title={inv.projectName}>{inv.projectName}</TableCell>
+                                                                    <TableCell>
+                                                                        {isPpn ? (
+                                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                                                                PPN 11%
+                                                                            </span>
+                                                                        ) : (
+                                                                            <div className="inline-flex flex-col">
+                                                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-200">
+                                                                                    Non-PPN
+                                                                                </span>
+                                                                                {inv.paid_amount > 0 && !isCancelled && (
+                                                                                    <span className="text-[9px] text-amber-700 font-mono font-medium mt-0.5" title="Wajib setor PPN 11% mandiri oleh perusahaan dari kas masuk diterima">
+                                                                                        Beban: {fmt(nonPpnTax)}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </TableCell>
                                                                     <TableCell className="whitespace-nowrap">{fmtDate(inv.issue_date)}</TableCell>
                                                                     <TableCell className="text-right">{fmt(inv.total_amount)}</TableCell>
                                                                     <TableCell className="text-right text-green-700">{fmt(inv.paid_amount)}</TableCell>
@@ -1451,10 +1705,24 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     <span>Subtotal Tagihan</span>
                                     <span className="font-mono font-medium">{fmt(invoiceDetail.subtotal)}</span>
                                 </div>
-                                {invoiceDetail.include_ppn && (
+                                {invoiceDetail.include_ppn ? (
                                     <div className="flex justify-between text-slate-600">
                                         <span>PPN (11%)</span>
                                         <span className="font-mono font-medium">{fmt(invoiceDetail.tax_amount)}</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex justify-between items-center bg-amber-50 border border-amber-200 text-amber-900 rounded p-1.5 text-xs">
+                                        <div className="flex items-center gap-1 font-semibold">
+                                            <Percent className="w-3.5 h-3.5 text-amber-700" />
+                                            <span>Faktur Non-PPN (Kewajiban Beban PPN 11% Perusahaan)</span>
+                                        </div>
+                                        <span className="font-mono font-bold">{fmt(invoiceDetail.total_amount * 0.11)}</span>
+                                    </div>
+                                )}
+                                {!invoiceDetail.include_ppn && invoiceDetail.paid_amount > 0 && (
+                                    <div className="flex justify-between items-center text-amber-900 bg-amber-100/80 border border-amber-300 rounded p-1.5 text-xs">
+                                        <span className="font-bold">Wajib Disetor ke Kas Negara (11% Kas Masuk)</span>
+                                        <span className="font-mono font-bold">{fmt(invoiceDetail.paid_amount * 0.11)}</span>
                                     </div>
                                 )}
                                 <div className="flex justify-between font-bold text-sm border-t border-slate-200 pt-2 text-slate-900">

@@ -34,6 +34,7 @@ export default async function MaterialAgregatPage() {
                 vehicle: true,
                 driver: true
             },
+            take: 250,
             orderBy: { date: "desc" },
         }),
         prisma.location.findMany({ orderBy: { name: "asc" } }),

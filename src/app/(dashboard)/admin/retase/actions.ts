@@ -42,6 +42,7 @@ const updateSettingSchema = z.object({
     locationId: z.string().min(1, "Location required"),
     price_per_cubic_km: z.coerce.number().min(0, "Price cannot be negative"),
     calculation_mode: z.enum(["DISTANCE_ONLY", "DISTANCE_AND_VOLUME"]).default("DISTANCE_ONLY"),
+    operator_rate_per_cubic: z.coerce.number().min(0, "Tarif operator tidak boleh negatif").default(0),
     apply_mode: z.enum(["FUTURE", "BACKDATE"]).default("FUTURE"),
     effective_date: z.string().optional()
 })
@@ -76,12 +77,14 @@ export async function upsertRetaseSetting(formData: FormData) {
             update: {
                 price_per_cubic_km: parsed.price_per_cubic_km,
                 calculation_mode: parsed.calculation_mode,
+                operator_rate_per_cubic: parsed.operator_rate_per_cubic,
                 effective_from: effectiveFrom,
             },
             create: {
                 locationId: parsed.locationId,
                 price_per_cubic_km: parsed.price_per_cubic_km,
                 calculation_mode: parsed.calculation_mode,
+                operator_rate_per_cubic: parsed.operator_rate_per_cubic,
                 effective_from: effectiveFrom,
             }
         })

@@ -24,11 +24,38 @@ import { useRouter } from "next/navigation"
 
 type PoPaymentMethod = "CASH" | "CREDIT"
 
-export function POEditClient({ initialPo, companies, categories, suppliers, items, vehicles = [], pembuatAdmin }: {
-    initialPo: any, companies: any[], categories: any[], suppliers: any[], items: any[], vehicles?: any[], pembuatAdmin: string
+export function POEditClient({ 
+    initialPo, 
+    companies, 
+    categories, 
+    suppliers, 
+    items, 
+    vehicles = [], 
+    locations = [],
+    userRole = "",
+    userLocationId = null,
+    pembuatAdmin 
+}: {
+    initialPo: any
+    companies: any[]
+    categories: any[]
+    suppliers: any[]
+    items: any[]
+    vehicles?: any[]
+    locations?: any[]
+    userRole?: string
+    userLocationId?: string | null
+    pembuatAdmin: string
 }) {
     const router = useRouter()
     const [saving, setSaving] = useState(false)
+
+    // Corporate scope detection: SuperAdminBP, AdminLogistik, CEO, FVP, Approver
+    const isCorp = userRole === "SuperAdminBP" || userRole === "AdminLogistik" || ["CEO", "FVP", "Approver"].includes(userRole || "")
+    const [isForBp, setIsForBp] = useState<boolean>(initialPo.is_for_bp ?? (!isCorp ? true : false))
+    const [selectedLocationId, setSelectedLocationId] = useState<string>(
+        initialPo.locationId || (!isCorp && userLocationId ? userLocationId : "")
+    )
 
     // Master items state
     const [masterItemsList, setMasterItemsList] = useState<any[]>(items)
@@ -330,6 +357,8 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                 companyProjectId: selectedProjectId || undefined,
                 categoryId: selectedCategoryId,
                 supplierId: selectedSupplierId,
+                is_for_bp: isForBp,
+                locationId: isForBp ? selectedLocationId || undefined : undefined,
                 pimpinan,
                 kepala_peralatan: kepalaPeralatan,
                 jabatan_kepala: jabatanKepala || undefined,
@@ -409,6 +438,57 @@ export function POEditClient({ initialPo, companies, categories, suppliers, item
                             <Label>Perusahaan Penerbit (KOP Surat) *</Label>
                             <Combobox options={companyOptions} value={selectedCompanyId} onChange={handleCompanyChange} placeholder="Pilih Perusahaan..." />
                         </div>
+
+                        {/* Tag Peruntukan: Untuk Batching Plant (BP) */}
+                        <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="space-y-0.5">
+                                    <label className="text-xs font-bold text-blue-900 flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={isForBp}
+                                            disabled={!isCorp}
+                                            onChange={(e) => setIsForBp(e.target.checked)}
+                                            className="rounded text-blue-600 cursor-pointer h-4 w-4"
+                                        />
+                                        <span>Peruntukan: Untuk Batching Plant (BP)</span>
+                                    </label>
+                                    <p className="text-[11px] text-blue-700">
+                                        {!isCorp 
+                                            ? "Sebagai Admin Cabang, PO ini otomatis tercatat untuk Batching Plant Anda." 
+                                            : "Centang jika pengadaan ini untuk operasional Batching Plant (Semen Silo, sparepart plant, dll)."}
+                                    </p>
+                                </div>
+                                <span className={cn(
+                                    "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0",
+                                    isForBp ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-700"
+                                )}>
+                                    {isForBp ? "UNTUK BP" : "NON-BP"}
+                                </span>
+                            </div>
+
+                            {/* Dropdown / Label Cabang BP */}
+                            {isForBp && (
+                                <div className="pt-2 border-t border-blue-200/80 space-y-1">
+                                    <Label className="text-xs font-semibold text-blue-950">Cabang Batching Plant *</Label>
+                                    {!isCorp ? (
+                                        <div className="px-3 py-2 bg-white border border-blue-300 rounded-md text-xs font-medium text-slate-800 flex items-center gap-1.5">
+                                            <span className="text-blue-600">🏢</span>
+                                            <span>{locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"}</span>
+                                            <span className="text-[10px] text-slate-400 font-normal ml-auto">(Terkunci untuk cabang Anda)</span>
+                                        </div>
+                                    ) : (
+                                        <Combobox
+                                            options={locations.map((l: any) => ({ value: l.id, label: l.name }))}
+                                            value={selectedLocationId}
+                                            onChange={setSelectedLocationId}
+                                            placeholder="Pilih Cabang Batching Plant..."
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
                         <div className="space-y-2">
                             <Label>Tujuan / Lokasi (Proyek)</Label>
                             <div className={cn(selectedCompanyId ? "" : "opacity-50 pointer-events-none")}>

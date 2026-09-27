@@ -1,6 +1,6 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { getIncomingMaterials, getStockLedger } from "./actions"
+import { getIncomingMaterials, getStockLedger, getApprovedBpCementPOs } from "./actions"
 import { MaterialInClient } from "./material-in-client"
 import { getLocations } from "../cabang/actions"
 import { isCorporateUser, hasPermission } from "@/lib/rbac"
@@ -20,10 +20,11 @@ export default async function MaterialInPage() {
         hasPermission(session.user, "MATERIAL_SEMEN", "EDIT")
     )
 
-    const [materials, ledger, locations] = await Promise.all([
+    const [materials, ledger, locations, approvedCementPos] = await Promise.all([
         getIncomingMaterials(),
         getStockLedger("all"),
         getLocations(),
+        getApprovedBpCementPOs(),
     ])
 
     return (
@@ -31,7 +32,9 @@ export default async function MaterialInPage() {
             initialData={materials}
             initialLedger={ledger}
             locations={locations}
+            approvedCementPos={approvedCementPos}
             userRole={session.user.role as string}
+            userLocationId={session.user.locationId || null}
             isCorporate={isCorp}
             canManage={canManage}
             isReadOnly={isReadOnly}

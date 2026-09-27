@@ -38,7 +38,7 @@ export type RetaseRecord = {
 
 export type RetaseDriverData = {
     driverId: string
-    driverType?: "MIXER" | "DUMP_TRUCK"
+    driverType?: "MIXER" | "DUMP_TRUCK" | "OPERATOR_BP"
     name: string
     vehicleCode: string
     totalTrip: number
@@ -119,9 +119,10 @@ export function RetaseDocument({
     const monthName = MONTH_NAMES[month - 1]
     const cetakDate = format(new Date(), "dd MMMM yyyy", { locale: idLocale })
     const isDumpTruck = driver.driverType === "DUMP_TRUCK"
+    const isOperator = driver.driverType === "OPERATOR_BP"
 
     return (
-        <Document title={`Slip Retase — ${driver.name} — ${monthName} ${year}`} author="PT. Rajawali Mix">
+        <Document title={`Slip Insentif — ${driver.name} — ${monthName} ${year}`} author="PT. Rajawali Mix">
             <Page size="A4" style={shared.page}>
 
                 {/* ── HEADER ─────────────────────────────────────────────────────── */}
@@ -129,21 +130,23 @@ export function RetaseDocument({
                     <View>
                         <Text style={shared.companyName}>PT. RAJAWALI MIX</Text>
                         <Text style={shared.companySub}>
-                            Rekap Gaji Retase Supir {isDumpTruck ? "(Dump Truck)" : "(Mixer)"}
+                            {isOperator
+                                ? "Rekap Insentif Operator Batching Plant"
+                                : `Rekap Gaji Retase Supir ${isDumpTruck ? "(Dump Truck)" : "(Mixer)"}`}
                         </Text>
                         <Text style={shared.companySub}>{locationName}</Text>
                     </View>
                     <View style={shared.docTitleBox}>
-                        <Text style={shared.docTitle}>Slip Retase</Text>
+                        <Text style={shared.docTitle}>{isOperator ? "Slip Insentif" : "Slip Retase"}</Text>
                         <Text style={shared.docNumber}>{monthName} {year}</Text>
                         <Text style={shared.docMeta}>Dicetak: {cetakDate}</Text>
                     </View>
                 </View>
 
-                {/* ── IDENTITAS SOPIR ────────────────────────────────────────────── */}
+                {/* ── IDENTITAS PENERIMA ─────────────────────────────────────────── */}
                 <Text style={s.driverName}>{driver.name}</Text>
                 <Text style={s.driverInfo}>
-                    Kategori: {isDumpTruck ? "Sopir Dump Truck" : "Sopir Truk Mixer"}   |   Armada: {driver.vehicleCode}   |   Periode: {monthName} {year}
+                    Kategori: {isOperator ? "Operator Batching Plant" : isDumpTruck ? "Sopir Dump Truck" : "Sopir Truk Mixer"}   |   {isOperator ? "Penempatan: Batching Plant" : `Armada: ${driver.vehicleCode}`}   |   Periode: {monthName} {year}
                 </Text>
 
                 {/* ── STAT SUMMARY ───────────────────────────────────────────────── */}

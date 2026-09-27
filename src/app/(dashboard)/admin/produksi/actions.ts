@@ -9,6 +9,7 @@ const productionSchema = z.object({
     projectId: z.string().min(1, "Project required"),
     vehicleId: z.string().min(1, "Mixer required"),
     driverId: z.string().min(1, "Driver required"),
+    operatorId: z.string().optional(),
     qualityId: z.string().min(1, "Mutu required"),
     workItemId: z.string().min(1, "Item Pekerjaan required"),
     volume_cubic: z.coerce.number().min(0.1, "Volume minimum 0.1"),
@@ -19,15 +20,15 @@ const productionSchema = z.object({
 
 export async function getProductionMasters() {
     const session = await auth()
-    if (!session?.user) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+    if (!session?.user) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
 
     const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ['CEO', 'FVP'].includes(session.user.role || '')
-    if (!session.user.employeeId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
-    if (!session.user.locationId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [] }
+    if (!session.user.employeeId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
+    if (!session.user.locationId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
 
     const filter: any = isCorp ? {} : { locationId: session.user.locationId! }
 
-    const [projects, vehicles, drivers, qualities, workItems] = await Promise.all([
+    const [projects, vehicles, drivers, qualities, workItems, operators] = await Promise.all([
         prisma.project.findMany({
             where: {
                 customer: {
@@ -41,10 +42,11 @@ export async function getProductionMasters() {
         prisma.vehicle.findMany({ where: { vehicle_type: "Mixer", ...filter }, orderBy: { code: 'asc' } }),
         prisma.employee.findMany({ where: { position: "Sopir", status: "Active", ...filter }, orderBy: { name: 'asc' } }),
         prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } }),
-        prisma.workItem.findMany({ where: filter, orderBy: { name: 'asc' } })
+        prisma.workItem.findMany({ where: filter, orderBy: { name: 'asc' } }),
+        prisma.employee.findMany({ where: { position: "Operator", status: "Active", ...filter }, include: { location: true }, orderBy: { name: 'asc' } })
     ])
 
-    return { projects, vehicles, drivers, qualities, workItems }
+    return { projects, vehicles, drivers, qualities, workItems, operators }
 }
 
 export async function getRecentProductions() {
@@ -143,12 +145,30 @@ export async function createProduction(formData: FormData) {
         const newCumulative = previousCumulative + volume_cubic
         const tripSequence = existingTransactions.length + 1  // TM-1, TM-2, dst. → reset tiap hari baru
 
+        // Resolve Operator Batching Plant:
+        let finalOperatorId = parsed.data.operatorId || null
+        if (!finalOperatorId && session.user.employeeId) {
+            const userEmp = await prisma.employee.findUnique({ where: { id: session.user.employeeId } })
+            if (userEmp?.position === "Operator") {
+                finalOperatorId = userEmp.id
+            }
+        }
+        if (!finalOperatorId && locationId) {
+            const locOperators = await prisma.employee.findMany({
+                where: { position: "Operator", status: "Active", locationId }
+            })
+            if (locOperators.length === 1) {
+                finalOperatorId = locOperators[0].id
+            }
+        }
+
         const transaction = await prisma.productionTransaction.create({
             data: {
                 date: transactionDate,
                 projectId,
                 vehicleId,
                 driverId,
+                operatorId: finalOperatorId,
                 qualityId,
                 workItemId,
                 volume_cubic,
@@ -166,7 +186,8 @@ export async function createProduction(formData: FormData) {
                 concreteQuality: true,
                 workItem: true,
                 driver: true,
-                vehicle: true
+                vehicle: true,
+                operator: true
             }
         })
 

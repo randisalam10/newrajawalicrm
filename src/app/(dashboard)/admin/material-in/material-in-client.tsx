@@ -25,7 +25,9 @@ export function MaterialInClient({
     initialData,
     initialLedger,
     locations,
+    approvedCementPos = [],
     userRole,
+    userLocationId = null,
     isCorporate = false,
     canManage = true,
     isReadOnly = false,
@@ -33,7 +35,9 @@ export function MaterialInClient({
     initialData: any[]
     initialLedger: any[]
     locations: any[]
+    approvedCementPos?: any[]
     userRole: string
+    userLocationId?: string | null
     isCorporate?: boolean
     canManage?: boolean
     isReadOnly?: boolean
@@ -54,7 +58,14 @@ export function MaterialInClient({
             tonnage: t.tonnage,
             delivery_note: t.delivery_note,
             locationName: t.location?.name || 'N/A',
-            locationId: t.locationId
+            locationId: t.locationId,
+            unit_price: t.unit_price || 0,
+            total_price: t.total_price || 0,
+            purchase_unit: t.purchase_unit || "KG",
+            purchase_qty: t.purchase_qty,
+            purchaseOrderId: t.purchaseOrderId,
+            poNumber: t.purchaseOrder?.po_number || null,
+            poItemId: t.poItemId,
         }))
     }, [initialData])
 
@@ -276,7 +287,9 @@ export function MaterialInClient({
                 isOpen={isFormOpen}
                 initialData={editingData}
                 locations={locations}
+                approvedPos={approvedCementPos}
                 userRole={userRole}
+                userLocationId={userLocationId}
                 onSuccess={() => setIsFormOpen(false)}
                 onCancel={() => setIsFormOpen(false)}
             />

@@ -12,6 +12,7 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
     const po = await prisma.purchaseOrder.findUnique({
         where: { id },
         include: {
+            location: true,
             items: {
                 include: {
                     masterItem: true,
@@ -36,7 +37,7 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
         redirect("/logistik/po")
     }
 
-    const { companies, categories, suppliers, items, vehicles } = await getPoFormData()
+    const { companies, categories, suppliers, items, vehicles, locations } = await getPoFormData()
 
     return (
         <div className="space-y-4">
@@ -51,6 +52,9 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
                 suppliers={suppliers}
                 items={items}
                 vehicles={vehicles}
+                locations={locations || []}
+                userRole={session?.user?.role || ""}
+                userLocationId={session?.user?.locationId || ""}
                 pembuatAdmin={session?.user?.username || po.pembuat_admin}
             />
         </div>

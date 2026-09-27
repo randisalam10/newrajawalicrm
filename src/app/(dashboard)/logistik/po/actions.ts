@@ -8,6 +8,7 @@ import { PoPaymentMethod } from "@prisma/client"
 import { pusherServer, getChannelName } from "@/lib/pusher"
 import { sendPushNotification } from "@/lib/firebase/admin"
 import { sendWebPushToUsers } from "@/lib/web-push"
+import { isCorporateUser } from "@/lib/rbac"
 
 const poItemSchema = z.object({
     masterItemId: z.string(),
@@ -29,6 +30,7 @@ const poSchema = z.object({
     km_hm_kendaraan: z.string().optional(),
     tanggal_terbit: z.string().transform(v => new Date(v)),
     locationId: z.string().optional(),
+    is_for_bp: z.boolean().optional(),
     notes: z.string().optional(),
     pic_name: z.string().optional(),
     pic_phone: z.string().optional(),
@@ -121,6 +123,7 @@ export async function getPurchaseOrders(params?: {
     paymentMethod?: string
     startDate?: string
     endDate?: string
+    locationId?: string
 }) {
     const session = await auth()
     if (!session?.user) return { orders: [], totalCount: 0, totalPages: 0 }
@@ -229,6 +232,15 @@ export async function getPurchaseOrders(params?: {
     if (companyGroupId && companyGroupId !== "ALL") where.companyGroupId = companyGroupId
     if (categoryId && categoryId !== "ALL") where.categoryId = categoryId
 
+    // Scoping hak akses: Admin BP hanya melihat PO cabangnya sendiri
+    const isCorp = isCorporateUser(session.user)
+    if (!isCorp) {
+        if (!session.user.locationId) return { orders: [], totalCount: 0, totalPages: 0 }
+        where.locationId = session.user.locationId
+    } else if (params?.locationId && params.locationId !== "ALL") {
+        where.locationId = params.locationId
+    }
+
     const [orders, totalCount] = await Promise.all([
         prisma.purchaseOrder.findMany({
             where,
@@ -308,6 +320,11 @@ export async function getPurchaseOrderById(id: string) {
 
         if (!po) return { success: false, error: "Purchase Order tidak ditemukan" }
 
+        const isCorp = isCorporateUser(session.user)
+        if (!isCorp && po.locationId && po.locationId !== session.user.locationId) {
+            return { success: false, error: "Akses Ditolak: Anda tidak memiliki wewenang melihat PO cabang lain." }
+        }
+
         let supplier = null
         if (po.supplierId) {
             supplier = await prisma.supplier.findUnique({ where: { id: po.supplierId } })
@@ -344,6 +361,7 @@ export async function createPurchaseOrder(data: {
     km_hm_kendaraan?: string
     tanggal_terbit: Date
     locationId?: string
+    is_for_bp?: boolean
     notes?: string
     pic_name?: string
     pic_phone?: string
@@ -384,12 +402,31 @@ export async function createPurchaseOrder(data: {
     const resolvedVehicleId = data.vehicleId || items.find(i => i.vehicleId)?.vehicleId || null
     const resolvedKmHm = data.km_hm_kendaraan || items.find(i => i.km_hm)?.km_hm || null
 
+    const isCorp = isCorporateUser(session.user)
+    let is_for_bp = data.is_for_bp ?? false
+    let locationId = data.locationId || null
+
+    if (!isCorp) {
+        // Role Cabang BP: dipaksa untuk cabangnya sendiri dan is_for_bp = true
+        is_for_bp = true
+        if (session.user.locationId) {
+            locationId = session.user.locationId
+        }
+    }
+
     let retries = 5
     let attempt = 0
     let lastError: any = null
 
     while (attempt < retries) {
         try {
+            // Advisory lock on PostgreSQL to prevent concurrency race conditions on PO numbering
+            try {
+                await prisma.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'po_seq_' + data.companyGroupId + '_' + data.categoryId}))`
+            } catch (lockErr) {
+                console.warn("pg_advisory_xact_lock skipped or not supported:", lockErr)
+            }
+
             const po_number = await generatePoNumber(data.companyGroupId, data.categoryId, data.tanggal_terbit)
             const poStatus = data.isDraft ? 'DRAFT' : 'SUBMITTED'
 
@@ -405,7 +442,8 @@ export async function createPurchaseOrder(data: {
                     pembuat_admin: data.pembuat_admin,
                     metode_pembayaran: data.metode_pembayaran,
                     companyProjectId,
-                    locationId: data.locationId || null,
+                    locationId,
+                    is_for_bp,
                     vehicleId: resolvedVehicleId,
                     km_hm_kendaraan: resolvedKmHm,
                     notes: data.notes || null,
@@ -802,7 +840,7 @@ export async function deletePurchaseOrder(id: string) {
 
 // For PO Create form: load master data
 export async function getPoFormData() {
-    const [companies, categories, suppliers, items, signers, vehicles] = await Promise.all([
+    const [companies, categories, suppliers, items, signers, vehicles, locations] = await Promise.all([
         prisma.poCompanyGroup.findMany({ include: { projects: true }, orderBy: { name: 'asc' } }),
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
         prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
@@ -854,6 +892,7 @@ export async function getPoFormData() {
             },
             orderBy: [{ code: 'asc' }, { plate_number: 'asc' }]
         }),
+        prisma.location.findMany({ orderBy: { name: 'asc' } }),
     ])
 
     const mappedVehicles = vehicles.map(v => {
@@ -915,7 +954,7 @@ export async function getPoFormData() {
         }
     })
 
-    return { companies, categories, suppliers, items, signers, vehicles: mappedVehicles }
+    return { companies, categories, suppliers, items, signers, vehicles: mappedVehicles, locations }
 }
 
 // For PO Report tab: get filtered & grouped PO data
@@ -1027,6 +1066,7 @@ export async function updatePurchaseOrder(poId: string, data: {
     pic_phone?: string
     ceoId?: string
     fvpId?: string
+    is_for_bp?: boolean
     items: {
         masterItemId: string
         quantity: number
@@ -1052,6 +1092,22 @@ export async function updatePurchaseOrder(poId: string, data: {
         const { items, jabatan_kepala, ...poData } = data
         const resolvedKmHm = poData.km_hm_kendaraan || items.find(i => i.km_hm)?.km_hm || null
 
+        // Scoping hak akses: Admin BP hanya bisa update PO cabangnya sendiri
+        const isCorp = isCorporateUser(session.user)
+        if (!isCorp) {
+            if (!session.user.locationId) return { success: false, error: "Akses ditolak: Akun BP Anda tidak terhubung ke cabang manapun." }
+            if (existingPO.locationId && existingPO.locationId !== session.user.locationId) {
+                return { success: false, error: "Akses ditolak: Anda hanya dapat mengedit PO cabang Batching Plant Anda sendiri." }
+            }
+            poData.is_for_bp = true
+            poData.locationId = session.user.locationId
+        } else if (poData.is_for_bp && !poData.locationId) {
+            return { success: false, error: "Cabang Batching Plant (BP) wajib dipilih jika ditandai Untuk BP." }
+        } else if (!poData.is_for_bp) {
+            poData.is_for_bp = false
+            poData.locationId = undefined
+        }
+
         await prisma.$transaction(async (tx) => {
             await tx.poItem.deleteMany({
                 where: { purchaseOrderId: poId }
@@ -1061,6 +1117,7 @@ export async function updatePurchaseOrder(poId: string, data: {
                 where: { id: poId },
                 data: {
                     ...poData,
+                    is_for_bp: poData.is_for_bp ?? false,
                     km_hm_kendaraan: resolvedKmHm,
                     companyProjectId: poData.companyProjectId || null,
                     locationId: poData.locationId || null,

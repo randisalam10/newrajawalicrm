@@ -424,8 +424,13 @@ export function POListClient({
                                             >
                                                 {po.po_number}
                                             </div>
-                                            <div className="text-[10px] text-slate-400 mt-0.5">
-                                                {po.category?.name}
+                                            <div className="flex items-center gap-1.5 mt-0.5">
+                                                <span className="text-[10px] text-slate-400">{po.category?.name}</span>
+                                                {po.is_for_bp && (
+                                                    <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-blue-200 bg-blue-50 text-blue-700 font-semibold">
+                                                        BP {po.location?.name ? `• ${po.location.name}` : ''}
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </TableCell>
 

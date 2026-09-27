@@ -97,7 +97,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_VIEW", "VEHICLE_VIEW", "RBL_VIEW") ? [
                     { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck },
                 ] : []),
-                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Rekap Gaji Supir", url: "/admin/reports/retase", icon: BarChart3 }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Insentif Batching Plant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
             ]
         },
         {

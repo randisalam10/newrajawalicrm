@@ -25,7 +25,7 @@ const aggregateSchema = z.object({
     retase_amount: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
 })
 
-export async function getAggregateIncomings() {
+export async function getAggregateIncomings(limit: number = 250) {
     const session = await auth()
     if (!session?.user) return []
 
@@ -38,6 +38,7 @@ export async function getAggregateIncomings() {
             vehicle: true,
             driver: true
         },
+        take: limit,
         orderBy: { date: "desc" },
     })
 }

@@ -36,18 +36,27 @@ export async function GET(req: Request) {
             // 5. FINANCE/INVOICE: Total Piutang Belum Dibayar (UNPAID/PARTIAL)
             outstandingInvoices
         ] = await Promise.all([
-            // 1. Logistik: Month Spend
-            prisma.purchaseOrder.findMany({
+            // 1. Logistik: Month Spend (Optimized via direct database aggregation)
+            prisma.poItem.aggregate({
                 where: {
-                    tanggal_terbit: { gte: monthStart, lte: todayEnd },
-                    status: { not: 'CANCELLED' } // Include DRAFT, PENDING, APPROVED for total projection
+                    purchaseOrder: {
+                        tanggal_terbit: { gte: monthStart, lte: todayEnd },
+                        status: { notIn: ['CANCELLED', 'REJECTED'] }
+                    }
                 },
-                select: { items: { select: { subtotal: true } } }
+                _sum: { subtotal: true }
             }),
 
-            // 2. Logistik: Pending Approvals (Urgent actionable item)
+            // 2. Logistik: Pending Approvals (Status SUBMITTED awaiting role action)
             prisma.purchaseOrder.count({
-                where: { status: 'DRAFT' }
+                where: {
+                    status: 'SUBMITTED',
+                    ...(user.role === 'FVP' || user.role === 'Approver'
+                        ? { fvpApprovedAt: null, OR: [{ fvpId: user.id }, { fvpId: null }] }
+                        : user.role === 'CEO'
+                        ? { ceoApprovedAt: null, OR: [{ ceoId: user.id }, { ceoId: null }] }
+                        : {})
+                }
             }),
 
             // 3. Beton: Produksi Bulan Ini
@@ -71,11 +80,8 @@ export async function GET(req: Request) {
 
         // --- CALCULATION PHASE ---
 
-        // A. PENGELUARAN LOGISTIK
-        const totalPengeluaranBulanIni = poBulanIni.reduce((total, po) => {
-            const poSubtotal = po.items.reduce((sum, item) => sum + item.subtotal, 0)
-            return total + poSubtotal
-        }, 0)
+        // A. PENGELUARAN LOGISTIK (Aggregated directly in DB)
+        const totalPengeluaranBulanIni = poBulanIni._sum.subtotal || 0
 
         // B. PRODUKSI BETON
         const totalVolumeBulanIni = betonBulanIni._sum.volume_cubic || 0

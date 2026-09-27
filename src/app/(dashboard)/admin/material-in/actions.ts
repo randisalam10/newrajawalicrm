@@ -13,10 +13,16 @@ const incomingSchema = z.object({
     supplier: z.string().min(1, "Distributor wajib diisi"),
     tonnage: z.coerce.number().min(1, "Berat (KG) harus lebih dari 0"),
     delivery_note: z.string().min(1, "No Bon/Order wajib diisi"),
-    locationId: z.string().min(1, "Cabang wajib diisi")
+    locationId: z.string().min(1, "Cabang wajib diisi"),
+    unit_price: z.coerce.number().min(0).optional().default(0),
+    total_price: z.coerce.number().min(0).optional().default(0),
+    purchase_unit: z.string().optional().default("KG"),
+    purchase_qty: z.coerce.number().min(0).optional().nullable(),
+    purchaseOrderId: z.string().optional().nullable(),
+    poItemId: z.string().optional().nullable(),
 })
 
-export async function getIncomingMaterials() {
+export async function getIncomingMaterials(limit: number = 250) {
     const session = await auth()
     if (!session?.user) return []
 
@@ -27,7 +33,25 @@ export async function getIncomingMaterials() {
             ...filter,
             material_type: "Semen"
         },
-        include: { location: true },
+        include: {
+            location: true,
+            purchaseOrder: {
+                select: {
+                    id: true,
+                    po_number: true,
+                    status: true,
+                }
+            },
+            poItem: {
+                select: {
+                    id: true,
+                    harga_satuan: true,
+                    quantity: true,
+                    masterItem: { select: { name: true, satuan: true } }
+                }
+            }
+        },
+        take: limit,
         orderBy: { date: 'desc' }
     })
 }
@@ -52,21 +76,35 @@ export async function createIncomingMaterial(formData: FormData) {
             supplier: formData.get("supplier"),
             tonnage: formData.get("tonnage"),
             delivery_note: formData.get("delivery_note"),
-            locationId: targetLocationId
+            locationId: targetLocationId,
+            unit_price: formData.get("unit_price") || 0,
+            total_price: formData.get("total_price") || 0,
+            purchase_unit: formData.get("purchase_unit") || "KG",
+            purchase_qty: formData.get("purchase_qty") || null,
+            purchaseOrderId: formData.get("purchaseOrderId") || null,
+            poItemId: formData.get("poItemId") || null,
         }
 
         const data = incomingSchema.parse(rawData)
 
-        await prisma.materialIncoming.create({
-            data: {
-                date: new Date(data.date),
-                material_type: "Semen",
-                name: data.name,
-                supplier: data.supplier,
-                tonnage: data.tonnage,
-                delivery_note: data.delivery_note,
-                locationId: data.locationId
-            }
+        await prisma.$transaction(async (tx) => {
+            await tx.materialIncoming.create({
+                data: {
+                    date: new Date(data.date),
+                    material_type: "Semen",
+                    name: data.name,
+                    supplier: data.supplier,
+                    tonnage: data.tonnage,
+                    delivery_note: data.delivery_note,
+                    locationId: data.locationId,
+                    unit_price: data.unit_price,
+                    total_price: data.total_price,
+                    purchase_unit: data.purchase_unit,
+                    purchase_qty: data.purchase_qty,
+                    purchaseOrderId: data.purchaseOrderId || null,
+                    poItemId: data.poItemId || null,
+                }
+            })
         })
 
         revalidatePath("/admin/material-in")
@@ -96,21 +134,35 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
             supplier: formData.get("supplier"),
             tonnage: formData.get("tonnage"),
             delivery_note: formData.get("delivery_note"),
-            locationId: targetLocationId
+            locationId: targetLocationId,
+            unit_price: formData.get("unit_price") || 0,
+            total_price: formData.get("total_price") || 0,
+            purchase_unit: formData.get("purchase_unit") || "KG",
+            purchase_qty: formData.get("purchase_qty") || null,
+            purchaseOrderId: formData.get("purchaseOrderId") || null,
+            poItemId: formData.get("poItemId") || null,
         }
 
         const data = incomingSchema.parse(rawData)
 
-        await prisma.materialIncoming.update({
-            where: { id },
-            data: {
-                date: new Date(data.date),
-                name: data.name,
-                supplier: data.supplier,
-                tonnage: data.tonnage,
-                delivery_note: data.delivery_note,
-                locationId: data.locationId
-            }
+        await prisma.$transaction(async (tx) => {
+            await tx.materialIncoming.update({
+                where: { id },
+                data: {
+                    date: new Date(data.date),
+                    name: data.name,
+                    supplier: data.supplier,
+                    tonnage: data.tonnage,
+                    delivery_note: data.delivery_note,
+                    locationId: data.locationId,
+                    unit_price: data.unit_price,
+                    total_price: data.total_price,
+                    purchase_unit: data.purchase_unit,
+                    purchase_qty: data.purchase_qty,
+                    purchaseOrderId: data.purchaseOrderId || null,
+                    poItemId: data.poItemId || null,
+                }
+            })
         })
 
         revalidatePath("/admin/material-in")
@@ -135,6 +187,88 @@ export async function deleteIncomingMaterial(id: string) {
     } catch (error: any) {
         return { error: error.message || "Gagal menghapus data" }
     }
+}
+
+// Fetch approved BP cement purchase orders ready to be received
+export async function getApprovedBpCementPOs(targetLocationId?: string) {
+    const session = await auth()
+    if (!session?.user) return []
+
+    const isCorp = isCorporateUser(session.user)
+    const locId = (!isCorp && session.user.locationId)
+        ? session.user.locationId
+        : (targetLocationId && targetLocationId !== "all" ? targetLocationId : undefined)
+
+    const where: any = {
+        status: "APPROVED",
+        is_for_bp: true,
+        ...(locId ? { locationId: locId } : {}),
+    }
+
+    const pos = await prisma.purchaseOrder.findMany({
+        where,
+        include: {
+            companyGroup: true,
+            category: true,
+            location: true,
+            items: {
+                include: {
+                    masterItem: {
+                        include: { supplier: true }
+                    },
+                    materialIncomings: {
+                        select: {
+                            id: true,
+                            tonnage: true,
+                            purchase_qty: true,
+                        }
+                    }
+                }
+            }
+        },
+        orderBy: { tanggal_terbit: 'desc' },
+        take: 50,
+    })
+
+    const cementFiltered = pos.filter(po => {
+        const catName = (po.category?.name || "").toLowerCase()
+        const catCode = (po.category?.kode_kategori || "").toLowerCase()
+        const isSemenCategory = catName.includes("semen") || catCode === "smn"
+        const hasCementItem = po.items.some(i => (i.masterItem?.name || "").toLowerCase().includes("semen"))
+        return isSemenCategory || hasCementItem
+    })
+
+    return cementFiltered.map(po => {
+        const supplierName = po.items[0]?.masterItem?.supplier?.name || "Distributor"
+        return {
+            id: po.id,
+            po_number: po.po_number,
+            tanggal_terbit: po.tanggal_terbit.toISOString().split('T')[0],
+            companyName: po.companyGroup?.name || "-",
+            supplierName,
+            locationId: po.locationId,
+            locationName: po.location?.name || "-",
+            items: po.items.map(i => {
+                const totalReceivedKg = i.materialIncomings.reduce((sum, inc) => sum + (inc.tonnage || 0), 0)
+                const totalReceivedQty = i.materialIncomings.reduce((sum, inc) => sum + (inc.purchase_qty || 0), 0)
+                const remainingQty = Math.max(0, i.quantity - totalReceivedQty)
+
+                return {
+                    id: i.id,
+                    masterItemId: i.masterItemId,
+                    itemName: i.masterItem?.name || "Semen",
+                    satuan: i.masterItem?.satuan || "zak",
+                    quantity: i.quantity,
+                    harga_satuan: i.harga_satuan,
+                    subtotal: i.subtotal,
+                    supplierName: i.masterItem?.supplier?.name || supplierName,
+                    totalReceivedKg,
+                    totalReceivedQty,
+                    remainingQty,
+                }
+            })
+        }
+    })
 }
 
 // THE STOCK LEDGER ENGINE

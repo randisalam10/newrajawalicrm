@@ -8,7 +8,7 @@ import {
     DollarSign, Receipt, CreditCard, Clock, AlertTriangle,
     ArrowUpRight, CheckCircle2, TrendingUp, Users, Building2,
     Layers, ChevronRight, FileText, Wallet, Calendar, AlertCircle,
-    Truck, Wrench
+    Truck, Wrench, Landmark, ShieldAlert, Percent, Scale
 } from "lucide-react"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(Math.round(n || 0))
@@ -156,6 +156,75 @@ export function BillingDashboard({
         }
     }, [activeInvoices])
 
+    // ─── PPN Breakdown: Pakai PPN (11%) vs Non-PPN (0%) ──────────────────────
+    const ppnBreakdown = useMemo(() => {
+        let ppnInvoiceCount = 0
+        let ppnSubtotal = 0
+        let ppnTaxAmount = 0
+        let ppnGross = 0
+        let ppnPaid = 0
+
+        let nonPpnInvoiceCount = 0
+        let nonPpnGross = 0
+        let nonPpnPaid = 0
+
+        for (const inv of activeInvoices) {
+            const isPpn = inv.include_ppn === true || (inv.tax_amount || 0) > 0
+            const total = inv.total_amount || 0
+            const subtotal = inv.subtotal || (isPpn ? total - (inv.tax_amount || 0) : total)
+            const tax = inv.tax_amount || 0
+            const paid = (inv.payments || []).filter((p: any) => !p.is_cancelled).reduce((s: number, p: any) => s + (p.amount || 0), 0)
+
+            if (isPpn) {
+                ppnInvoiceCount += 1
+                ppnSubtotal += subtotal
+                ppnTaxAmount += tax
+                ppnGross += total
+                ppnPaid += paid
+            } else {
+                nonPpnInvoiceCount += 1
+                nonPpnGross += total
+                nonPpnPaid += paid
+            }
+        }
+
+        const ppnOutstanding = Math.max(0, ppnGross - ppnPaid)
+        const nonPpnOutstanding = Math.max(0, nonPpnGross - nonPpnPaid)
+
+        // Beban PPN 11% yang wajib disetor sendiri oleh perusahaan untuk transaksi Non-PPN:
+        const nonPpnEstimatedTaxTotal = nonPpnGross * 0.11 // Total potensi PPN 11% dari omzet non-ppn
+        const nonPpnPaidTaxLiability = nonPpnPaid * 0.11 // PPN 11% riil dari pembayaran yang sudah diterima
+        const nonPpnOutstandingTaxPending = nonPpnOutstanding * 0.11 // PPN 11% dari piutang yang belum lunas
+
+        const totalGross = ppnGross + nonPpnGross
+        const ppnSharePct = totalGross > 0 ? (ppnGross / totalGross) * 100 : 0
+        const nonPpnSharePct = totalGross > 0 ? (nonPpnGross / totalGross) * 100 : 0
+
+        const ppnCollectionRate = ppnGross > 0 ? (ppnPaid / ppnGross) * 100 : 0
+        const nonPpnCollectionRate = nonPpnGross > 0 ? (nonPpnPaid / nonPpnGross) * 100 : 0
+
+        return {
+            ppnInvoiceCount,
+            ppnSubtotal,
+            ppnTaxAmount,
+            ppnGross,
+            ppnPaid,
+            ppnOutstanding,
+            ppnSharePct,
+            ppnCollectionRate,
+
+            nonPpnInvoiceCount,
+            nonPpnGross,
+            nonPpnPaid,
+            nonPpnOutstanding,
+            nonPpnSharePct,
+            nonPpnCollectionRate,
+            nonPpnEstimatedTaxTotal,
+            nonPpnPaidTaxLiability,
+            nonPpnOutstandingTaxPending,
+        }
+    }, [activeInvoices])
+
     // ─── Overdue & Aging Analysis ─────────────────────────────────────────────
     const now = new Date()
 
@@ -225,6 +294,9 @@ export function BillingDashboard({
         let sewaDays = 0
         let sewaEstValue = 0
 
+        let missingPriceCount = 0
+        let missingPriceVolume = 0
+
         for (const tx of unbilled) {
             if (tx.itemType === "SEWA") {
                 sewaCount += 1
@@ -232,11 +304,20 @@ export function BillingDashboard({
                 sewaDays += days
                 const val = tx.totalPrice || (tx.pricePerDay * days) || 0
                 sewaEstValue += val
+                if (val <= 0) {
+                    missingPriceCount += 1
+                }
             } else {
                 rmCount += 1
-                rmVolume += tx.volume_cubic || 0
+                const vol = tx.volume_cubic || 0
+                rmVolume += vol
                 const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
-                rmEstValue += (tx.volume_cubic || 0) * price
+                if (price > 0) {
+                    rmEstValue += vol * price
+                } else {
+                    missingPriceCount += 1
+                    missingPriceVolume += vol
+                }
             }
         }
 
@@ -249,12 +330,34 @@ export function BillingDashboard({
             sewaEstValue,
             totalEstValue: rmEstValue + sewaEstValue,
             totalCount: unbilled.length,
+            missingPriceCount,
+            missingPriceVolume,
         }
     }, [unbilled])
 
     const totalUnbilledCount = unbilledBreakdown.totalCount
     const totalUnbilledVolume = unbilledBreakdown.rmVolume
     const totalUnbilledEstValue = unbilledBreakdown.totalEstValue
+
+    // ─── Consolidated All Pipeline (Invoiced + Unbilled) ──────────────────────
+    const consolidatedAll = useMemo(() => {
+        const totalGrossValue = totalInvoiced + unbilledBreakdown.totalEstValue
+        const totalVolumeAll = revenueBreakdown.rmVolume + unbilledBreakdown.rmVolume
+        const totalSewaDaysAll = revenueBreakdown.sewaDays + unbilledBreakdown.sewaDays
+        const totalTxCountAll = activeInvoices.length + unbilledBreakdown.totalCount
+
+        const invoicedValueShare = totalGrossValue > 0 ? (totalInvoiced / totalGrossValue) * 100 : 0
+        const unbilledValueShare = totalGrossValue > 0 ? (unbilledBreakdown.totalEstValue / totalGrossValue) * 100 : 0
+
+        return {
+            totalGrossValue,
+            totalVolumeAll,
+            totalSewaDaysAll,
+            totalTxCountAll,
+            invoicedValueShare,
+            unbilledValueShare,
+        }
+    }, [totalInvoiced, unbilledBreakdown, revenueBreakdown, activeInvoices])
 
     const unbilledByCustomer = useMemo(() => {
         const map = new Map<string, {
@@ -357,6 +460,76 @@ export function BillingDashboard({
 
     return (
         <div className="space-y-4 pt-1">
+            {/* ─── Consolidated Total Business Potential Banner (ALL = Invoiced + Unbilled) ─── */}
+            <div className="bg-slate-900 text-white rounded-xl p-4 shadow-sm border border-slate-800">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase">
+                                KONSOLIDASI TOTAL OMZET & PRODUKSI (ALL)
+                            </span>
+                            <span className="text-xs text-slate-400">Total Transaksi Sudah Terbit Invoice + Masih Antre Unbilled</span>
+                        </div>
+                        <div className="mt-1.5 flex items-baseline gap-2.5 flex-wrap">
+                            <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-white">
+                                {fmt(consolidatedAll.totalGrossValue)}
+                            </span>
+                            <span className="text-xs text-slate-400 font-medium">
+                                ({fmtNum(consolidatedAll.totalVolumeAll, 1)} m³ beton cor · {consolidatedAll.totalSewaDaysAll} hari sewa)
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs flex-wrap sm:flex-nowrap">
+                        <div className="bg-slate-800/90 px-3.5 py-2 rounded-lg border border-slate-700/80 min-w-[150px]">
+                            <div className="text-slate-400 text-[10px] uppercase font-semibold">Sudah Ditagihkan (Invoice)</div>
+                            <div className="text-blue-400 font-mono font-bold text-sm">
+                                {fmt(totalInvoiced)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                                {consolidatedAll.invoicedValueShare.toFixed(1)}% dari total omzet
+                            </div>
+                        </div>
+                        <div className="bg-slate-800/90 px-3.5 py-2 rounded-lg border border-slate-700/80 min-w-[150px]">
+                            <div className="text-slate-400 text-[10px] uppercase font-semibold">Antrean Belum Ditagih</div>
+                            <div className="text-orange-400 font-mono font-bold text-sm">
+                                {fmt(unbilledBreakdown.totalEstValue)}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                                {consolidatedAll.unbilledValueShare.toFixed(1)}% dari total omzet
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ─── Missing Price Alert Banner ─── */}
+            {unbilledBreakdown.missingPriceCount > 0 && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-start gap-2.5">
+                        <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg mt-0.5 shrink-0">
+                            <AlertTriangle className="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-bold text-amber-950">
+                                Perhatian: {unbilledBreakdown.missingPriceCount} Transaksi Belum Memiliki Harga Kesepakatan ({fmtNum(unbilledBreakdown.missingPriceVolume, 1)} m³ beton cor)
+                            </h4>
+                            <p className="text-[11px] text-amber-800 mt-0.5">
+                                Transaksi ini sementara dihitung Rp 0 pada estimasi unbilled. Silakan lengkapi harga mutu di Master Proyek agar nilai tagihan akurat.
+                            </p>
+                        </div>
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 text-xs bg-white text-amber-900 border-amber-300 hover:bg-amber-100/60 shrink-0 font-medium cursor-pointer shadow-2xs"
+                        onClick={() => onNavigateTab("unbilled", { noPriceOnly: true })}
+                    >
+                        Lihat Transaksi Tanpa Harga <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                </div>
+            )}
+
             {/* ─── Top Executive Summary Banner (5 Core Metrics with ReadyMix & Sewa Breakdown) ─── */}
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 {/* 1. Total Tagihan Terbit (Gross) */}
@@ -385,6 +558,14 @@ export function BillingDashboard({
                             <div className="flex items-center justify-between text-slate-600">
                                 <span className="flex items-center gap-1"><Wrench className="w-3 h-3 text-purple-500" /> Sewa Alat/CP</span>
                                 <span className="font-mono font-semibold text-purple-700">{fmt(revenueBreakdown.sewaGross)}</span>
+                            </div>
+                            <div className="flex items-center justify-between pt-0.5 border-t border-dashed border-slate-100">
+                                <span className="text-emerald-700 font-medium">✓ Pakai PPN (11%)</span>
+                                <span className="font-mono font-bold text-emerald-800">{fmt(ppnBreakdown.ppnGross)}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-amber-700 font-medium">⚠ Non-PPN (0%)</span>
+                                <span className="font-mono font-bold text-amber-800">{fmt(ppnBreakdown.nonPpnGross)}</span>
                             </div>
                         </div>
                     </CardContent>
@@ -418,12 +599,16 @@ export function BillingDashboard({
                         </div>
                         <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
                             <div className="flex items-center justify-between text-slate-600">
-                                <span>Cor ReadyMix</span>
-                                <span className="font-mono font-semibold text-emerald-800">{fmt(revenueBreakdown.rmPaid)}</span>
+                                <span>Kas PPN ({ppnBreakdown.ppnCollectionRate.toFixed(0)}%)</span>
+                                <span className="font-mono font-semibold text-emerald-800">{fmt(ppnBreakdown.ppnPaid)}</span>
                             </div>
                             <div className="flex items-center justify-between text-slate-600">
-                                <span>Sewa Alat</span>
-                                <span className="font-mono font-semibold text-purple-800">{fmt(revenueBreakdown.sewaPaid)}</span>
+                                <span>Kas Non-PPN ({ppnBreakdown.nonPpnCollectionRate.toFixed(0)}%)</span>
+                                <span className="font-mono font-semibold text-amber-800">{fmt(ppnBreakdown.nonPpnPaid)}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-amber-900 bg-amber-50/80 rounded px-1 py-0.5 mt-0.5 font-medium border border-amber-200/50">
+                                <span>Beban PPN 11%:</span>
+                                <span className="font-mono font-bold text-amber-800">{fmt(ppnBreakdown.nonPpnPaidTaxLiability)}</span>
                             </div>
                         </div>
                     </CardContent>
@@ -488,6 +673,12 @@ export function BillingDashboard({
                                 Proses <ArrowUpRight className="w-3 h-3" />
                             </button>
                         </div>
+                        {unbilledBreakdown.missingPriceCount > 0 && (
+                            <div className="text-[10px] text-amber-800 font-medium bg-amber-100/70 rounded px-1.5 py-0.5 border border-amber-200/80 flex items-center justify-between">
+                                <span>Belum Ada Harga:</span>
+                                <span className="font-bold">{unbilledBreakdown.missingPriceCount} tx ({fmtNum(unbilledBreakdown.missingPriceVolume, 1)} m³)</span>
+                            </div>
+                        )}
                         <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
                             <div className="flex items-center justify-between text-slate-600">
                                 <span>Cor: {fmtNum(unbilledBreakdown.rmVolume, 1)} m³</span>
@@ -693,6 +884,188 @@ export function BillingDashboard({
                                     >
                                         Buka Sewa →
                                     </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* ─── Monitoring Pajak PPN: Pakai PPN vs Non-PPN & Kewajiban Pajak 11% ─── */}
+            <Card className="border-slate-200/80 shadow-2xs bg-white overflow-hidden">
+                <CardHeader className="p-3.5 pb-2.5 border-b border-slate-100 bg-slate-50/60">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-md shadow-xs">
+                                <Scale className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                                    <span>Monitoring Kepatuhan Pajak: Tagihan Pakai PPN vs Non-PPN</span>
+                                </CardTitle>
+                                <span className="text-[11px] text-slate-500">
+                                    Pemisahan omzet, realisasi pembayaran, dan estimasi beban PPN 11% yang wajib disetor perusahaan untuk transaksi Non-PPN
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-slate-500 text-[11px]">Beban PPN Non-PPN (Wajib Setor Kas):</span>
+                            <Badge variant="outline" className="bg-amber-50 text-amber-900 border-amber-300 font-mono font-bold text-xs">
+                                {fmt(ppnBreakdown.nonPpnPaidTaxLiability)}
+                            </Badge>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+                    {/* Visual Segmented Progress Bar */}
+                    <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full bg-emerald-600 inline-block" />
+                                <span className="font-semibold text-slate-800">Pakai PPN (11%)</span>
+                                <span className="font-mono text-emerald-700 font-bold">{ppnBreakdown.ppnSharePct.toFixed(1)}%</span>
+                                <span className="text-slate-400 text-[11px]">({fmt(ppnBreakdown.ppnGross)})</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-slate-400 text-[11px]">({fmt(ppnBreakdown.nonPpnGross)})</span>
+                                <span className="font-mono text-amber-700 font-bold">{ppnBreakdown.nonPpnSharePct.toFixed(1)}%</span>
+                                <span className="font-semibold text-slate-800">Non-PPN (Bebas PPN)</span>
+                                <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
+                            </div>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-3 flex overflow-hidden p-0.5 shadow-inner">
+                            <div
+                                style={{ width: `${ppnBreakdown.ppnSharePct || (totalInvoiced === 0 ? 100 : 0)}%` }}
+                                className="bg-gradient-to-r from-emerald-600 to-teal-500 h-full rounded-l-full transition-all duration-500"
+                                title={`Pakai PPN: ${fmt(ppnBreakdown.ppnGross)}`}
+                            />
+                            <div
+                                style={{ width: `${ppnBreakdown.nonPpnSharePct || 0}%` }}
+                                className="bg-gradient-to-r from-amber-400 to-amber-500 h-full rounded-r-full transition-all duration-500"
+                                title={`Non-PPN: ${fmt(ppnBreakdown.nonPpnGross)}`}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Comparative Columns: Pakai PPN vs Non-PPN */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {/* Column 1: Pakai PPN */}
+                        <div className="p-3.5 rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/40 via-white to-emerald-50/10 space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
+                                        <Landmark className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-xs text-emerald-950 uppercase tracking-wide">Faktur Kena Pajak (PPN 11%)</div>
+                                        <div className="text-[11px] text-slate-500">Customer membayar PPN resmi (Faktur Pajak Standar)</div>
+                                    </div>
+                                </div>
+                                <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 font-mono text-[10px]">
+                                    {ppnBreakdown.ppnInvoiceCount} Faktur
+                                </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Tagihan Gross (DPP+PPN)</span>
+                                    <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">{fmt(ppnBreakdown.ppnGross)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Nilai PPN 11% Terbit</span>
+                                    <span className="text-sm font-bold font-mono text-emerald-700 block mt-0.5">{fmt(ppnBreakdown.ppnTaxAmount)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Kas Masuk Diterima</span>
+                                    <span className="text-sm font-bold font-mono text-emerald-800 block mt-0.5">
+                                        {fmt(ppnBreakdown.ppnPaid)}
+                                        <span className="text-[10px] text-slate-400 font-normal ml-1">({ppnBreakdown.ppnCollectionRate.toFixed(0)}%)</span>
+                                    </span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Sisa Piutang Ber-PPN</span>
+                                    <span className="text-sm font-bold font-mono text-amber-700 block mt-0.5">{fmt(ppnBreakdown.ppnOutstanding)}</span>
+                                </div>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-emerald-100/40 border border-emerald-200 flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="text-[10px] font-semibold text-emerald-900 uppercase block">Kepatuhan Pajak PPN Masuk</span>
+                                    <span className="text-slate-600 text-[11px]">
+                                        PPN telah dibebankan kepada customer pemesan cor/sewa.
+                                    </span>
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => onNavigateTab("invoices", { ppnFilter: "PPN" })}
+                                    className="h-7 text-xs bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50 cursor-pointer font-medium"
+                                >
+                                    Filter Faktur PPN →
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Column 2: Non-PPN */}
+                        <div className="p-3.5 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/40 via-white to-amber-50/10 space-y-3">
+                            <div className="flex items-center justify-between pb-2 border-b border-amber-100">
+                                <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-amber-600 text-white rounded-lg">
+                                        <Percent className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-xs text-amber-950 uppercase tracking-wide">Faktur Non-PPN (Bebas Pajak Pelanggan)</div>
+                                        <div className="text-[11px] text-slate-500">Customer tidak ditagih PPN (Harga Bersih DPP)</div>
+                                    </div>
+                                </div>
+                                <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-300 font-mono text-[10px]">
+                                    {ppnBreakdown.nonPpnInvoiceCount} Faktur
+                                </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Tagihan Gross DPP</span>
+                                    <span className="text-sm font-bold font-mono text-slate-900 block mt-0.5">{fmt(ppnBreakdown.nonPpnGross)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Kas Masuk Diterima</span>
+                                    <span className="text-sm font-bold font-mono text-emerald-700 block mt-0.5">
+                                        {fmt(ppnBreakdown.nonPpnPaid)}
+                                        <span className="text-[10px] text-slate-400 font-normal ml-1">({ppnBreakdown.nonPpnCollectionRate.toFixed(0)}%)</span>
+                                    </span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-white border border-slate-200/70">
+                                    <span className="text-[10px] text-slate-500 block uppercase font-medium">Sisa Piutang Non-PPN</span>
+                                    <span className="text-sm font-bold font-mono text-amber-700 block mt-0.5">{fmt(ppnBreakdown.nonPpnOutstanding)}</span>
+                                </div>
+                                <div className="p-2 rounded-lg bg-amber-50 border border-amber-200">
+                                    <span className="text-[10px] text-amber-800 block uppercase font-bold">Total Potensi PPN 11%</span>
+                                    <span className="text-sm font-bold font-mono text-amber-900 block mt-0.5">{fmt(ppnBreakdown.nonPpnEstimatedTaxTotal)}</span>
+                                </div>
+                            </div>
+
+                            {/* ALERT BOX: Kewajiban Beban Pajak 11% Perusahaan */}
+                            <div className="p-2.5 rounded-lg bg-amber-100/70 border border-amber-300 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 font-bold text-amber-950 text-xs">
+                                        <ShieldAlert className="w-3.5 h-3.5 text-amber-700" />
+                                        <span>Kewajiban Setor PPN 11% Perusahaan:</span>
+                                    </div>
+                                    <span className="font-mono font-black text-amber-900 text-sm">
+                                        {fmt(ppnBreakdown.nonPpnPaidTaxLiability)}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[11px] text-amber-800 pt-1 border-t border-amber-200/60">
+                                    <span>Dari kas masuk {fmt(ppnBreakdown.nonPpnPaid)} (wajib disetor sendiri 11%)</span>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => onNavigateTab("invoices", { ppnFilter: "NON_PPN" })}
+                                        className="h-6 text-[10px] bg-white text-amber-900 border-amber-300 hover:bg-amber-100/50 cursor-pointer font-semibold px-2"
+                                    >
+                                        Filter Non-PPN →
+                                    </Button>
                                 </div>
                             </div>
                         </div>

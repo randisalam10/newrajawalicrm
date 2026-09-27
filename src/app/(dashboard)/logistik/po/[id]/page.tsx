@@ -101,6 +101,19 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
                             <span className="text-slate-400 block text-[11px]">Proyek / Tujuan:</span>
                             <span className="font-medium text-slate-700">{po.project?.name || "-"}</span>
                         </div>
+                        {po.is_for_bp && (
+                            <div>
+                                <span className="text-slate-400 block text-[11px]">Peruntukan Batching Plant:</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <Badge variant="outline" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">
+                                        Untuk BP
+                                    </Badge>
+                                    {po.location?.name && (
+                                        <span className="font-semibold text-slate-800 text-xs">🏢 {po.location.name}</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         <div>
                             <span className="text-slate-400 block text-[11px]">Kategori Belanja:</span>
                             <Badge variant="outline" className="text-[11px] bg-orange-50 text-orange-700 border-orange-200 mt-0.5">

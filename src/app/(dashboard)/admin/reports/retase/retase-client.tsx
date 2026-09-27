@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { getRetaseReportByMonth } from "./actions"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +11,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
-import { Loader2, Search, Printer, User, TrendingUp, Truck, ChevronRight, Mountain } from "lucide-react"
+import {
+    Loader2, Search, Printer, User, TrendingUp, Truck, ChevronRight,
+    Mountain, HardHat, RefreshCw, Coins, Layers, ArrowUpRight, Building2, Calendar, Eye
+} from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 
@@ -20,16 +23,21 @@ const MONTH_NAMES = [
     "Juli", "Agustus", "September", "Oktober", "November", "Desember"
 ]
 
-export type DriverSummary = {
-    driverId: string
-    driverType: "MIXER" | "DUMP_TRUCK"
+export type RecipientType = "OPERATOR_BP" | "MIXER" | "DUMP_TRUCK"
+
+export type RecipientSummary = {
+    id: string
+    recipientType: RecipientType
     name: string
-    vehicleCode: string
+    roleLabel: string
+    locationName: string
+    vehicleCode?: string
     plateNumber?: string
     dumpTruckSize?: string
     totalTrip: number
     totalVolume: number
     totalKm: number
+    ratePrice: number
     totalIncome: number
     records: any[]
 }
@@ -41,31 +49,93 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
     const [selectedLocation, setSelectedLocation] = useState<string>(
         userRole !== 'SuperAdminBP' ? userLocationId : "all"
     )
-    const [reportData, setReportData] = useState<{ mixer: any[]; dumpTruck: any[] }>({ mixer: [], dumpTruck: [] })
+    const [reportData, setReportData] = useState<{ mixer: any[]; dumpTruck: any[]; operatorBP: any[] }>({
+        mixer: [],
+        dumpTruck: [],
+        operatorBP: []
+    })
     const [isLoading, setIsLoading] = useState(false)
     const [hasFetched, setHasFetched] = useState(false)
-    const [viewingDriver, setViewingDriver] = useState<DriverSummary | null>(null)
-    const [driverTypeFilter, setDriverTypeFilter] = useState<"ALL" | "MIXER" | "DUMP_TRUCK">("ALL")
+    const [viewingRecipient, setViewingRecipient] = useState<RecipientSummary | null>(null)
+    const [categoryFilter, setCategoryFilter] = useState<"ALL" | RecipientType>("ALL")
     const [searchQuery, setSearchQuery] = useState("")
 
-    // Aggregate per-driver across Mixer & Dump Truck
-    const allDriverSummaries: DriverSummary[] = useMemo(() => {
-        const map = new Map<string, DriverSummary>()
+    // Fetch report data
+    const fetchReport = useCallback(async () => {
+        setIsLoading(true)
+        try {
+            const data: any = await getRetaseReportByMonth({
+                year: selectedYear,
+                month: selectedMonth,
+                locationId: selectedLocation === "all" ? undefined : selectedLocation,
+            })
+            if (data && typeof data === "object") {
+                setReportData({
+                    mixer: Array.isArray(data.mixer) ? data.mixer : [],
+                    dumpTruck: Array.isArray(data.dumpTruck) ? data.dumpTruck : [],
+                    operatorBP: Array.isArray(data.operatorBP) ? data.operatorBP : [],
+                })
+            }
+        } finally {
+            setIsLoading(false)
+            setHasFetched(true)
+        }
+    }, [selectedYear, selectedMonth, selectedLocation])
 
-        // 1. Mixer Drivers
+    // Auto-fetch on initial mount and when filters change (never blank screen!)
+    useEffect(() => {
+        fetchReport()
+    }, [fetchReport])
+
+    // Aggregate all recipients across Operator BP, Mixer Drivers, and Dump Truck Drivers
+    const allSummaries: RecipientSummary[] = useMemo(() => {
+        const map = new Map<string, RecipientSummary>()
+
+        // 1. Operator Batching Plant
+        reportData.operatorBP.forEach(tx => {
+            const key = `op_${tx.operatorId}`
+            if (!map.has(key)) {
+                map.set(key, {
+                    id: tx.operatorId,
+                    recipientType: "OPERATOR_BP",
+                    name: tx.operatorName || "Operator BP",
+                    roleLabel: "Operator Batching Plant",
+                    locationName: tx.locationName || "-",
+                    totalTrip: 0,
+                    totalVolume: 0,
+                    totalKm: 0,
+                    ratePrice: tx.rate_price || 0,
+                    totalIncome: 0,
+                    records: []
+                })
+            }
+            const o = map.get(key)!
+            o.totalTrip++
+            o.totalVolume += tx.volume_cubic || 0
+            o.totalIncome += tx.income_amount || 0
+            if (tx.rate_price && (!o.ratePrice || o.ratePrice === 0)) {
+                o.ratePrice = tx.rate_price
+            }
+            o.records.push(tx)
+        })
+
+        // 2. Sopir Truk Mixer
         reportData.mixer.forEach(tx => {
             if (!tx.retase) return
             const key = `mixer_${tx.driverId}`
             if (!map.has(key)) {
                 map.set(key, {
-                    driverId: tx.driverId,
-                    driverType: "MIXER",
+                    id: tx.driverId,
+                    recipientType: "MIXER",
                     name: tx.driver?.name || "Sopir Mixer",
+                    roleLabel: "Sopir Mixer",
+                    locationName: tx.location?.name || "-",
                     vehicleCode: tx.vehicle?.code || "-",
                     plateNumber: tx.vehicle?.plate_number || "-",
                     totalTrip: 0,
                     totalVolume: 0,
                     totalKm: 0,
+                    ratePrice: tx.retase.price_per_cubic_km || 0,
                     totalIncome: 0,
                     records: []
                 })
@@ -78,21 +148,24 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
             d.records.push(tx)
         })
 
-        // 2. Dump Truck Drivers
+        // 3. Sopir Dump Truck (Agregat Quarry)
         reportData.dumpTruck.forEach(tx => {
             const driverKey = tx.driverId || tx.driver_name || "Unknown"
             const key = `dt_${driverKey}`
             if (!map.has(key)) {
                 map.set(key, {
-                    driverId: tx.driverId || `name_${encodeURIComponent(tx.driver_name || "Sopir DT")}`,
-                    driverType: "DUMP_TRUCK",
+                    id: tx.driverId || `name_${encodeURIComponent(tx.driver_name || "Sopir DT")}`,
+                    recipientType: "DUMP_TRUCK",
                     name: tx.driver?.name || tx.driver_name || "Sopir Dump Truck",
+                    roleLabel: "Sopir Dump Truck",
+                    locationName: tx.location?.name || "-",
                     vehicleCode: tx.vehicle?.code || "Dump Truck",
                     plateNumber: tx.plate_number || tx.vehicle?.plate_number || "-",
                     dumpTruckSize: tx.dump_truck_size || tx.vehicle?.dump_truck_size || "-",
                     totalTrip: 0,
                     totalVolume: 0,
                     totalKm: 0,
+                    ratePrice: tx.rate_price || 0,
                     totalIncome: 0,
                     records: []
                 })
@@ -108,389 +181,496 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
         return Array.from(map.values())
     }, [reportData])
 
-    const mixerCount = useMemo(() => allDriverSummaries.filter(d => d.driverType === "MIXER").length, [allDriverSummaries])
-    const dtCount = useMemo(() => allDriverSummaries.filter(d => d.driverType === "DUMP_TRUCK").length, [allDriverSummaries])
+    // Counts per category
+    const operatorCount = useMemo(() => allSummaries.filter(s => s.recipientType === "OPERATOR_BP").length, [allSummaries])
+    const mixerCount = useMemo(() => allSummaries.filter(s => s.recipientType === "MIXER").length, [allSummaries])
+    const dtCount = useMemo(() => allSummaries.filter(s => s.recipientType === "DUMP_TRUCK").length, [allSummaries])
 
     // Filtered by Category Tab & Search Query
-    const driverSummaries: DriverSummary[] = useMemo(() => {
-        let list = allDriverSummaries
-        if (driverTypeFilter !== "ALL") {
-            list = list.filter(d => d.driverType === driverTypeFilter)
+    const filteredSummaries: RecipientSummary[] = useMemo(() => {
+        let list = allSummaries
+        if (categoryFilter !== "ALL") {
+            list = list.filter(d => d.recipientType === categoryFilter)
         }
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase()
             list = list.filter(d =>
                 d.name.toLowerCase().includes(q) ||
-                d.vehicleCode.toLowerCase().includes(q) ||
-                (d.plateNumber && d.plateNumber.toLowerCase().includes(q))
+                (d.vehicleCode && d.vehicleCode.toLowerCase().includes(q)) ||
+                (d.plateNumber && d.plateNumber.toLowerCase().includes(q)) ||
+                d.locationName.toLowerCase().includes(q) ||
+                d.roleLabel.toLowerCase().includes(q)
             )
         }
         return list.sort((a, b) => b.totalIncome - a.totalIncome)
-    }, [allDriverSummaries, driverTypeFilter, searchQuery])
+    }, [allSummaries, categoryFilter, searchQuery])
 
-    const grandTotal = useMemo(() => ({
-        trip: driverSummaries.reduce((s, d) => s + d.totalTrip, 0),
-        volume: driverSummaries.reduce((s, d) => s + d.totalVolume, 0),
-        km: driverSummaries.reduce((s, d) => s + d.totalKm, 0),
-        income: driverSummaries.reduce((s, d) => s + d.totalIncome, 0),
-        drivers: driverSummaries.length,
-    }), [driverSummaries])
+    // High level totals for the top stats bar
+    const totals = useMemo(() => {
+        const totalVolumeAll = reportData.mixer.reduce((s, t) => s + (t.volume_cubic || 0), 0)
+        const opIncome = allSummaries.filter(s => s.recipientType === "OPERATOR_BP").reduce((s, d) => s + d.totalIncome, 0)
+        const mixerIncome = allSummaries.filter(s => s.recipientType === "MIXER").reduce((s, d) => s + d.totalIncome, 0)
+        const dtIncome = allSummaries.filter(s => s.recipientType === "DUMP_TRUCK").reduce((s, d) => s + d.totalIncome, 0)
+        const totalTripAll = allSummaries.reduce((s, d) => s + d.totalTrip, 0)
+        const grandTotal = opIncome + mixerIncome + dtIncome
 
-    const fetchReport = async () => {
-        setIsLoading(true)
-        setHasFetched(false)
-        try {
-            const data = await getRetaseReportByMonth({
-                year: selectedYear,
-                month: selectedMonth,
-                locationId: selectedLocation === "all" ? undefined : selectedLocation,
-            })
-            if (Array.isArray(data)) {
-                setReportData({ mixer: data, dumpTruck: [] })
-            } else if (data && typeof data === "object") {
-                setReportData({
-                    mixer: Array.isArray(data.mixer) ? data.mixer : [],
-                    dumpTruck: Array.isArray(data.dumpTruck) ? data.dumpTruck : [],
-                })
-            }
-        } finally {
-            setIsLoading(false)
-            setHasFetched(true)
+        return {
+            volume: totalVolumeAll,
+            opIncome,
+            mixerIncome,
+            dtIncome,
+            grandTotal,
+            totalTrip: totalTripAll,
+            totalRecipients: allSummaries.length
         }
-    }
+    }, [allSummaries, reportData])
 
-    const handlePrintDriver = (driver: DriverSummary) => {
-        const typeParam = driver.driverType.toLowerCase()
-        const url = `/print/retase/${driver.driverId}?month=${selectedMonth}&year=${selectedYear}&type=${typeParam}${
+    const handlePrintRecipient = (recipient: RecipientSummary) => {
+        const typeParam = recipient.recipientType.toLowerCase()
+        const url = `/print/retase/${recipient.id}?month=${selectedMonth}&year=${selectedYear}&type=${typeParam}${
             selectedLocation !== 'all' ? `&locationId=${selectedLocation}` : ''
         }`
         window.open(url, '_blank')
     }
 
     return (
-        <div className="space-y-6">
-            {/* Hero Filter Card */}
-            <Card className="border-none shadow-md bg-gradient-to-r from-slate-900 via-slate-800 to-slate-700 text-white overflow-hidden">
-                <CardContent className="p-6">
-                    <div className="flex items-center gap-3 mb-5">
-                        <div className="p-2 bg-white/10 rounded-lg backdrop-blur-xs">
-                            <TrendingUp className="h-5 w-5 text-emerald-400" />
-                        </div>
-                        <div>
-                            <h2 className="font-bold text-lg">Rekap Gaji / Retase Supir</h2>
-                            <p className="text-slate-300 text-sm">
-                                Akumulasi perhitungan retase per supir (Truk Mixer & Dump Truck Agregat)
-                            </p>
-                        </div>
+        <div className="space-y-3.5">
+            {/* Page Header (Compact) */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+                            Laporan Insentif Batching Plant
+                        </h1>
+                        <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700 border-slate-300 font-mono py-0.5">
+                            Periode: {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+                        </Badge>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                        Akumulasi insentif Operator Batching Plant &amp; retase armada (Truk Mixer &amp; Dump Truck).
+                    </p>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={fetchReport}
+                        disabled={isLoading}
+                        className="h-8 text-xs px-2.5 gap-1.5 bg-white border-slate-200 hover:bg-slate-50 shadow-2xs cursor-pointer"
+                    >
+                        <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${isLoading ? "animate-spin text-emerald-600" : ""}`} />
+                        <span>Segarkan</span>
+                    </Button>
+                </div>
+            </div>
+
+            {/* Filter Toolbar (Compact Single Bar) */}
+            <div className="bg-white rounded-lg border border-slate-200 shadow-2xs p-2.5 sm:p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 items-end">
+                    {/* Tahun */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                            <Calendar className="h-3 w-3 text-slate-400" />
+                            <span>Tahun</span>
+                        </label>
+                        <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(Number(v))}>
+                            <SelectTrigger className="h-8 text-xs bg-slate-50/70 border-slate-200 hover:bg-white focus:bg-white">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {(availableYears || [now.getFullYear()]).map((y: number) => (
+                                    <SelectItem key={y} value={String(y)} className="text-xs">{y}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
-                        {/* Tahun */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Tahun</label>
-                            <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(Number(v))}>
-                                <SelectTrigger className="bg-white/10 border-white/20 text-white focus:ring-white/30 hover:bg-white/20">
+                    {/* Bulan */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                            <Calendar className="h-3 w-3 text-slate-400" />
+                            <span>Bulan</span>
+                        </label>
+                        <Select value={String(selectedMonth)} onValueChange={v => setSelectedMonth(Number(v))}>
+                            <SelectTrigger className="h-8 text-xs bg-slate-50/70 border-slate-200 hover:bg-white focus:bg-white">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {MONTH_NAMES.map((m, i) => (
+                                    <SelectItem key={i + 1} value={String(i + 1)} className="text-xs">{m}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Cabang BP */}
+                    <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                            <Building2 className="h-3 w-3 text-slate-400" />
+                            <span>Cabang BP</span>
+                        </label>
+                        {userRole === 'SuperAdminBP' ? (
+                            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                                <SelectTrigger className="h-8 text-xs bg-slate-50/70 border-slate-200 hover:bg-white focus:bg-white">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {(availableYears || [now.getFullYear()]).map((y: number) => (
-                                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                                    <SelectItem value="all" className="text-xs font-medium">🏢 Semua Cabang (Konsolidasi)</SelectItem>
+                                    {locations?.map((loc: any) => (
+                                        <SelectItem key={loc.id} value={loc.id} className="text-xs">
+                                            📍 {loc.name}
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
-                        </div>
-
-                        {/* Bulan */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Bulan</label>
-                            <Select value={String(selectedMonth)} onValueChange={v => setSelectedMonth(Number(v))}>
-                                <SelectTrigger className="bg-white/10 border-white/20 text-white focus:ring-white/30 hover:bg-white/20">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {MONTH_NAMES.map((m, i) => (
-                                        <SelectItem key={i + 1} value={String(i + 1)}>{m}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        {/* Cabang (SuperAdmin only) */}
-                        {userRole === 'SuperAdminBP' && (
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Cabang</label>
-                                <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                                    <SelectTrigger className="bg-white/10 border-white/20 text-white focus:ring-white/30 hover:bg-white/20">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Semua Cabang</SelectItem>
-                                        {locations?.map((loc: any) => (
-                                            <SelectItem key={loc.id} value={loc.id}>📍 {loc.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                        ) : (
+                            <div className="h-8 px-2.5 flex items-center bg-slate-100 border border-slate-200 rounded-md text-xs text-slate-600 font-medium truncate">
+                                {locations?.[0]?.name ? `📍 ${locations[0].name}` : "Cabang Terkunci"}
                             </div>
                         )}
+                    </div>
 
-                        {/* Tombol Tampilkan */}
-                        <div className={userRole !== 'SuperAdminBP' ? "col-span-2 md:col-span-2" : ""}>
-                            <Button
-                                onClick={fetchReport}
-                                disabled={isLoading}
-                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold gap-2 shadow-sm transition-all"
-                            >
-                                {isLoading
-                                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Memuat Data...</>
-                                    : <><Search className="h-4 w-4" /> Tampilkan Rekap Gaji</>
-                                }
-                            </Button>
+                    {/* Tombol Terapkan Filter */}
+                    <div>
+                        <Button
+                            onClick={fetchReport}
+                            disabled={isLoading}
+                            className="w-full h-8 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        >
+                            {isLoading ? (
+                                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Memuat...</>
+                            ) : (
+                                <><RefreshCw className="h-3.5 w-3.5" /> Terapkan Filter</>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Compact KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                {/* Volume Cor */}
+                <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs flex items-center justify-between">
+                    <div>
+                        <div className="text-[11px] font-medium text-slate-500">Volume Cor</div>
+                        <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">
+                            {totals.volume.toLocaleString("id-ID", { maximumFractionDigits: 1 })}
+                            <span className="text-xs text-slate-400 font-normal ml-1">m³</span>
                         </div>
                     </div>
-                </CardContent>
-            </Card>
+                    <div className="p-2 rounded-md bg-blue-50 text-blue-600">
+                        <Layers className="h-4 w-4" />
+                    </div>
+                </div>
+
+                {/* Insentif Operator BP */}
+                <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs flex items-center justify-between">
+                    <div>
+                        <div className="text-[11px] font-medium text-slate-500">Insentif Operator BP</div>
+                        <div className="text-lg font-bold font-mono text-violet-700 mt-0.5">
+                            <span className="text-xs font-semibold mr-0.5">Rp</span>
+                            {totals.opIncome.toLocaleString("id-ID")}
+                        </div>
+                    </div>
+                    <div className="p-2 rounded-md bg-violet-50 text-violet-600">
+                        <HardHat className="h-4 w-4" />
+                    </div>
+                </div>
+
+                {/* Retase Mixer */}
+                <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs flex items-center justify-between">
+                    <div>
+                        <div className="text-[11px] font-medium text-slate-500">Retase Truk Mixer</div>
+                        <div className="text-lg font-bold font-mono text-blue-700 mt-0.5">
+                            <span className="text-xs font-semibold mr-0.5">Rp</span>
+                            {totals.mixerIncome.toLocaleString("id-ID")}
+                        </div>
+                    </div>
+                    <div className="p-2 rounded-md bg-sky-50 text-sky-600">
+                        <Truck className="h-4 w-4" />
+                    </div>
+                </div>
+
+                {/* Retase Dump Truck */}
+                <div className="bg-white border border-slate-200 rounded-lg p-2.5 shadow-2xs flex items-center justify-between">
+                    <div>
+                        <div className="text-[11px] font-medium text-slate-500">Retase Dump Truck</div>
+                        <div className="text-lg font-bold font-mono text-amber-700 mt-0.5">
+                            <span className="text-xs font-semibold mr-0.5">Rp</span>
+                            {totals.dtIncome.toLocaleString("id-ID")}
+                        </div>
+                    </div>
+                    <div className="p-2 rounded-md bg-amber-50 text-amber-600">
+                        <Mountain className="h-4 w-4" />
+                    </div>
+                </div>
+
+                {/* Grand Total */}
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-2.5 shadow-2xs flex items-center justify-between col-span-2 sm:col-span-1">
+                    <div>
+                        <div className="text-[11px] font-semibold text-emerald-800">Total Insentif</div>
+                        <div className="text-lg font-black font-mono text-emerald-700 mt-0.5">
+                            <span className="text-xs font-semibold mr-0.5">Rp</span>
+                            {totals.grandTotal.toLocaleString("id-ID")}
+                        </div>
+                    </div>
+                    <div className="p-2 rounded-md bg-emerald-100 text-emerald-700">
+                        <TrendingUp className="h-4 w-4" />
+                    </div>
+                </div>
+            </div>
 
             {/* Results Section */}
-            {isLoading && (
-                <div className="flex flex-col items-center justify-center py-20 text-slate-400 gap-3">
-                    <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
-                    <span className="text-sm font-medium">Mengambil dan menghitung retase supir...</span>
+            {isLoading && !hasFetched ? (
+                <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2.5">
+                    <Loader2 className="h-7 w-7 animate-spin text-emerald-600" />
+                    <span className="text-xs font-medium">Mengambil dan menghitung data insentif...</span>
                 </div>
-            )}
-
-            {!isLoading && hasFetched && (
-                <div className="space-y-5">
-                    {/* Category Tabs & Search Bar */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            ) : (
+                <div className="space-y-2.5">
+                    {/* Tabs & Search Row */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         {/* Segmented Buttons */}
-                        <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200">
+                        <div className="inline-flex p-0.5 bg-slate-100 rounded-lg border border-slate-200 gap-0.5 text-xs flex-wrap">
                             <button
                                 type="button"
-                                onClick={() => setDriverTypeFilter("ALL")}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                                    driverTypeFilter === "ALL"
-                                        ? "bg-white text-slate-900 shadow-xs"
+                                onClick={() => setCategoryFilter("ALL")}
+                                className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                                    categoryFilter === "ALL"
+                                        ? "bg-white text-slate-900 shadow-2xs"
                                         : "text-slate-600 hover:text-slate-900"
                                 }`}
                             >
-                                Semua Sopir ({allDriverSummaries.length})
+                                Semua ({allSummaries.length})
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setDriverTypeFilter("MIXER")}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                                    driverTypeFilter === "MIXER"
-                                        ? "bg-white text-blue-700 shadow-xs"
+                                onClick={() => setCategoryFilter("OPERATOR_BP")}
+                                className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    categoryFilter === "OPERATOR_BP"
+                                        ? "bg-white text-violet-700 shadow-2xs"
                                         : "text-slate-600 hover:text-slate-900"
                                 }`}
                             >
-                                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                                <HardHat className="w-3 h-3 text-violet-600" />
+                                <span>Operator BP ({operatorCount})</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setCategoryFilter("MIXER")}
+                                className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    categoryFilter === "MIXER"
+                                        ? "bg-white text-blue-700 shadow-2xs"
+                                        : "text-slate-600 hover:text-slate-900"
+                                }`}
+                            >
+                                <Truck className="w-3 h-3 text-blue-600" />
                                 <span>Sopir Mixer ({mixerCount})</span>
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setDriverTypeFilter("DUMP_TRUCK")}
-                                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                                    driverTypeFilter === "DUMP_TRUCK"
-                                        ? "bg-white text-emerald-700 shadow-xs"
+                                onClick={() => setCategoryFilter("DUMP_TRUCK")}
+                                className={`px-2.5 py-1 rounded-md font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                                    categoryFilter === "DUMP_TRUCK"
+                                        ? "bg-white text-amber-700 shadow-2xs"
                                         : "text-slate-600 hover:text-slate-900"
                                 }`}
                             >
-                                <Mountain className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Sopir Dump Truck ({dtCount})</span>
+                                <Mountain className="w-3 h-3 text-amber-600" />
+                                <span>Sopir DT ({dtCount})</span>
                             </button>
                         </div>
 
                         {/* Search Input */}
-                        <div className="relative w-full md:w-72">
-                            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                        <div className="relative w-full sm:w-64">
+                            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
                             <Input
-                                placeholder="Cari supir, armada, plat..."
+                                placeholder="Cari nama / plat / cabang..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="pl-9 h-9 text-xs bg-white"
+                                className="pl-8 h-8 text-xs bg-white border-slate-200"
                             />
                         </div>
                     </div>
 
-                    {/* Summary KPI Cards */}
-                    {allDriverSummaries.length > 0 && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            <Card className="border-slate-200 bg-white shadow-2xs">
-                                <CardContent className="p-3.5">
-                                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Sopir Aktif</div>
-                                    <div className="mt-1 flex items-baseline gap-1">
-                                        <span className="text-xl font-bold text-slate-900 font-mono">{grandTotal.drivers}</span>
-                                        <span className="text-xs text-slate-500">orang</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-slate-200 bg-white shadow-2xs">
-                                <CardContent className="p-3.5">
-                                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Pengiriman / Rit</div>
-                                    <div className="mt-1 flex items-baseline gap-1">
-                                        <span className="text-xl font-bold text-slate-900 font-mono">{grandTotal.trip}</span>
-                                        <span className="text-xs text-slate-500">ritase</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-slate-200 bg-white shadow-2xs">
-                                <CardContent className="p-3.5">
-                                    <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Total Volume Angkut</div>
-                                    <div className="mt-1 flex items-baseline gap-1">
-                                        <span className="text-xl font-bold text-blue-700 font-mono">
-                                            {grandTotal.volume.toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-                                        </span>
-                                        <span className="text-xs text-slate-500">m³</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-emerald-200 bg-emerald-50/50 shadow-2xs">
-                                <CardContent className="p-3.5">
-                                    <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">Total Komisi Retase</div>
-                                    <div className="mt-1 flex items-baseline gap-1">
-                                        <span className="text-xs font-bold text-emerald-800">Rp</span>
-                                        <span className="text-xl font-black text-emerald-700 font-mono">
-                                            {grandTotal.income.toLocaleString('id-ID')}
-                                        </span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    )}
-
-                    {/* Driver List */}
-                    {driverSummaries.length === 0 ? (
-                        <div className="text-center py-20 border-2 border-dashed rounded-xl text-slate-400 bg-slate-50/50">
-                            <User className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                            <p className="font-semibold text-slate-700">Tidak ada data retase supir yang ditemukan</p>
-                            <p className="text-xs mt-1 text-slate-500">
-                                untuk periode {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-                                {driverTypeFilter !== "ALL" ? ` (Kategori: ${driverTypeFilter === "MIXER" ? "Mixer" : "Dump Truck"})` : ""}
+                    {/* Table Data (High-Density ERP View) */}
+                    {filteredSummaries.length === 0 ? (
+                        <div className="text-center py-12 border border-dashed rounded-lg text-slate-400 bg-white">
+                            <User className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p className="font-semibold text-slate-700 text-xs">Tidak ada data penerima insentif pada periode ini</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                                Periode {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
                             </p>
                         </div>
                     ) : (
-                        <Card className="border-slate-200 shadow-2xs overflow-hidden bg-white">
-                            <CardHeader className="border-b border-slate-100 py-3.5 px-6 bg-slate-50/70">
-                                <div className="flex items-center justify-between">
-                                    <div>
-                                        <CardTitle className="text-sm font-bold text-slate-900">
-                                            Rekap Komisi Per Sopir — {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-                                        </CardTitle>
-                                        <CardDescription className="text-xs">
-                                            Klik baris sopir untuk melihat rincian riil perjalanan dan cetak slip gaji retase.
-                                        </CardDescription>
-                                    </div>
-                                    <Badge variant="secondary" className="text-xs font-mono font-bold">
-                                        {driverSummaries.length} Sopir
-                                    </Badge>
-                                </div>
-                            </CardHeader>
-                            <div className="divide-y divide-slate-100">
-                                {driverSummaries.map((driver, i) => (
-                                    <div
-                                        key={driver.driverId}
-                                        className="flex items-center justify-between px-6 py-4 hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                                        onClick={() => setViewingDriver(driver)}
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            {/* Rank Badge */}
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0 ${
-                                                i === 0 ? 'bg-amber-500 shadow-xs' : i === 1 ? 'bg-slate-400' : i === 2 ? 'bg-amber-700' : 'bg-slate-300'
-                                            }`}>
+                        <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+                            <Table>
+                                <TableHeader className="bg-slate-50 text-[11px] font-semibold text-slate-600">
+                                    <TableRow className="h-8">
+                                        <TableHead className="w-9 text-center">#</TableHead>
+                                        <TableHead>Nama Penerima</TableHead>
+                                        <TableHead>Kategori</TableHead>
+                                        <TableHead>Cabang / Unit</TableHead>
+                                        <TableHead className="text-center">Trip / Batch</TableHead>
+                                        <TableHead className="text-right">Volume (m³)</TableHead>
+                                        <TableHead className="text-right">Tarif Satuan</TableHead>
+                                        <TableHead className="text-right">Total Insentif</TableHead>
+                                        <TableHead className="w-20 text-center">Aksi</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody className="text-xs divide-y divide-slate-100">
+                                    {filteredSummaries.map((item, i) => (
+                                        <TableRow
+                                            key={`${item.recipientType}_${item.id}`}
+                                            className="h-10 hover:bg-slate-50/80 transition-colors"
+                                        >
+                                            <TableCell className="text-center font-mono text-slate-400 text-[11px]">
                                                 {i + 1}
-                                            </div>
-
-                                            {/* Driver Info */}
-                                            <div>
-                                                <div className="font-bold text-slate-900 flex items-center gap-2 text-sm">
-                                                    <span>{driver.name}</span>
-                                                    {driver.driverType === "MIXER" ? (
-                                                        <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 border-none text-[10px] font-semibold flex items-center gap-1">
-                                                            <Truck className="w-3 h-3" />
-                                                            <span>Mixer ({driver.vehicleCode})</span>
-                                                        </Badge>
-                                                    ) : (
-                                                        <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none text-[10px] font-semibold flex items-center gap-1">
-                                                            <Mountain className="w-3 h-3" />
-                                                            <span>Dump Truck ({driver.dumpTruckSize === "BESAR" ? "DT Besar" : "DT Kecil"})</span>
-                                                        </Badge>
-                                                    )}
-                                                    {driver.plateNumber && driver.plateNumber !== "-" && (
-                                                        <span className="text-[11px] font-mono text-slate-400">
-                                                            {driver.plateNumber}
+                                            </TableCell>
+                                            <TableCell
+                                                className="font-bold text-slate-900 cursor-pointer"
+                                                onClick={() => setViewingRecipient(item)}
+                                            >
+                                                <div className="flex items-center gap-1.5 hover:text-blue-600 transition-colors">
+                                                    <span>{item.name}</span>
+                                                    {item.plateNumber && item.plateNumber !== "-" && (
+                                                        <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                                            [{item.plateNumber}]
                                                         </span>
                                                     )}
                                                 </div>
-                                                <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
-                                                    <span className="font-semibold text-slate-700">{driver.totalTrip} Rit</span>
-                                                    <span className="text-slate-300">•</span>
-                                                    <span>{driver.totalVolume.toFixed(1)} m³ Total</span>
-                                                    <span className="text-slate-300">•</span>
-                                                    <span>{driver.totalKm.toFixed(0)} KM Jarak</span>
+                                            </TableCell>
+                                            <TableCell>
+                                                {item.recipientType === "OPERATOR_BP" ? (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-violet-50 text-violet-700 border border-violet-200">
+                                                        <HardHat className="w-2.5 h-2.5" />
+                                                        Operator BP
+                                                    </span>
+                                                ) : item.recipientType === "MIXER" ? (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                                                        <Truck className="w-2.5 h-2.5" />
+                                                        Sopir Mixer
+                                                    </span>
+                                                ) : (
+                                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                                                        <Mountain className="w-2.5 h-2.5" />
+                                                        Sopir DT ({item.dumpTruckSize === "BESAR" ? "Besar" : "Kecil"})
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-slate-600">
+                                                <div className="flex items-center gap-1 text-[11px]">
+                                                    <span>{item.locationName}</span>
+                                                    {item.vehicleCode && item.vehicleCode !== "-" && (
+                                                        <span className="text-slate-400 font-mono">({item.vehicleCode})</span>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-right">
-                                                <div className="font-black text-emerald-700 text-base font-mono">
-                                                    Rp {driver.totalIncome.toLocaleString('id-ID')}
+                                            </TableCell>
+                                            <TableCell className="text-center font-semibold font-mono text-slate-700">
+                                                {item.totalTrip} {item.recipientType === "OPERATOR_BP" ? "Batch" : "Rit"}
+                                            </TableCell>
+                                            <TableCell className="text-right font-mono font-medium text-slate-800">
+                                                {item.totalVolume.toFixed(1)} m³
+                                            </TableCell>
+                                            <TableCell className="text-right text-[11px] font-mono text-slate-500">
+                                                {item.recipientType === "OPERATOR_BP" ? (
+                                                    <span>Rp {item.ratePrice.toLocaleString("id-ID")}/m³</span>
+                                                ) : (
+                                                    <span>{item.totalKm.toFixed(0)} KM</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-right font-bold font-mono text-emerald-700">
+                                                Rp {item.totalIncome.toLocaleString("id-ID")}
+                                            </TableCell>
+                                            <TableCell className="text-center">
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0 hover:bg-slate-100 text-slate-600 cursor-pointer"
+                                                        title="Lihat Rincian"
+                                                        onClick={() => setViewingRecipient(item)}
+                                                    >
+                                                        <Eye className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0 hover:bg-slate-100 text-slate-600 cursor-pointer"
+                                                        title="Cetak Slip"
+                                                        onClick={() => handlePrintRecipient(item)}
+                                                    >
+                                                        <Printer className="h-3.5 w-3.5" />
+                                                    </Button>
                                                 </div>
-                                                <div className="text-[10px] text-slate-400 font-medium">Total Komisi Retase</div>
-                                            </div>
-                                            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition-colors" />
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </Card>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
                     )}
                 </div>
             )}
 
             {/* Detail Dialog */}
-            <Dialog open={!!viewingDriver} onOpenChange={o => { if (!o) setViewingDriver(null) }}>
+            <Dialog open={!!viewingRecipient} onOpenChange={o => { if (!o) setViewingRecipient(null) }}>
                 <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-6">
-                    {viewingDriver && (
+                    {viewingRecipient && (
                         <>
                             <DialogHeader className="pb-3 border-b border-slate-100">
                                 <DialogTitle className="flex items-center justify-between pr-6">
                                     <div className="space-y-0.5">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-lg font-bold text-slate-900">{viewingDriver.name}</span>
-                                            {viewingDriver.driverType === "MIXER" ? (
-                                                <Badge className="bg-blue-100 text-blue-800 text-[10px]">Truk Mixer</Badge>
+                                            <span className="text-lg font-bold text-slate-900">{viewingRecipient.name}</span>
+                                            {viewingRecipient.recipientType === "OPERATOR_BP" ? (
+                                                <Badge className="bg-violet-100 text-violet-800 text-[10px]">Operator Batching Plant</Badge>
+                                            ) : viewingRecipient.recipientType === "MIXER" ? (
+                                                <Badge className="bg-blue-100 text-blue-800 text-[10px]">Sopir Truk Mixer</Badge>
                                             ) : (
-                                                <Badge className="bg-emerald-100 text-emerald-800 text-[10px]">Dump Truck</Badge>
+                                                <Badge className="bg-amber-100 text-amber-800 text-[10px]">Sopir Dump Truck</Badge>
                                             )}
                                         </div>
                                         <div className="text-xs text-slate-500 font-normal">
-                                            Armada: {viewingDriver.vehicleCode} {viewingDriver.plateNumber ? `(${viewingDriver.plateNumber})` : ""} &nbsp;|&nbsp; Periode: {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+                                            Cabang: {viewingRecipient.locationName} &nbsp;|&nbsp; Periode: {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+                                            {viewingRecipient.vehicleCode && ` | Armada: ${viewingRecipient.vehicleCode}`}
                                         </div>
                                     </div>
                                     <Button
                                         variant="outline"
                                         size="sm"
                                         className="gap-2 shrink-0 border-slate-300 hover:bg-slate-50 font-semibold cursor-pointer"
-                                        onClick={() => handlePrintDriver(viewingDriver)}
+                                        onClick={() => handlePrintRecipient(viewingRecipient)}
                                     >
                                         <Printer className="h-4 w-4 text-slate-600" />
-                                        <span>Cetak Slip Retase</span>
+                                        <span>Cetak Slip Insentif</span>
                                     </Button>
                                 </DialogTitle>
                             </DialogHeader>
 
-                            {/* Summary Stats */}
+                            {/* Summary Stats in Modal */}
                             <div className="grid grid-cols-4 gap-3 my-2">
                                 {[
-                                    { label: "Total Trip", value: `${viewingDriver.totalTrip}×` },
-                                    { label: "Total Volume", value: `${viewingDriver.totalVolume.toFixed(1)} m³` },
-                                    { label: "Total Jarak", value: `${viewingDriver.totalKm.toFixed(0)} km` },
-                                    { label: "Total Komisi", value: `Rp ${viewingDriver.totalIncome.toLocaleString('id-ID')}`, highlight: true },
+                                    {
+                                        label: viewingRecipient.recipientType === "OPERATOR_BP" ? "Total Batch" : "Total Trip",
+                                        value: `${viewingRecipient.totalTrip}×`
+                                    },
+                                    {
+                                        label: "Total Kubikasi",
+                                        value: `${viewingRecipient.totalVolume.toFixed(1)} m³`
+                                    },
+                                    {
+                                        label: viewingRecipient.recipientType === "OPERATOR_BP" ? "Tarif / m³" : "Total Jarak",
+                                        value: viewingRecipient.recipientType === "OPERATOR_BP"
+                                            ? `Rp ${viewingRecipient.ratePrice.toLocaleString("id-ID")}`
+                                            : `${viewingRecipient.totalKm.toFixed(0)} km`
+                                    },
+                                    {
+                                        label: "Total Insentif",
+                                        value: `Rp ${viewingRecipient.totalIncome.toLocaleString('id-ID')}`,
+                                        highlight: true
+                                    },
                                 ].map(s => (
                                     <div key={s.label} className={`p-3 rounded-lg text-center ${s.highlight ? 'bg-emerald-50 border border-emerald-200' : 'bg-slate-50'}`}>
                                         <div className={`font-black text-base font-mono ${s.highlight ? 'text-emerald-700' : 'text-slate-800'}`}>{s.value}</div>
@@ -501,7 +681,55 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
 
                             {/* Detail Table */}
                             <div className="overflow-auto flex-1 border border-slate-200 rounded-lg">
-                                {viewingDriver.driverType === "MIXER" ? (
+                                {viewingRecipient.recipientType === "OPERATOR_BP" ? (
+                                    /* TABLE FOR OPERATOR BP */
+                                    <Table>
+                                        <TableHeader className="sticky top-0 bg-slate-50">
+                                            <TableRow className="text-xs">
+                                                <TableHead>Tgl & Waktu</TableHead>
+                                                <TableHead>No. Tiket / Trip</TableHead>
+                                                <TableHead>Pelanggan & Proyek</TableHead>
+                                                <TableHead>Mutu Beton</TableHead>
+                                                <TableHead>Armada Mixer</TableHead>
+                                                <TableHead className="text-right">Vol (m³)</TableHead>
+                                                <TableHead className="text-right">Tarif / m³</TableHead>
+                                                <TableHead className="text-right text-emerald-700">Insentif</TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {viewingRecipient.records.map((tx: any) => (
+                                                <TableRow key={tx.id} className="hover:bg-slate-50 text-xs">
+                                                    <TableCell className="py-2 font-mono">
+                                                        <div>{format(new Date(tx.date), "dd MMM yyyy", { locale: idLocale })}</div>
+                                                        <div className="text-slate-400 text-[10px]">{format(new Date(tx.date), "HH:mm")}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2 font-mono font-semibold">
+                                                        TM-{tx.trip_sequence}
+                                                    </TableCell>
+                                                    <TableCell className="py-2">
+                                                        <div className="font-semibold text-slate-800">{tx.customer?.customer_name || tx.project?.customer?.customer_name || "-"}</div>
+                                                        <div className="text-slate-400 text-[10px]">{tx.project?.name || "-"}</div>
+                                                    </TableCell>
+                                                    <TableCell className="py-2">
+                                                        <Badge variant="secondary" className="text-[10px] font-bold">{tx.concreteQuality?.name || "-"}</Badge>
+                                                    </TableCell>
+                                                    <TableCell className="py-2 font-mono text-slate-600">
+                                                        {tx.vehicle?.code || "-"}
+                                                    </TableCell>
+                                                    <TableCell className="py-2 text-right font-mono font-bold text-blue-700">
+                                                        {tx.volume_cubic?.toFixed(1)}
+                                                    </TableCell>
+                                                    <TableCell className="py-2 text-right font-mono text-slate-500">
+                                                        Rp {tx.rate_price?.toLocaleString('id-ID')}
+                                                    </TableCell>
+                                                    <TableCell className="py-2 text-right font-mono font-bold text-emerald-700">
+                                                        Rp {tx.income_amount?.toLocaleString('id-ID')}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                ) : viewingRecipient.recipientType === "MIXER" ? (
                                     /* TABLE FOR MIXER */
                                     <Table>
                                         <TableHeader className="sticky top-0 bg-slate-50">
@@ -516,7 +744,7 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {viewingDriver.records.map((tx: any) => (
+                                            {viewingRecipient.records.map((tx: any) => (
                                                 <TableRow key={tx.id} className="hover:bg-slate-50 text-xs">
                                                     <TableCell className="py-2 font-mono">
                                                         <div>{format(new Date(tx.date), "dd MMM yyyy", { locale: idLocale })}</div>
@@ -558,7 +786,7 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {viewingDriver.records.map((tx: any) => (
+                                            {viewingRecipient.records.map((tx: any) => (
                                                 <TableRow key={tx.id} className="hover:bg-slate-50 text-xs">
                                                     <TableCell className="py-2 font-mono">
                                                         <div>{format(new Date(tx.date), "dd MMM yyyy", { locale: idLocale })}</div>
@@ -609,10 +837,10 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                             {/* Footer Total */}
                             <div className="flex justify-between items-center pt-3 border-t border-slate-100 text-sm">
                                 <span className="text-slate-500 text-xs">
-                                    {viewingDriver.totalTrip} pengiriman/ritase terkonfirmasi
+                                    {viewingRecipient.totalTrip} transaksi terkonfirmasi
                                 </span>
                                 <div className="font-black text-emerald-700 text-base font-mono">
-                                    Total Retase: Rp {viewingDriver.totalIncome.toLocaleString('id-ID')}
+                                    Total Insentif: Rp {viewingRecipient.totalIncome.toLocaleString('id-ID')}
                                 </div>
                             </div>
                         </>

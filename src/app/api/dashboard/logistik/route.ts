@@ -65,6 +65,7 @@ export async function GET(req: Request) {
 
         let totalPengeluaran = 0
         let poDraftCount = 0
+        let poSubmittedCount = 0
         let poApprovedCount = 0
         let poCancelledCount = 0
 
@@ -77,7 +78,9 @@ export async function GET(req: Request) {
             totalPengeluaran += poTotal
 
             if (po.status === 'DRAFT') poDraftCount++
+            else if (po.status === 'SUBMITTED') poSubmittedCount++
             else if (po.status === 'APPROVED') poApprovedCount++
+            else if (po.status === 'CANCELLED') poCancelledCount++
 
             // By Company Tracking
             const companyId = po.companyGroupId
@@ -126,6 +129,7 @@ export async function GET(req: Request) {
                     totalPengeluaran,
                     totalPo: pos.length,
                     poDraftCount,
+                    poSubmittedCount,
                     poApprovedCount,
                     poCancelledCount,
                     companyBreakdown,

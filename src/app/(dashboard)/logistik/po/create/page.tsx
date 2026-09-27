@@ -9,7 +9,7 @@ export default async function POCreatePage() {
     if (["CEO", "FVP", "Approver"].includes(role)) {
         redirect("/logistik/approval")
     }
-    const { companies, categories, suppliers, items, signers, vehicles } = await getPoFormData()
+    const { companies, categories, suppliers, items, signers, vehicles, locations } = await getPoFormData()
 
     return (
         <div className="space-y-4 w-full">
@@ -24,6 +24,9 @@ export default async function POCreatePage() {
                 items={items}
                 signers={signers}
                 vehicles={vehicles || []}
+                locations={locations || []}
+                userRole={role}
+                userLocationId={session?.user?.locationId || null}
                 pembuatAdmin={session?.user?.username || "Admin"}
             />
         </div>

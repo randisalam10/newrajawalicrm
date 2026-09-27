@@ -16,7 +16,7 @@ export interface RetaseMonthFilter {
  */
 export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
     const session = await auth()
-    if (!session?.user) return { mixer: [], dumpTruck: [] }
+    if (!session?.user) return { mixer: [], dumpTruck: [], operatorBP: [] }
 
     // Hitung batas bulan (WIB-aware: gunakan UTC exact range)
     const monthDate = new Date(filter.year, filter.month - 1, 1)
@@ -36,16 +36,23 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         date: { gte: monthStart, lte: monthEnd }
     }
 
+    const opWhere: any = {
+        status: "Confirmed",
+        date: { gte: monthStart, lte: monthEnd }
+    }
+
     // Access control per cabang
     if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
         where.locationId = session.user.locationId
         aggregateWhere.locationId = session.user.locationId
+        opWhere.locationId = session.user.locationId
     } else if (filter.locationId) {
         where.locationId = filter.locationId
         aggregateWhere.locationId = filter.locationId
+        opWhere.locationId = filter.locationId
     }
 
-    const [transactions, dumpTruckIncomings] = await Promise.all([
+    const [transactions, dumpTruckIncomings, opTransactions, branchOperators, retaseSettings] = await Promise.all([
         (prisma as any).productionTransaction.findMany({
             where,
             include: {
@@ -66,12 +73,92 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
                 vehicle: true,
             },
             orderBy: [{ driver_name: 'asc' }, { date: 'asc' }]
-        })
+        }),
+        (prisma as any).productionTransaction.findMany({
+            where: opWhere,
+            include: {
+                operator: true,
+                createdBy: true,
+                location: true,
+                project: { include: { customer: true } },
+                vehicle: true,
+                concreteQuality: true,
+            },
+            orderBy: [{ date: 'asc' }]
+        }),
+        prisma.employee.findMany({
+            where: {
+                position: "Operator",
+                status: "Active",
+                ...(session.user.role !== 'SuperAdminBP' && session.user.locationId
+                    ? { locationId: session.user.locationId }
+                    : filter.locationId ? { locationId: filter.locationId } : {})
+            },
+            include: { location: true },
+            orderBy: { name: 'asc' }
+        }),
+        (prisma as any).retaseSetting.findMany()
     ])
+
+    // Map tarif insentif operator per cabang
+    const settingMap = new Map<string, number>()
+    retaseSettings.forEach((s: any) => {
+        settingMap.set(s.locationId, s.operator_rate_per_cubic || 0)
+    })
+
+    // Map active operators per cabang untuk auto-mapping
+    const branchOperatorsMap = new Map<string, any[]>()
+    branchOperators.forEach((op: any) => {
+        if (op.locationId) {
+            if (!branchOperatorsMap.has(op.locationId)) branchOperatorsMap.set(op.locationId, [])
+            branchOperatorsMap.get(op.locationId)!.push(op)
+        }
+    })
+
+    // Proses data transaksi operator BP
+    const operatorRecords: any[] = []
+    opTransactions.forEach((tx: any) => {
+        const locRate = settingMap.get(tx.locationId) || 0
+        const locOperators = branchOperatorsMap.get(tx.locationId) || []
+
+        // Resolusi operator:
+        // 1. tx.operator eksplisit
+        // 2. tx.createdBy jika jabatannya Operator
+        // 3. Jika hanya ada 1 operator aktif di BP tersebut, auto-map ke operator tersebut
+        let op = tx.operator || null
+        if (!op && tx.createdBy?.position === "Operator") {
+            op = tx.createdBy
+        }
+        if (!op && locOperators.length === 1) {
+            op = locOperators[0]
+        }
+
+        const opId = op ? op.id : (locOperators.length > 0 ? locOperators[0].id : `unassigned_${tx.locationId}`)
+        const opName = op ? op.name : (locOperators.length > 0 ? locOperators[0].name : `Operator ${tx.location?.name || 'BP'}`)
+        const income = (tx.volume_cubic || 0) * locRate
+
+        operatorRecords.push({
+            id: tx.id,
+            date: tx.date,
+            operatorId: opId,
+            operatorName: opName,
+            locationId: tx.locationId,
+            locationName: tx.location?.name || "-",
+            volume_cubic: tx.volume_cubic || 0,
+            trip_sequence: tx.trip_sequence,
+            rate_price: locRate,
+            income_amount: income,
+            project: tx.project,
+            customer: tx.project?.customer,
+            vehicle: tx.vehicle,
+            concreteQuality: tx.concreteQuality
+        })
+    })
 
     return {
         mixer: transactions,
-        dumpTruck: dumpTruckIncomings
+        dumpTruck: dumpTruckIncomings,
+        operatorBP: operatorRecords
     }
 }
 

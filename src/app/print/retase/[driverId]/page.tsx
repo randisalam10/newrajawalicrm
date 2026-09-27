@@ -30,6 +30,91 @@ export default async function PrintRetasePage({
         if (loc) locationName = `PT. Rajawali Mix — ${loc.name}`
     }
 
+    const isOperator = type === "operator_bp" || type === "operator"
+    if (isOperator) {
+        let opName = "Operator Batching Plant"
+        let resolvedOpId = driverId
+        if (!driverId.startsWith("unassigned_")) {
+            const emp = await prisma.employee.findUnique({ where: { id: driverId } })
+            if (emp) {
+                opName = emp.name
+                resolvedOpId = emp.id
+            }
+        }
+
+        let opRate = 0
+        if (locationId) {
+            const setting = await prisma.retaseSetting.findUnique({ where: { locationId } })
+            if (setting) opRate = setting.operator_rate_per_cubic || 0
+        }
+
+        const transactions = await prisma.productionTransaction.findMany({
+            where: {
+                status: "Confirmed",
+                date: { gte: startDate, lte: endDate },
+                ...(locationId ? { locationId } : {}),
+                OR: [
+                    { operatorId: resolvedOpId },
+                    { createdById: resolvedOpId }
+                ]
+            },
+            include: {
+                project: { include: { customer: true } },
+                concreteQuality: true,
+                vehicle: true,
+                location: { include: { retaseSetting: true } }
+            },
+            orderBy: { date: "asc" },
+        })
+
+        const totalTrip = transactions.length
+        const totalVolume = transactions.reduce((s, t) => s + t.volume_cubic, 0)
+        const totalIncome = transactions.reduce((s, t) => {
+            const r = opRate || t.location?.retaseSetting?.operator_rate_per_cubic || 0
+            return s + (t.volume_cubic * r)
+        }, 0)
+
+        const records = transactions.map(tx => {
+            const r = opRate || tx.location?.retaseSetting?.operator_rate_per_cubic || 0
+            return {
+                id: tx.id,
+                date: tx.date.toISOString(),
+                volume_cubic: tx.volume_cubic,
+                project: {
+                    name: tx.project.name,
+                    customer: { customer_name: tx.project.customer?.customer_name },
+                },
+                concreteQuality: { name: tx.concreteQuality.name },
+                retase: {
+                    calculated_distance: 0,
+                    price_per_cubic_km: r,
+                    income_amount: tx.volume_cubic * r,
+                }
+            }
+        })
+
+        const driverData = {
+            driverId: resolvedOpId,
+            driverType: "OPERATOR_BP" as const,
+            name: opName,
+            vehicleCode: "Batching Plant",
+            totalTrip,
+            totalVolume,
+            totalKm: 0,
+            totalIncome,
+            records,
+        }
+
+        return (
+            <RetasePrintClient
+                driver={driverData}
+                year={y}
+                month={m}
+                locationName={locationName}
+            />
+        )
+    }
+
     const isDumpTruck = type === "dump_truck" || type === "dumptruck" || driverId.startsWith("name_")
 
     if (isDumpTruck) {

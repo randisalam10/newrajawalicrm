@@ -190,6 +190,7 @@ model Employee {
   driverCategory             DriverCategory?         @relation(fields: [driverCategoryId], references: [id])
   driver_transactions        ProductionTransaction[] @relation("SopirRelation")
   operator_transactions      ProductionTransaction[] @relation("OperatorRelation")
+  operator_bp_transactions   ProductionTransaction[] @relation("ProductionOperator")
   operator_sewa_transactions SewaTransaction[]       @relation("OperatorSewaRelation")
   retase_commissions         Retase[]                @relation("DriverRetase")
   driver_aggregate_incomings AggregateIncoming[]     @relation("DriverAggregate")
@@ -356,6 +357,8 @@ model ProductionTransaction {
   status            TransactionStatus @default(Pending)
   createdBy         Employee          @relation("OperatorRelation", fields: [createdById], references: [id])
   createdById       String
+  operator          Employee?         @relation("ProductionOperator", fields: [operatorId], references: [id])
+  operatorId        String?
   location          Location          @relation(fields: [locationId], references: [id])
   locationId        String
   retase            Retase?
@@ -365,24 +368,39 @@ model ProductionTransaction {
   @@index([locationId, date])
   @@index([projectId])
   @@index([driverId])
+  @@index([operatorId])
   @@index([status])
   @@index([vehicleId])
 }
 
 model MaterialIncoming {
-  id            String       @id @default(uuid())
-  date          DateTime
-  material_type MaterialType
-  name          String // e.g., "Semen Tonasa", "Semen Bosowa"
-  supplier      String
-  tonnage       Float // Will be treated as KG
-  delivery_note String
-  location      Location     @relation(fields: [locationId], references: [id])
-  locationId    String
+  id              String         @id @default(uuid())
+  date            DateTime
+  material_type   MaterialType
+  name            String // e.g., "Semen Tonasa", "Semen Bosowa"
+  supplier        String
+  tonnage         Float // Will be treated as KG
+  delivery_note   String
+  location        Location       @relation(fields: [locationId], references: [id])
+  locationId      String
+
+  // Kolom Harga & Satuan Beli
+  unit_price      Float?         @default(0)
+  total_price     Float?         @default(0)
+  purchase_unit   String?        @default("KG")
+  purchase_qty    Float?
+
+  // Referensi PO Logistik (Opsional)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  poItemId        String?
+  poItem          PoItem?        @relation(fields: [poItemId], references: [id])
 
   @@index([date])
   @@index([locationId, date])
   @@index([material_type])
+  @@index([purchaseOrderId])
+  @@index([poItemId])
 }
 
 model AggregateIncoming {
@@ -440,13 +458,14 @@ model Retase {
 }
 
 model RetaseSetting {
-  id                 String          @id @default(uuid())
-  price_per_cubic_km Float           // Harga dasar retase (Rp/KM atau Rp/M3/KM)
-  calculation_mode   RetaseCalcMode  @default(DISTANCE_ONLY)
-  effective_from     DateTime        @default(now())
-  location           Location        @relation(fields: [locationId], references: [id])
-  locationId         String          @unique // One setting per branch
-  updatedAt          DateTime        @updatedAt
+  id                      String          @id @default(uuid())
+  price_per_cubic_km      Float           // Harga dasar retase (Rp/KM atau Rp/M3/KM)
+  calculation_mode        RetaseCalcMode  @default(DISTANCE_ONLY)
+  operator_rate_per_cubic Float           @default(0) // Tarif insentif operator BP per m³ (Rp/m³)
+  effective_from          DateTime        @default(now())
+  location                Location        @relation(fields: [locationId], references: [id])
+  locationId              String          @unique // One setting per branch
+  updatedAt               DateTime        @updatedAt
 }
 
 model AggregateRetaseSetting {
@@ -789,6 +808,9 @@ model PurchaseOrder {
   pic_name  String?
   pic_phone String?
 
+  is_for_bp         Boolean            @default(false)
+  materialIncomings MaterialIncoming[]
+
   items     PoItem[]
   createdAt DateTime @default(now())
   updatedAt DateTime? @updatedAt
@@ -800,6 +822,7 @@ model PurchaseOrder {
   @@index([status])
   @@index([createdAt])
   @@index([locationId])
+  @@index([is_for_bp])
   @@index([status, tanggal_terbit])
 }
 
@@ -818,6 +841,8 @@ model PoItem {
   vehicleId       String?
   vehicle         Vehicle?      @relation(fields: [vehicleId], references: [id])
   km_hm           String?       // Nilai KM atau HM saat sparepart dipesan
+
+  materialIncomings MaterialIncoming[]
 
   @@index([purchaseOrderId])
   @@index([masterItemId])

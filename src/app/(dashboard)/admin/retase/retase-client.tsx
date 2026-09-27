@@ -94,6 +94,7 @@ export function RetaseClient({
     const [settingLocation, setSettingLocation] = useState(initialLoc)
     const [settingPrice, setSettingPrice] = useState(initialSetting?.price_per_cubic_km != null ? String(initialSetting.price_per_cubic_km) : "")
     const [settingCalcMode, setSettingCalcMode] = useState<"DISTANCE_ONLY" | "DISTANCE_AND_VOLUME">(initialSetting?.calculation_mode || "DISTANCE_ONLY")
+    const [settingOperatorRate, setSettingOperatorRate] = useState(initialSetting?.operator_rate_per_cubic != null ? String(initialSetting.operator_rate_per_cubic) : "0")
     const [applyScope, setApplyScope] = useState<"FUTURE" | "BACKDATE">("FUTURE")
     const [effectiveDate, setEffectiveDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
     const [showBackdateAlert, setShowBackdateAlert] = useState(false)
@@ -126,6 +127,7 @@ export function RetaseClient({
         formData.append("locationId", settingLocation)
         formData.append("price_per_cubic_km", settingPrice)
         formData.append("calculation_mode", settingCalcMode)
+        formData.append("operator_rate_per_cubic", settingOperatorRate || "0")
         formData.append("apply_mode", applyScope)
         if (applyScope === "BACKDATE") {
             formData.append("effective_date", effectiveDate)
@@ -181,9 +183,11 @@ export function RetaseClient({
         if (existing) {
             setSettingPrice(existing.price_per_cubic_km != null ? existing.price_per_cubic_km.toString() : "")
             setSettingCalcMode(existing.calculation_mode || "DISTANCE_ONLY")
+            setSettingOperatorRate(existing.operator_rate_per_cubic != null ? existing.operator_rate_per_cubic.toString() : "0")
         } else {
             setSettingPrice("")
             setSettingCalcMode("DISTANCE_ONLY")
+            setSettingOperatorRate("0")
         }
     }
 
@@ -621,6 +625,31 @@ export function RetaseClient({
                                                 {settingCalcMode === "DISTANCE_ONLY"
                                                     ? "Jarak Tempuh (KM) × Harga ini"
                                                     : "Jarak Tempuh (KM) × Kubikasi Beton (M³) × Harga ini"}
+                                            </span>
+                                        </p>
+                                    </div>
+
+                                    {/* INPUT TARIF INSENTIF OPERATOR BP */}
+                                    <div className="space-y-2 pt-2 border-t">
+                                        <Label className="font-semibold text-slate-800">
+                                            Tarif Insentif Operator BP per M³ (Rp/M³) *
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                step="any"
+                                                value={settingOperatorRate}
+                                                onChange={(e) => setSettingOperatorRate(e.target.value)}
+                                                placeholder="Misal: 2000"
+                                                className="pl-10 text-base font-semibold"
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            Insentif operator BP dihitung:{" "}
+                                            <span className="font-semibold text-slate-700">
+                                                Total Kubikasi Produksi (M³) × Rp {(Number(settingOperatorRate) || 0).toLocaleString("id-ID")}
                                             </span>
                                         </p>
                                     </div>
