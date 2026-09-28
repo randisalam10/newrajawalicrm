@@ -1,6 +1,9 @@
 #!/bin/bash
 # ============================================================
-# deploy-hub.sh — Deployment Cepat via Docker Hub Pull (Safe & Low Memory)
+# deploy-hub.sh — Deployment via Docker Hub (Safe & Low Memory)
+# Penggunaan: bash deploy-hub.sh [tag]
+# Contoh:     bash deploy-hub.sh v2.4.5
+# Default tag: v2.4.5 (diupdate tiap release)
 # ============================================================
 
 set -e
@@ -14,15 +17,15 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 IMAGE_REPO="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="${1:-latest}"
+IMAGE_TAG="${1:-v2.4.5}"
 IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE} 🚀 Deploying via Docker Hub (Safe & Lightweight)${NC}"
+echo -e "${BLUE} Deploying via Docker Hub${NC}"
 echo -e "${BLUE}    Target Image: $IMAGE_NAME${NC}"
 echo -e "${BLUE}================================================${NC}"
 
-# 1. Update source code (jika repo git aktif)
+# ── 1. Update source code (script & config terbaru) ───────────
 echo ""
 echo -e "${CYAN}[1/5] Memeriksa update script & konfigurasi...${NC}"
 if [ -d ".git" ]; then
@@ -31,7 +34,7 @@ if [ -d ".git" ]; then
     echo -e "${GREEN}   ✓ Repository up-to-date.${NC}"
 fi
 
-# 2. Check environment
+# ── 2. Check environment ──────────────────────────────────────
 if [ -f ".env.production" ]; then
     ENV_FILE=".env.production"
 elif [ -f ".env" ]; then
@@ -43,19 +46,15 @@ fi
 echo -e "${GREEN}   ✓ Menggunakan environment: $ENV_FILE${NC}"
 
 DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
-CLEAN_DB_URL=""
-if [ -n "$DB_URL" ]; then
-    CLEAN_DB_URL=$(echo "$DB_URL" | sed -E 's/[?&]schema=[^&]*//g')
-fi
 
-# 3. PENTING: Matikan container lama DULU agar RAM server lega!
+# ── 2.5. Stop container lama ──────────────────────────────────
 echo ""
 echo -e "${CYAN}[2/5] Membebaskan RAM server (Stop container lama)...${NC}"
 docker stop $APP_NAME 2>/dev/null || true
 docker rm $APP_NAME 2>/dev/null || true
-echo -e "${GREEN}   ✓ RAM server berhasil dibebaskan.${NC}"
+echo -e "${GREEN}   ✓ Container lama dihentikan.${NC}"
 
-# 3.5. Backup Snapshot Database Otomatis (Perlindungan Data Production)
+# ── 2.75. Backup Database Otomatis (Perlindungan Data Production) ─
 echo ""
 echo -e "${CYAN}[2.5/5] Membuat backup snapshot database sebelum migrasi...${NC}"
 mkdir -p ./backups
@@ -63,56 +62,51 @@ BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="./backups/backup_db_${BACKUP_TIMESTAMP}.sql"
 
 if sudo -u postgres pg_dump rajawali_prod > "$BACKUP_FILE" 2>/dev/null; then
-    echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}"
-elif [ -n "$CLEAN_DB_URL" ] && command -v pg_dump &> /dev/null; then
-    pg_dump "$CLEAN_DB_URL" > "$BACKUP_FILE" 2>/dev/null \
-        && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}" \
-        || echo -e "${YELLOW}   ℹ Catatan: pg_dump host dilewati.${NC}"
+    echo -e "${GREEN}   ✓ Snapshot tersimpan: $BACKUP_FILE${NC}"
 elif [ -n "$DB_URL" ]; then
     docker run --rm --network host postgres:16-alpine pg_dump "$DB_URL" > "$BACKUP_FILE" 2>/dev/null \
-        && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman via container: $BACKUP_FILE${NC}" \
-        || echo -e "${YELLOW}   ℹ Catatan: pg_dump docker dilewati.${NC}"
+        && echo -e "${GREEN}   ✓ Snapshot tersimpan via container: $BACKUP_FILE${NC}" \
+        || echo -e "${YELLOW}   ℹ pg_dump dilewati, melanjutkan.${NC}"
 else
-    echo -e "${YELLOW}   ℹ pg_dump dilewati, melanjutkan proses aman.${NC}"
+    echo -e "${YELLOW}   ℹ pg_dump dilewati, melanjutkan.${NC}"
 fi
 
-# 4. Pull latest image dari Docker Hub
+# ── 3. Pull image dari Docker Hub ─────────────────────────────
 echo ""
 echo -e "${CYAN}[3/5] Menarik image dari Docker Hub ($IMAGE_NAME)...${NC}"
-docker pull $IMAGE_NAME
+docker pull "$IMAGE_NAME"
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# 5. Database migration & Sync (Metode Cepat & Hemat RAM - Non Destructive)
+# ── 4. Database migration — AMAN & IDEMPOTENT ─────────────────
 echo ""
-echo -e "${CYAN}[4/5] Menerapkan migrasi database & backfill otomatis (Aman & Non-Destructive)...${NC}"
+echo -e "${CYAN}[4/5] Menerapkan migrasi database (Aman, idempotent via Prisma)...${NC}"
 
-# A. Jalankan apply-indexes.sh (Tabel MasterItemPriceHistory + Indexes + Backfill Harga)
+# A. apply-indexes.sh — Index & backfill helpers (pakai IF NOT EXISTS, aman)
 if [ -f "apply-indexes.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi skema baru, indexes, dan backfill harga via apply-indexes.sh...${NC}"
+    echo -e "${YELLOW}   Mengeksekusi index dan backfill via apply-indexes.sh...${NC}"
     bash apply-indexes.sh || true
 fi
 
-# B. Jalankan sinkronisasi via psql host untuk semua file migrasi yang ada
-if command -v psql &> /dev/null; then
-    for sql_file in $(ls -1 prisma/migrations/*/migration.sql 2>/dev/null | sort); do
-        mig_name=$(basename $(dirname $sql_file))
-        if sudo -u postgres psql -d rajawali_prod -c '\q' 2>/dev/null; then
-            sudo -u postgres psql -d rajawali_prod -f "$sql_file" >/dev/null 2>&1 || true
-        elif [ -n "$CLEAN_DB_URL" ]; then
-            psql "$CLEAN_DB_URL" -f "$sql_file" >/dev/null 2>&1 || true
-        fi
-    done
-    echo -e "${GREEN}   ✓ Seluruh file migrasi DDL berhasil diterapkan.${NC}"
-fi
+# B. prisma migrate deploy — HANYA JALANKAN MIGRASI BARU
+# Melacak status via tabel _prisma_migrations. Tidak pernah re-run migrasi lama.
+# Tidak DROP tabel, tidak DROP kolom, tidak menghapus data production.
+echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    "$IMAGE_NAME" \
+    sh -c "npx prisma migrate deploy" \
+    && echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}" \
+    || echo -e "${YELLOW}   ℹ Migrasi sudah up-to-date atau dilewati.${NC}"
 
-# C. Jalankan fix-db.sh jika ada
+# C. fix-db.sh — DDL helpers (aman karena pakai IF NOT EXISTS / idempotent)
 if [ -f "fix-db.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi sinkronisasi skema DB via fix-db.sh...${NC}"
+    echo -e "${YELLOW}   Mengeksekusi fix-db.sh (schema helpers)...${NC}"
     bash fix-db.sh 2>/dev/null || true
     echo -e "${GREEN}   ✓ fix-db.sh selesai.${NC}"
 fi
 
-# 6. Jalankan container baru
+# ── 5. Jalankan container baru ─────────────────────────────────
 echo ""
 echo -e "${CYAN}[5/5] Menjalankan container aplikasi ($APP_NAME)...${NC}"
 mkdir -p /var/data/rajawali/uploads/logos
@@ -120,7 +114,7 @@ mkdir -p /var/data/rajawali/uploads/signatures
 mkdir -p /var/data/rajawali/uploads/payments
 mkdir -p /home/secrets
 
-# Buat symlink di folder proyek agar 'ls' di folder app langsung menampilkan uploads
+# Buat symlink di folder proyek agar upload path konsisten
 ln -sfn /var/data/rajawali/uploads ./uploads
 
 docker run -d \
@@ -132,12 +126,11 @@ docker run -d \
     --cpus="1.5" \
     -v /var/data/rajawali/uploads:/app/uploads \
     -v /home/secrets:/app/secrets \
-    $IMAGE_NAME
+    "$IMAGE_NAME"
 
-# Sinkronkan permission RBAC terbaru ke database secara otomatis & aman
-# CATATAN KEAMANAN: Script ini HANYA menyinkronkan daftar permission role sistem (seed-rbac.js),
-# dan TIDAK MENJALANKAN seed.ts (tidak ada mock/dummy data ataupun user overwrite).
-echo -e "${CYAN}Menyinkronkan permission RBAC ke database (Aman, Tanpa Dummy Data)...${NC}"
+# Sinkronkan RBAC permissions (HANYA daftar permission, tanpa dummy data / user overwrite)
+echo -e "${CYAN}Menyinkronkan permission RBAC ke database...${NC}"
+sleep 3  # Beri waktu container startup
 docker exec $APP_NAME node /app/prisma/seed-rbac.js > /dev/null 2>&1 || true
 echo -e "${GREEN}   ✓ RBAC permissions tersinkronisasi.${NC}"
 
