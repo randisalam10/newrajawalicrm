@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -109,7 +109,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat }] : []),
                 ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText }] : []),
                 ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers }] : []),
-                ...(hasPerm("MATERIAL_USAGE_VIEW") ? [{ title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory }] : []),
             ]
         },
         {
@@ -120,10 +119,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("RBL_VIEW") ? [
                     { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards },
                 ] : []),
+                ...(hasPerm("MATERIAL_USAGE_VIEW") ? [{ title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "MATERIAL_AGREGAT_VIEW", "MATERIAL_VIEW") ? [
+                    { title: "Laporan Biaya Material", url: "/admin/reports/material", icon: Layers },
+                ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "VEHICLE_VIEW") ? [
                     { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck },
                 ] : []),
-                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Insentif Batching Plant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Retase Batchingplant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
             ]
         },
         {
@@ -147,6 +150,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ] : []),
                 ...(hasPerm("INSENTIF_VIEW") ? [
                     { title: "Master Insentif", url: "/admin/master-insentif", icon: Calculator },
+                ] : []),
+                ...(hasAnyPerm("MATERIAL_AGREGAT_VIEW", "PRODUKSI_VIEW", "MUTU_VIEW") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP'].includes(user?.role || '') ? [
+                    { title: "Master Harga Material", url: "/admin/master-material", icon: Tag }
                 ] : []),
                 ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
             ]

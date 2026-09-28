@@ -19,6 +19,8 @@ export type AggregateInRow = {
     rate_price?: number | null
     retase_amount?: number | null
     is_retase_paid?: boolean
+    unit_price?: number | null
+    total_price?: number | null
     vehicle?: any
     driver?: any
 }
@@ -104,6 +106,13 @@ export const AGGREGATE_TYPE_OPTIONS = [
     { value: "Semen", label: "Semen (Zak / Curah)" },
     { value: "Other", label: "Lainnya" },
 ]
+
+export const AGGREGATE_TYPE_TO_MATERIAL_CODE: Record<string, string> = {
+    SplitHalfOne: "SPLIT_1_2",
+    SplitTwoThree: "SPLIT_2_3",
+    Pasir: "PASIR",
+    Other: "OTHER",
+}
 
 export const SOURCE_TYPE_LABELS: Record<string, string> = {
     Internal: "Internal (Quarry)",

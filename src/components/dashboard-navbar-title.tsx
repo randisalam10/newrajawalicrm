@@ -12,8 +12,10 @@ type RouteMeta = {
 const ROUTE_MAP: Record<string, RouteMeta> = {
     // Admin & Monitoring
     "/admin": { section: "Monitoring", title: "Dashboard Operasional" },
-    "/admin/reports/kendaraan": { section: "Laporan", title: "Laporan & Analisis Armada" },
-    "/admin/material-usage": { section: "Operasional", title: "Penggunaan Material" },
+    "/admin/reports/material": { section: "Laporan & Tagihan", title: "Laporan Biaya Material" },
+    "/admin/reports/retase": { section: "Laporan & Tagihan", title: "Retase Batchingplant" },
+    "/admin/reports/kendaraan": { section: "Laporan & Tagihan", title: "Laporan & Analisis Armada" },
+    "/admin/material-usage": { section: "Laporan & Tagihan", title: "Penggunaan Material" },
     "/admin/material-in": { section: "Logistik Material", title: "Semen Masuk & Stok Silo" },
     "/admin/material-agregat": { section: "Logistik Material", title: "Agregat & Pasir Masuk" },
     "/admin/billing": { section: "Keuangan", title: "Tagihan & Invoice" },
@@ -27,6 +29,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     "/admin/mutu": { section: "Master Data", title: "Mutu Beton & Harga" },
     "/admin/item-pekerjaan": { section: "Master Data", title: "Master Item Pekerjaan" },
     "/admin/master-insentif": { section: "Master Data", title: "Master Tarif Insentif" },
+    "/admin/master-material": { section: "Master Data", title: "Master Harga Material per m³" },
     "/admin/cabang": { section: "Master Data", title: "Cabang Batching Plant" },
     "/admin/users": { section: "Pengaturan", title: "Manajemen Pengguna" },
     "/admin/roles": { section: "Pengaturan", title: "Hak Akses & Role" },

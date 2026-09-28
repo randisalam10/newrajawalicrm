@@ -240,7 +240,7 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                 <div className="space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
                         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
-                            Laporan Insentif Batching Plant
+                            Laporan Retase Batchingplant
                         </h1>
                         <Badge variant="outline" className="text-xs bg-slate-100 text-slate-700 border-slate-300 font-mono py-0.5">
                             Periode: {MONTH_NAMES[selectedMonth - 1]} {selectedYear}

@@ -160,6 +160,9 @@ model User {
   // Master Item Price History
   masterItemPriceHistories MasterItemPriceHistory[] @relation("PriceHistoryUpdatedBy")
 
+  // Master Material Price History
+  materialPriceHistories MaterialPriceHistory[] @relation("MaterialPriceHistoryCreatedBy")
+
   // Web Push Subscriptions
   webPushSubscriptions WebPushSubscription[]
 }
@@ -223,6 +226,7 @@ model Location {
   sewaTransactions       SewaTransaction[]
   sewaEquipments         MasterSewaAlat[]
   masterIncentiveRates   MasterIncentiveRate[]
+  materialPriceHistories MaterialPriceHistory[]
 }
 
 model Vehicle {
@@ -425,6 +429,10 @@ model AggregateIncoming {
   notes           String?
   location        Location            @relation(fields: [locationId], references: [id])
   locationId      String
+
+  // Nilai Finansial Material (Harga Pengeluaran Pokok / Master Material)
+  unit_price      Float?              @default(0) // Harga satuan per m³ saat transaksi (Rp)
+  total_price     Float?              @default(0) // Total nilai = volume_cubic * unit_price (Rp)
 
   // Link to internal vehicle & driver for retase calculation (Internal only)
   vehicleId       String?
@@ -1113,5 +1121,51 @@ model SewaTransaction {
   @@index([operatorId])
   @@index([status])
 }
+
+model MasterMaterial {
+  id             String                 @id @default(uuid())
+  code           String                 @unique // e.g. "PASIR", "SPLIT_1_2", "SPLIT_2_3", "ABU_BATU", "OTHER"
+  name           String                 // e.g. "Pasir Cor", "Batu Split 1/2", "Batu Split 2/3", "Abu Batu"
+  category       String                 @default("AGREGAT") // "AGREGAT", "BATU", "PASIR", "LAINNYA"
+  unit           String                 @default("m³") // Satuan default: m³ (per kubik)
+  defaultDensity Float?                 // Estimasi densitas kg/m³
+  description    String?
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  priceHistories MaterialPriceHistory[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model MaterialPriceHistory {
+  id             String          @id @default(uuid())
+  material       MasterMaterial  @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  materialId     String
+  material_code  String          // Denormalized e.g. "PASIR"
+  material_name  String          // Snapshot name
+
+  price_per_m3   Float           // Harga per kubik (Rp)
+  effective_date DateTime        // Mulai berlaku kapan
+  
+  locationId     String?         // null = Berlaku Semua Cabang, atau ID cabang spesifik
+  location       Location?       @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  old_price      Float?          @default(0) // Harga sebelum perubahan
+  notes          String?         // Keterangan / Alasan penetapan harga
+
+  createdById    String?
+  createdBy      User?           @relation("MaterialPriceHistoryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([materialId, effective_date])
+  @@index([material_code, effective_date])
+  @@index([locationId, effective_date])
+}
+
 
 

@@ -48,7 +48,10 @@ import {
     ArrowUpRight,
     ArrowUpDown,
     Coins,
+    Tag,
+    BarChart3,
 } from "lucide-react"
+import Link from "next/link"
 import {
     AggregateInRow,
     AggregateOutRow,
@@ -205,6 +208,8 @@ export function MaterialAgregatClient({
             rate_price: t.rate_price,
             retase_amount: t.retase_amount,
             is_retase_paid: t.is_retase_paid,
+            unit_price: t.unit_price,
+            total_price: t.total_price,
             vehicle: t.vehicle,
             driver: t.driver,
         }))
@@ -229,12 +234,14 @@ export function MaterialAgregatClient({
         const byType: Record<string, number> = {}
         let totalVol = 0
         let totalRetase = 0
+        let totalMaterialExpense = 0
         let internalVol = 0
         let externalVol = 0
 
         filteredData.forEach((row) => {
             byType[row.aggregate_type] = (byType[row.aggregate_type] || 0) + row.volume_cubic
             totalVol += row.volume_cubic
+            if (row.total_price) totalMaterialExpense += row.total_price
             if (row.source_type === "Internal") {
                 internalVol += row.volume_cubic
                 if (row.retase_amount) totalRetase += row.retase_amount
@@ -248,6 +255,7 @@ export function MaterialAgregatClient({
             totalVol,
             totalRit: filteredData.length,
             totalRetase,
+            totalMaterialExpense,
             internalVol,
             externalVol,
         }
@@ -329,24 +337,35 @@ export function MaterialAgregatClient({
 
     // Unified combined transactions (Masuk & Keluar side-by-side)
     const combinedData: AggregateCombinedRow[] = useMemo(() => {
-        const inRows: AggregateCombinedRow[] = filteredData.map(r => ({
-            id: "in_" + r.id,
-            date: r.date,
-            direction: "IN",
-            no_bon: r.no_bon,
-            aggregate_type: r.aggregate_type,
-            aggregateLabel: r.aggregateLabel,
-            volume: r.volume_cubic,
-            unit: "m³",
-            categoryOrSource: r.source_type === "Internal" ? "Internal Quarry" : "Eksternal",
-            party: r.supplier || (r.source_type === "Internal" ? "Quarry PT" : "-"),
-            vehicleInfo: `${r.plate_number} • ${r.driver_name}${r.dump_truck_size ? ` (${r.dump_truck_size})` : ""}`,
-            financialInfo: r.retase_amount ? `Retase: Rp ${r.retase_amount.toLocaleString("id-ID")}` : undefined,
-            notes: r.notes,
-            locationName: r.locationName,
-            locationId: r.locationId,
-            rawIn: r,
-        }))
+        const inRows: AggregateCombinedRow[] = filteredData.map(r => {
+            let finInfo: string | undefined = undefined
+            if (r.total_price && r.total_price > 0 && r.retase_amount && r.retase_amount > 0) {
+                finInfo = `Mat: Rp ${r.total_price.toLocaleString("id-ID")} • Ret: Rp ${r.retase_amount.toLocaleString("id-ID")}`
+            } else if (r.total_price && r.total_price > 0) {
+                finInfo = `Rp ${r.total_price.toLocaleString("id-ID")}`
+            } else if (r.retase_amount) {
+                finInfo = `Retase: Rp ${r.retase_amount.toLocaleString("id-ID")}`
+            }
+
+            return {
+                id: "in_" + r.id,
+                date: r.date,
+                direction: "IN",
+                no_bon: r.no_bon,
+                aggregate_type: r.aggregate_type,
+                aggregateLabel: r.aggregateLabel,
+                volume: r.volume_cubic,
+                unit: "m³",
+                categoryOrSource: r.source_type === "Internal" ? "Internal Quarry" : "Eksternal",
+                party: r.supplier || (r.source_type === "Internal" ? "Quarry PT" : "-"),
+                vehicleInfo: `${r.plate_number} • ${r.driver_name}${r.dump_truck_size ? ` (${r.dump_truck_size})` : ""}`,
+                financialInfo: finInfo,
+                notes: r.notes,
+                locationName: r.locationName,
+                locationId: r.locationId,
+                rawIn: r,
+            }
+        })
 
         const outRows: AggregateCombinedRow[] = filteredOutData.map(r => ({
             id: "out_" + r.id,
@@ -500,6 +519,24 @@ export function MaterialAgregatClient({
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
+                    <Link
+                        href="/admin/master-material"
+                        className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-semibold border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-lg shadow-2xs transition-all"
+                        title="Atur harga dasar material agregat per m³ dan kelola riwayat harga"
+                    >
+                        <Tag className="h-3.5 w-3.5 text-blue-600" />
+                        <span>Master Harga</span>
+                    </Link>
+
+                    <Link
+                        href="/admin/reports/material"
+                        className="inline-flex items-center gap-1.5 h-9 px-3 text-xs font-semibold border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 text-blue-700 rounded-lg shadow-2xs transition-all"
+                        title="Lihat akumulasi biaya material, retase dump truck, dan biaya mendarat (landed cost)"
+                    >
+                        <BarChart3 className="h-3.5 w-3.5 text-blue-600" />
+                        <span>Laporan Biaya Material</span>
+                    </Link>
+
                     <Button
                         onClick={exportCSV}
                         variant="outline"
@@ -557,7 +594,7 @@ export function MaterialAgregatClient({
                         <span className="text-[10px] text-slate-400 font-semibold">m³</span>
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 truncate">
-                        {summary.totalRit} Rit ({summary.internalVol.toFixed(0)}m³ Quarry / {summary.externalVol.toFixed(0)}m³ Vendor)
+                        {summary.totalRit} Rit {summary.totalMaterialExpense > 0 ? `• Rp ${(summary.totalMaterialExpense / 1000000).toFixed(1)}Jt` : ""} ({summary.internalVol.toFixed(0)}m³ Quarry / {summary.externalVol.toFixed(0)}m³ Vendor)
                     </div>
                 </div>
 
@@ -576,7 +613,7 @@ export function MaterialAgregatClient({
                         <span className="text-[10px] text-rose-500 font-semibold">m³</span>
                     </div>
                     <div className="text-[10px] text-rose-700/80 mt-0.5 truncate font-medium">
-                        {summaryOut.totalRit} Transaksi {summaryOut.totalSales > 0 ? `• Rp ${(summaryOut.totalSales / 1000000).toFixed(1)}M` : ""}
+                        {summaryOut.totalRit} Transaksi {summaryOut.totalSales > 0 ? `• Rp ${(summaryOut.totalSales >= 1000000000 ? (summaryOut.totalSales / 1000000000).toFixed(2) + " M" : (summaryOut.totalSales / 1000000).toFixed(1) + " Jt")}` : ""}
                     </div>
                 </div>
 
@@ -1015,6 +1052,14 @@ export function MaterialAgregatClient({
                                                     onSort={toggleSort}
                                                 />
                                             </TableHead>
+                                            <TableHead className="w-[140px] text-right">
+                                                <SortableHeader<AggregateInRow>
+                                                    label="Nilai Material"
+                                                    sortKey="total_price"
+                                                    sortConfig={sortConfig}
+                                                    onSort={toggleSort}
+                                                />
+                                            </TableHead>
                                             <TableHead className="w-[160px]">Retase / Jarak</TableHead>
                                             <TableHead className="min-w-[140px]">Supplier / Catatan</TableHead>
                                             {canManage && (
@@ -1028,7 +1073,7 @@ export function MaterialAgregatClient({
                                         {items.length === 0 ? (
                                             <TableRow>
                                                 <TableCell
-                                                    colSpan={showCabang ? (canManage ? 11 : 10) : (canManage ? 10 : 9)}
+                                                    colSpan={showCabang ? (canManage ? 12 : 11) : (canManage ? 11 : 10)}
                                                     className="h-36 text-center text-muted-foreground"
                                                 >
                                                     <div className="flex flex-col items-center justify-center gap-2">
@@ -1123,6 +1168,24 @@ export function MaterialAgregatClient({
                                                             {item.volume_cubic.toLocaleString("id-ID", { maximumFractionDigits: 2 })}
                                                         </span>
                                                         <span className="text-xs text-slate-400 ml-1">m³</span>
+                                                    </TableCell>
+
+                                                    {/* Nilai Material */}
+                                                    <TableCell className="text-right">
+                                                        {item.total_price != null && item.total_price > 0 ? (
+                                                            <div className="space-y-0.5">
+                                                                <div className="font-mono font-black text-xs text-sky-950">
+                                                                    Rp {item.total_price.toLocaleString("id-ID")}
+                                                                </div>
+                                                                {item.unit_price != null && item.unit_price > 0 && (
+                                                                    <div className="text-[10px] text-slate-500 font-mono">
+                                                                        @Rp {item.unit_price.toLocaleString("id-ID")}/m³
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-300 font-mono">-</span>
+                                                        )}
                                                     </TableCell>
 
                                                     {/* Retase DT */}
@@ -1322,7 +1385,7 @@ export function MaterialAgregatClient({
                                                     onSort={toggleSort}
                                                 />
                                             </TableHead>
-                                            <TableHead className="w-[125px] text-right">Nilai Jual (Rp)</TableHead>
+                                            <TableHead className="w-[130px] text-right">Nilai Material (Rp)</TableHead>
                                             <TableHead className="w-[110px] text-right">Retase DT (Rp)</TableHead>
                                             <TableHead className="min-w-[120px]">Catatan</TableHead>
                                             {canManage && <TableHead className="w-[75px] text-right">Aksi</TableHead>}
@@ -1384,14 +1447,14 @@ export function MaterialAgregatClient({
                                                     <TableCell className="text-right font-mono text-xs">
                                                         {row.total_price && row.total_price > 0 ? (
                                                             <div>
-                                                                <span className="font-bold text-emerald-700">
+                                                                <span className="font-bold text-slate-900">
                                                                     Rp {row.total_price.toLocaleString("id-ID")}
                                                                 </span>
-                                                                {row.unit_price && (
-                                                                    <div className="text-[9px] text-slate-400">
-                                                                        @Rp {row.unit_price.toLocaleString("id-ID")}
+                                                                {row.unit_price ? (
+                                                                    <div className="text-[10px] text-slate-500 font-mono">
+                                                                        @Rp {row.unit_price.toLocaleString("id-ID")}/{row.unit || "m³"}
                                                                     </div>
-                                                                )}
+                                                                ) : null}
                                                             </div>
                                                         ) : (
                                                             <span className="text-slate-300">-</span>

@@ -5,6 +5,8 @@ import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { isCorporateUser, getLocationFilter } from "@/lib/rbac"
+import { getMaterialPriceAtDate, simulatePriceAtDate } from "../master-material/actions"
+import { AGGREGATE_TYPE_TO_MATERIAL_CODE } from "./columns"
 
 const aggregateSchema = z.object({
     date: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Tanggal tidak valid" }),
@@ -23,6 +25,8 @@ const aggregateSchema = z.object({
     distance_km: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
     rate_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
     retase_amount: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
+    unit_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
+    total_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
 })
 
 export async function getAggregateIncomings(limit: number = 250) {
@@ -74,6 +78,8 @@ export async function createAggregateIncoming(formData: FormData) {
             distance_km: formData.get("distance_km") || undefined,
             rate_price: formData.get("rate_price") || undefined,
             retase_amount: formData.get("retase_amount") || undefined,
+            unit_price: formData.get("unit_price") || undefined,
+            total_price: formData.get("total_price") || undefined,
         }
 
         const data = aggregateSchema.parse(rawData)
@@ -110,6 +116,18 @@ export async function createAggregateIncoming(formData: FormData) {
             calculatedRetase = null
         }
 
+        // Material Expenditure Pricing (Integrated with Master Material Price)
+        let resolvedUnitPrice = data.unit_price ?? null
+        if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[data.aggregate_type]
+            if (matCode) {
+                resolvedUnitPrice = await getMaterialPriceAtDate(matCode, new Date(data.date), data.locationId)
+            }
+        }
+        const calculatedTotalPrice = resolvedUnitPrice != null && resolvedUnitPrice > 0
+            ? Math.round(Number(data.volume_cubic) * Number(resolvedUnitPrice))
+            : (data.total_price ?? 0)
+
         await prisma.aggregateIncoming.create({
             data: {
                 date: new Date(data.date),
@@ -128,6 +146,8 @@ export async function createAggregateIncoming(formData: FormData) {
                 distance_km: resolvedDistance,
                 rate_price: resolvedRate,
                 retase_amount: calculatedRetase,
+                unit_price: resolvedUnitPrice,
+                total_price: calculatedTotalPrice,
             },
         })
 
@@ -173,6 +193,8 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             distance_km: formData.get("distance_km") || undefined,
             rate_price: formData.get("rate_price") || undefined,
             retase_amount: formData.get("retase_amount") || undefined,
+            unit_price: formData.get("unit_price") || undefined,
+            total_price: formData.get("total_price") || undefined,
         }
 
         const data = aggregateSchema.parse(rawData)
@@ -207,6 +229,18 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             calculatedRetase = null
         }
 
+        // Material Expenditure Pricing (Integrated with Master Material Price)
+        let resolvedUnitPrice = data.unit_price ?? null
+        if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[data.aggregate_type]
+            if (matCode) {
+                resolvedUnitPrice = await getMaterialPriceAtDate(matCode, new Date(data.date), data.locationId)
+            }
+        }
+        const calculatedTotalPrice = resolvedUnitPrice != null && resolvedUnitPrice > 0
+            ? Math.round(Number(data.volume_cubic) * Number(resolvedUnitPrice))
+            : (data.total_price ?? 0)
+
         await prisma.aggregateIncoming.update({
             where: { id },
             data: {
@@ -226,6 +260,8 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
                 distance_km: resolvedDistance,
                 rate_price: resolvedRate,
                 retase_amount: calculatedRetase,
+                unit_price: resolvedUnitPrice,
+                total_price: calculatedTotalPrice,
             },
         })
 
@@ -237,6 +273,55 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             return { error: error.errors.map((e: any) => e.message).join(", ") }
         }
         return { error: error.message || "Gagal mengupdate data" }
+    }
+}
+
+/**
+ * Get effective unit price per m³ from MasterMaterial for a given aggregate type, date, and location.
+ * Fully supports backdating logic (tgl 1 Sept berlaku rate baru, sebelum 1 Sept berlaku rate lama).
+ */
+export async function getEffectiveAggregatePrice(
+    aggregateType: string,
+    date: string,
+    locationId?: string | null
+) {
+    try {
+        const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[aggregateType]
+        if (!matCode) {
+            return {
+                unitPrice: 0,
+                effectiveDate: null as string | null,
+                materialCode: null as string | null,
+                matchedLocationName: "Non-Agregat / Manual",
+                notes: null as string | null,
+                isHistorical: false
+            }
+        }
+
+        const sim = await simulatePriceAtDate({
+            materialCode: matCode,
+            targetDate: date,
+            locationId: locationId || undefined,
+        })
+
+        return {
+            unitPrice: sim.matchedPrice,
+            effectiveDate: sim.matchedEffectiveDate ? new Date(sim.matchedEffectiveDate).toISOString() : null,
+            materialCode: matCode as string | null,
+            matchedLocationName: sim.matchedLocationName,
+            notes: sim.notes as string | null,
+            isHistorical: true
+        }
+    } catch (err: any) {
+        console.error("Error getEffectiveAggregatePrice:", err)
+        return {
+            unitPrice: 0,
+            effectiveDate: null as string | null,
+            materialCode: null as string | null,
+            matchedLocationName: "Error",
+            notes: null as string | null,
+            isHistorical: false
+        }
     }
 }
 
@@ -362,9 +447,17 @@ export async function createAggregateOutgoing(formData: FormData) {
             calculatedRetase = null
         }
 
+        let resolvedUnitPrice = parsed.unit_price ?? 0
+        if (resolvedUnitPrice === 0 && parsed.aggregate_type !== "Semen") {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[parsed.aggregate_type]
+            if (matCode) {
+                resolvedUnitPrice = (await getMaterialPriceAtDate(matCode, new Date(parsed.date), parsed.locationId)) ?? 0
+            }
+        }
+
         const calculatedTotalPrice = parsed.total_price && parsed.total_price > 0
             ? parsed.total_price
-            : (parsed.unit_price && parsed.unit_price > 0 ? Math.round(parsed.unit_price * parsed.volume_cubic) : 0)
+            : (resolvedUnitPrice > 0 ? Math.round(resolvedUnitPrice * parsed.volume_cubic) : 0)
 
         const newOut = await prisma.aggregateOutgoing.create({
             data: {
@@ -373,7 +466,7 @@ export async function createAggregateOutgoing(formData: FormData) {
                 aggregate_type: parsed.aggregate_type,
                 volume_cubic: parsed.volume_cubic,
                 unit: parsed.unit,
-                unit_price: parsed.unit_price,
+                unit_price: resolvedUnitPrice,
                 total_price: calculatedTotalPrice,
                 category: parsed.category,
                 recipient: parsed.recipient,
@@ -479,9 +572,17 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
             calculatedRetase = null
         }
 
+        let resolvedUnitPrice = parsed.unit_price ?? 0
+        if (resolvedUnitPrice === 0 && parsed.aggregate_type !== "Semen") {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[parsed.aggregate_type]
+            if (matCode) {
+                resolvedUnitPrice = (await getMaterialPriceAtDate(matCode, new Date(parsed.date), parsed.locationId)) ?? 0
+            }
+        }
+
         const calculatedTotalPrice = parsed.total_price && parsed.total_price > 0
             ? parsed.total_price
-            : (parsed.unit_price && parsed.unit_price > 0 ? Math.round(parsed.unit_price * parsed.volume_cubic) : 0)
+            : (resolvedUnitPrice > 0 ? Math.round(resolvedUnitPrice * parsed.volume_cubic) : 0)
 
         const updated = await prisma.aggregateOutgoing.update({
             where: { id },
@@ -491,7 +592,7 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
                 aggregate_type: parsed.aggregate_type,
                 volume_cubic: parsed.volume_cubic,
                 unit: parsed.unit,
-                unit_price: parsed.unit_price,
+                unit_price: resolvedUnitPrice,
                 total_price: calculatedTotalPrice,
                 category: parsed.category,
                 recipient: parsed.recipient,

@@ -33,11 +33,14 @@ import {
     Calendar,
     FileText,
 } from "lucide-react"
-import { createAggregateOutgoing, updateAggregateOutgoing } from "./actions"
+import { createAggregateOutgoing, updateAggregateOutgoing, getEffectiveAggregatePrice } from "./actions"
+import { format } from "date-fns"
+import { id as idLocale } from "date-fns/locale"
 import {
     AggregateOutRow,
     AGGREGATE_TYPE_OPTIONS,
     OUTGOING_CATEGORY_OPTIONS,
+    OUTGOING_CATEGORY_LABELS,
 } from "./columns"
 
 type Props = {
@@ -86,6 +89,17 @@ export function MaterialAgregatOutForm({
     const [category, setCategory] = useState<string>("PENJUALAN")
     const [recipient, setRecipient] = useState<string>("")
 
+    // Master Material Pricing state
+    const [masterPriceInfo, setMasterPriceInfo] = useState<{
+        unitPrice: number
+        effectiveDate: string | null
+        matchedLocationName: string
+        notes: string | null
+        isHistorical: boolean
+    } | null>(null)
+    const [isPriceManual, setIsPriceManual] = useState<boolean>(false)
+    const [isLoadingPrice, setIsLoadingPrice] = useState<boolean>(false)
+
     // Transport & Retase state
     const [transportMode, setTransportMode] = useState<"INTERNAL_DT" | "BUYER">("BUYER")
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>("")
@@ -110,6 +124,7 @@ export function MaterialAgregatOutForm({
                 setUnit(initialData.unit || "m³")
                 setUnitPrice(initialData.unit_price ? String(initialData.unit_price) : "")
                 setTotalPrice(initialData.total_price ? String(initialData.total_price) : "")
+                setIsPriceManual(true)
                 setCategory(initialData.category)
                 setRecipient(initialData.recipient || "")
 
@@ -132,6 +147,7 @@ export function MaterialAgregatOutForm({
                 setUnit("m³")
                 setUnitPrice("")
                 setTotalPrice("")
+                setIsPriceManual(false)
                 setCategory("PENJUALAN")
                 setRecipient("")
                 setTransportMode("BUYER")
@@ -147,6 +163,50 @@ export function MaterialAgregatOutForm({
             }
         }
     }, [isOpen, initialData, locations, retaseSettings, userLocationId])
+
+    // Live lookup of master material rate
+    useEffect(() => {
+        if (!isOpen) return
+        if (aggregateType === "Semen") {
+            setMasterPriceInfo(null)
+            return
+        }
+
+        let isMounted = true
+        setIsLoadingPrice(true)
+        getEffectiveAggregatePrice(aggregateType, date, selectedLocationId)
+            .then((res) => {
+                if (!isMounted) return
+                setMasterPriceInfo(res)
+                if (!isPriceManual && res.unitPrice > 0) {
+                    setUnitPrice(String(res.unitPrice))
+                    const v = parseFloat(volumeCubic.replace(/,/g, ".")) || 0
+                    if (!isTotalManual && v > 0) {
+                        setTotalPrice(String(Math.round(v * res.unitPrice)))
+                    }
+                }
+            })
+            .catch((err) => {
+                console.error("Gagal mengambil harga acuan master material:", err)
+            })
+            .finally(() => {
+                if (isMounted) setIsLoadingPrice(false)
+            })
+
+        return () => {
+            isMounted = false
+        }
+    }, [aggregateType, date, selectedLocationId, isOpen, isPriceManual])
+
+    const handleApplyMasterPrice = () => {
+        if (!masterPriceInfo || !masterPriceInfo.unitPrice) return
+        setIsPriceManual(false)
+        setUnitPrice(String(masterPriceInfo.unitPrice))
+        const v = parseFloat(volumeCubic.replace(/,/g, ".")) || 0
+        if (!isTotalManual && v > 0) {
+            setTotalPrice(String(Math.round(v * masterPriceInfo.unitPrice)))
+        }
+    }
 
     // Update default distance on location change
     const handleLocationChange = (locId: string) => {
@@ -191,6 +251,7 @@ export function MaterialAgregatOutForm({
     }
 
     const handleUnitPriceChange = (val: string) => {
+        setIsPriceManual(true)
         setUnitPrice(val)
         if (!isTotalManual) {
             const v = parseFloat(volumeCubic.replace(/,/g, ".")) || 0
@@ -442,21 +503,70 @@ export function MaterialAgregatOutForm({
                                 </div>
                             </div>
 
-                            {/* Nilai Finansial (Harga Satuan & Total Penjualan) */}
-                            <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2.5">
-                                <div className="flex items-center justify-between">
+                            {/* Nilai Finansial (Harga Satuan & Total Penjualan / Valuasi Proyek) */}
+                            <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-3">
+                                <div className="flex items-center justify-between flex-wrap gap-2">
                                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
                                         <Coins className="w-3.5 h-3.5 text-amber-600" />
-                                        <span>Nilai Finansial / Harga Jual</span>
+                                        <span>
+                                            {category === "PENJUALAN" ? "Nilai Penjualan Komersial" : "Nilai Valuasi Material"}
+                                        </span>
                                     </div>
-                                    <Badge variant="outline" className="text-[10px] bg-white border-slate-200 font-normal">
-                                        Opsional / Penjualan
+                                    <Badge variant="outline" className={`text-[10px] font-semibold ${
+                                        category === "PENJUALAN"
+                                            ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                            : "bg-blue-50 text-blue-800 border-blue-300"
+                                    }`}>
+                                        {category === "PENJUALAN"
+                                            ? "Eksternal / Komersial"
+                                            : (OUTGOING_CATEGORY_LABELS[category] || "Internal / Proyek")}
                                     </Badge>
                                 </div>
 
+                                {/* Reference to Master Material */}
+                                {aggregateType !== "Semen" && (
+                                    <div className="p-2.5 rounded-lg bg-white border border-blue-100 flex items-center justify-between text-[11px] gap-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap text-slate-700">
+                                            <span className="font-semibold text-blue-700">💡 Acuan Master:</span>
+                                            {isLoadingPrice ? (
+                                                <span className="text-blue-500 animate-pulse">Mengecek harga...</span>
+                                            ) : masterPriceInfo && masterPriceInfo.unitPrice > 0 ? (
+                                                <>
+                                                    <span className="font-mono font-bold text-slate-900">
+                                                        Rp {masterPriceInfo.unitPrice.toLocaleString("id-ID")}/{unit}
+                                                    </span>
+                                                    {masterPriceInfo.effectiveDate && (
+                                                        <span className="text-slate-500 text-[10px]">
+                                                            • Berlaku sejak: {format(new Date(masterPriceInfo.effectiveDate), "dd MMM yyyy", { locale: idLocale })}
+                                                        </span>
+                                                    )}
+                                                    {masterPriceInfo.matchedLocationName && (
+                                                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 bg-slate-50 border-slate-200 text-slate-600">
+                                                            {masterPriceInfo.matchedLocationName}
+                                                        </Badge>
+                                                    )}
+                                                </>
+                                            ) : (
+                                                <span className="text-amber-700 italic">Belum ada harga di Master Material</span>
+                                            )}
+                                        </div>
+                                        {masterPriceInfo && masterPriceInfo.unitPrice > 0 && isPriceManual && (
+                                            <button
+                                                type="button"
+                                                onClick={handleApplyMasterPrice}
+                                                className="text-[10px] text-blue-600 hover:text-blue-800 hover:underline font-bold shrink-0"
+                                            >
+                                                Gunakan Master
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1">
-                                        <Label className="text-[11px] text-slate-600">Harga Satuan (Rp / {unit})</Label>
+                                        <Label className="text-[11px] text-slate-600">
+                                            {category === "PENJUALAN" ? "Harga Jual Satuan" : "Harga Satuan Dasar"} (Rp / {unit})
+                                        </Label>
                                         <div className="relative">
                                             <span className="absolute left-2.5 top-2 text-[11px] font-bold text-slate-400">Rp</span>
                                             <Input
@@ -491,7 +601,7 @@ export function MaterialAgregatOutForm({
                                             <Input
                                                 type="text"
                                                 inputMode="decimal"
-                                                placeholder="Total penjualan"
+                                                placeholder={category === "PENJUALAN" ? "Total penjualan" : "Total nilai"}
                                                 value={totalPrice}
                                                 onChange={e => {
                                                     setIsTotalManual(true)
@@ -504,8 +614,9 @@ export function MaterialAgregatOutForm({
                                 </div>
 
                                 {parseFloat(totalPrice.replace(/,/g, ".")) > 0 && (
-                                    <div className="text-[11px] text-emerald-800 font-medium bg-emerald-50/70 p-2 rounded border border-emerald-200/80">
-                                        Grand Total: <strong>Rp {Math.round(parseFloat(totalPrice.replace(/,/g, "."))).toLocaleString("id-ID")}</strong>
+                                    <div className="text-[11px] text-emerald-800 font-medium bg-emerald-50/70 p-2 rounded border border-emerald-200/80 flex items-center justify-between">
+                                        <span>Total Nilai Transaksi:</span>
+                                        <strong>Rp {Math.round(parseFloat(totalPrice.replace(/,/g, "."))).toLocaleString("id-ID")}</strong>
                                     </div>
                                 )}
                             </div>
