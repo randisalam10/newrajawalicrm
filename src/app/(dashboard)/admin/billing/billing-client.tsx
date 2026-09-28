@@ -67,6 +67,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     }, [])
 
     const isCorporate = userRole === "SuperAdminBP" || ["CEO", "FVP", "Approver"].includes(userRole)
+    const isSuperAdmin = userRole === "SuperAdminBP" || ["CEO", "FVP"].includes(userRole)
     const [data, setData] = useState(initialData)
     const [isLoading, setIsLoading] = useState(false)
     const [selectedLocation, setSelectedLocation] = useState(!isCorporate && userLocationId ? userLocationId : "all")
@@ -702,8 +703,18 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 }
                                 setUnbilledPage(1)
                             }
+                            if (filter?.search) {
+                                if (tab === "unbilled") {
+                                    setUnbilledSearch(filter.search)
+                                    setUnbilledPage(1)
+                                } else if (tab === "invoices") {
+                                    setInvoiceSearch(filter.search)
+                                    setInvoicePage(1)
+                                }
+                            }
                         }}
                         isCorporate={isCorporate}
+                        isSuperAdmin={isSuperAdmin}
                     />
                 </TabsContent>
 
@@ -1148,20 +1159,22 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 </div>
                             </div>
 
-                            {/* Alert Box for Non-PPN Tax Liability */}
-                            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-lg px-2.5 py-1 text-xs">
-                                <div className="p-1 bg-amber-100 text-amber-800 rounded">
-                                    <Percent className="w-3.5 h-3.5" />
-                                </div>
-                                <div>
-                                    <div className="text-[10px] text-amber-900 font-bold uppercase">
-                                        Kewajiban Setor PPN 11% (Kas Masuk)
+                            {/* Alert Box for Non-PPN Tax Liability (Khusus SuperAdmin / C-Level) */}
+                            {isSuperAdmin && (
+                                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-lg px-2.5 py-1 text-xs">
+                                    <div className="p-1 bg-amber-100 text-amber-800 rounded">
+                                        <Percent className="w-3.5 h-3.5" />
                                     </div>
-                                    <div className="font-mono font-bold text-amber-900 text-xs">
-                                        {fmt(invoiceSummary.nonPpnPaidTaxLiability)}
+                                    <div>
+                                        <div className="text-[10px] text-amber-900 font-bold uppercase">
+                                            Kewajiban Setor PPN 11% (Kas Masuk)
+                                        </div>
+                                        <div className="font-mono font-bold text-amber-900 text-xs">
+                                            {fmt(invoiceSummary.nonPpnPaidTaxLiability)}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
 
                         {/* Search & Filter Controls */}
