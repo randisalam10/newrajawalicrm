@@ -52,11 +52,21 @@ export const PERMISSIONS = [
     { code: 'PLANNING_EDIT', module: 'PLANNING', action: 'edit', name: 'Update Status Planning' },
     { code: 'PLANNING_DELETE', module: 'PLANNING', action: 'delete', name: 'Hapus Planning Pengecoran' },
 
-    // Master Data
-    { code: 'MASTER_DATA_VIEW', module: 'MASTER_DATA', action: 'view', name: 'Lihat Data Master' },
-    { code: 'MASTER_DATA_CREATE', module: 'MASTER_DATA', action: 'create', name: 'Tambah Karyawan/Armada/Mutu' },
-    { code: 'MASTER_DATA_EDIT', module: 'MASTER_DATA', action: 'edit', name: 'Ubah Data Master' },
-    { code: 'MASTER_DATA_DELETE', module: 'MASTER_DATA', action: 'delete', name: 'Hapus Data Master' },
+    // Master Mutu Beton (Per-Menu Data Master)
+    { code: 'MUTU_VIEW', module: 'MUTU', action: 'view', name: 'Lihat Master Mutu Beton' },
+    { code: 'MUTU_CREATE', module: 'MUTU', action: 'create', name: 'Tambah Spesifikasi Mutu' },
+    { code: 'MUTU_EDIT', module: 'MUTU', action: 'edit', name: 'Ubah Komposisi & Formula Mutu' },
+    { code: 'MUTU_DELETE', module: 'MUTU', action: 'delete', name: 'Hapus Mutu Beton' },
+
+    // Master Item Pekerjaan (Per-Menu Data Master)
+    { code: 'ITEM_PEKERJAAN_VIEW', module: 'ITEM_PEKERJAAN', action: 'view', name: 'Lihat Item Pekerjaan' },
+    { code: 'ITEM_PEKERJAAN_CREATE', module: 'ITEM_PEKERJAAN', action: 'create', name: 'Tambah Item Pekerjaan' },
+    { code: 'ITEM_PEKERJAAN_EDIT', module: 'ITEM_PEKERJAAN', action: 'edit', name: 'Ubah Item Pekerjaan' },
+    { code: 'ITEM_PEKERJAAN_DELETE', module: 'ITEM_PEKERJAAN', action: 'delete', name: 'Hapus Item Pekerjaan' },
+
+    // Master Insentif & Tarif (Per-Menu)
+    { code: 'INSENTIF_VIEW', module: 'INSENTIF', action: 'view', name: 'Lihat Master Insentif & Tarif' },
+    { code: 'INSENTIF_EDIT', module: 'INSENTIF', action: 'edit', name: 'Atur Tarif Insentif & Retase' },
 
     // Master Kendaraan & Alat Berat
     { code: 'VEHICLE_VIEW', module: 'VEHICLE', action: 'view', name: 'Lihat Data Kendaraan & Alat' },
@@ -139,10 +149,12 @@ export const ROLES = [
             'MATERIAL_AGREGAT_VIEW', 'MATERIAL_AGREGAT_CREATE', 'MATERIAL_AGREGAT_EDIT',
             'MATERIAL_USAGE_VIEW',
             'PLANNING_VIEW', 'PLANNING_CREATE', 'PLANNING_EDIT',
-            'MASTER_DATA_VIEW', 'MASTER_DATA_CREATE', 'MASTER_DATA_EDIT',
+            'MUTU_VIEW', 'MUTU_CREATE', 'MUTU_EDIT', 'MUTU_DELETE',
+            'ITEM_PEKERJAAN_VIEW', 'ITEM_PEKERJAAN_CREATE', 'ITEM_PEKERJAAN_EDIT', 'ITEM_PEKERJAAN_DELETE',
+            'INSENTIF_VIEW', 'INSENTIF_EDIT',
             'VEHICLE_VIEW', 'VEHICLE_CREATE', 'VEHICLE_EDIT', 'VEHICLE_DELETE',
             'KARYAWAN_VIEW', 'KARYAWAN_CREATE', 'KARYAWAN_EDIT', 'KARYAWAN_DELETE',
-            'LOGISTIK_VIEW', 'LOGISTIK_CREATE',
+            'LOGISTIK_VIEW', 'LOGISTIK_CREATE', 'LOGISTIK_EDIT', 'LOGISTIK_DELETE', 'LOGISTIK_APPROVE',
             'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_CREATE', 'RBL_EDIT', 'RBL_DELETE', 'RBL_CLOSE', 'RBL_EXPORT',
             'SEWA_VIEW', 'SEWA_CREATE', 'SEWA_EDIT', 'SEWA_DELETE', 'SEWA_PRINT',
@@ -174,7 +186,6 @@ export const ROLES = [
             'MATERIAL_AGREGAT_VIEW', 'MATERIAL_AGREGAT_CREATE', 'MATERIAL_AGREGAT_EDIT',
             'MATERIAL_USAGE_VIEW',
             'VEHICLE_VIEW', 'VEHICLE_CREATE', 'VEHICLE_EDIT',
-            'MASTER_DATA_VIEW', 'MASTER_DATA_CREATE', 'MASTER_DATA_EDIT',
             'REPORTS_VIEW',
         ],
     },
@@ -186,7 +197,8 @@ export const ROLES = [
         scope: 'ALL_BRANCHES' as const,
         permissions: [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
-            'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
+            'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW',
+            'MUTU_VIEW', 'ITEM_PEKERJAAN_VIEW', 'INSENTIF_VIEW',
             'VEHICLE_VIEW', 'KARYAWAN_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',
@@ -200,7 +212,8 @@ export const ROLES = [
         scope: 'ALL_BRANCHES' as const,
         permissions: [
             'DASHBOARD_VIEW', 'PRODUKSI_VIEW', 'RETASE_VIEW', 'CUSTOMER_VIEW',
-            'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW', 'MASTER_DATA_VIEW',
+            'BILLING_VIEW', 'MATERIAL_USAGE_VIEW', 'PLANNING_VIEW',
+            'MUTU_VIEW', 'ITEM_PEKERJAAN_VIEW', 'INSENTIF_VIEW',
             'VEHICLE_VIEW', 'KARYAWAN_VIEW',
             'MASTER_CABANG_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_EXPORT', 'SEWA_VIEW', 'SEWA_PRINT',

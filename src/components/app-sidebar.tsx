@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -44,15 +44,38 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
     const hasPerm = (code: string) => {
         if (isSuperAdmin) return true
-        // Safe role fallbacks for standard roles if RBAC permissions are hydrating
-        if (code === "RBL_VIEW" && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "BILLING_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "PRODUKSI_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "SEWA_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "VEHICLE_VIEW" && ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "KARYAWAN_VIEW" && ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(user?.role || "")) return true
-        if (code === "DASHBOARD_VIEW" && ["SuperAdminBP", "AdminBP", "OperatorBP", "AdminLogistik", "CEO", "FVP", "Approver"].includes(user?.role || "")) return true
-        return user?.permissions?.includes(code) ?? false
+
+        // 1. Check exact permission code from user session (database-driven RBAC)
+        if (user?.permissions?.includes(code)) return true
+
+        // 2. Safe role fallbacks ONLY if permissions array is still hydrating / empty
+        const role = user?.role || ""
+
+        // AdminLogistik only has access to Logistik, Material, Vehicle, and Reports
+        // NEVER grant MUTU, ITEM_PEKERJAAN, INSENTIF, or KARYAWAN to AdminLogistik!
+        if (role === "AdminLogistik") {
+            if (code.startsWith("LOGISTIK_") || code.startsWith("MATERIAL_") || code.startsWith("VEHICLE_") || code.startsWith("REPORTS_") || code === "RBL_VIEW") {
+                return true
+            }
+            return false
+        }
+
+        if (code === "MUTU_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "ITEM_PEKERJAAN_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "INSENTIF_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "KARYAWAN_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "VEHICLE_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "SEWA_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "MASTER_CABANG_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "RBL_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "BILLING_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "PRODUKSI_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "RETASE_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "PLANNING_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "CUSTOMER_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "DASHBOARD_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP", "Approver"].includes(role)) return true
+
+        return false
     }
 
     const hasAnyPerm = (...codes: string[]) => {
@@ -80,6 +103,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory }] : []),
                 ...(hasPerm("SEWA_VIEW") ? [{ title: "Sewa Alat / Kendaraan", url: "/admin/sewa", icon: KeyRound }] : []),
                 ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck }] : []),
+                ...(hasPerm("INSENTIF_VIEW") ? [
+                    { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator }
+                ] : []),
                 ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat }] : []),
                 ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText }] : []),
                 ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers }] : []),
@@ -94,28 +120,33 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("RBL_VIEW") ? [
                     { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards },
                 ] : []),
-                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_VIEW", "VEHICLE_VIEW", "RBL_VIEW") ? [
+                ...(hasAnyPerm("REPORTS_VIEW", "VEHICLE_VIEW") ? [
                     { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck },
                 ] : []),
-                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT") ? [{ title: "Insentif Batching Plant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Insentif Batching Plant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
             ]
         },
         {
             title: "Data Master",
             defaultOpen: false,
             items: [
-                ...(hasAnyPerm("KARYAWAN_VIEW", "MASTER_DATA_VIEW") ? [
+                ...(hasPerm("KARYAWAN_VIEW") ? [
                     { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
                 ] : []),
-                ...(hasAnyPerm("VEHICLE_VIEW", "MASTER_DATA_VIEW") ? [
+                ...(hasPerm("VEHICLE_VIEW") ? [
                     { title: "Data Kendaraan & Alat", url: "/admin/kendaraan", icon: Truck },
                 ] : []),
-                ...(hasAnyPerm("SEWA_VIEW", "MASTER_DATA_VIEW") ? [
+                ...(hasPerm("SEWA_VIEW") ? [
                     { title: "Master Sewa Alat", url: "/admin/master-sewa", icon: Box },
                 ] : []),
-                ...(hasPerm("MASTER_DATA_VIEW") ? [
+                ...(hasPerm("MUTU_VIEW") ? [
                     { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
+                ] : []),
+                ...(hasPerm("ITEM_PEKERJAAN_VIEW") ? [
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
+                ] : []),
+                ...(hasPerm("INSENTIF_VIEW") ? [
+                    { title: "Master Insentif", url: "/admin/master-insentif", icon: Calculator },
                 ] : []),
                 ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
             ]
@@ -124,7 +155,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Approval & Persetujuan",
             defaultOpen: true,
             items: [
-                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
+                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
                     { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare }
                 ] : []),
             ]

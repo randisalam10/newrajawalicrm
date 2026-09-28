@@ -52,6 +52,9 @@ export const authConfig = {
                     // AdminLogistik or any role with relevant admin permissions can access admin subroutes
                     const hasAdminAccess = userRole === 'AdminLogistik' ||
                         permissions.some(p =>
+                            p.startsWith('MUTU_') ||
+                            p.startsWith('ITEM_PEKERJAAN_') ||
+                            p.startsWith('INSENTIF_') ||
                             p.startsWith('MASTER_DATA_') ||
                             p.startsWith('VEHICLE_') ||
                             p.startsWith('KARYAWAN_') ||

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { verifyMobileToken } from '@/lib/auth-mobile'
 import { startOfDay, endOfDay, format } from 'date-fns'
+import { isCorporateUser } from '@/lib/rbac'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +48,15 @@ export async function GET(req: Request) {
         }
         if (categoryId && categoryId !== 'all') {
             whereClause.categoryId = categoryId
+        }
+
+        const isCorp = isCorporateUser(user)
+        if (!isCorp) {
+            whereClause.OR = [
+                { submittedById: user.id },
+                ...(user.locationId ? [{ locationId: user.locationId }] : []),
+                ...(user.username ? [{ pembuat_admin: { equals: user.username, mode: 'insensitive' } }] : [])
+            ]
         }
 
         const [pos, companies, categories] = await Promise.all([

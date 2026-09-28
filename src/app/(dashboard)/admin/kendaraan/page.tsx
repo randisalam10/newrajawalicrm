@@ -14,9 +14,8 @@ export default async function KendaraanPage() {
     const isCorporate = isCorporateUser(session.user)
     const perms = session.user.permissions || []
 
-    const canView = userRole === "SuperAdminBP" || isCorporate ||
+    const canView = userRole === "SuperAdminBP" ||
         perms.includes("VEHICLE_VIEW") ||
-        perms.includes("MASTER_DATA_VIEW") ||
         hasPermission(session.user, "VEHICLE", "VIEW") ||
         ["AdminBP", "AdminLogistik", "CEO", "FVP"].includes(userRole)
 
@@ -27,10 +26,8 @@ export default async function KendaraanPage() {
             userRole === "AdminBP" ||
             perms.includes("VEHICLE_CREATE") ||
             perms.includes("VEHICLE_EDIT") ||
-            perms.includes("MASTER_DATA_CREATE") ||
-            perms.includes("MASTER_DATA_EDIT") ||
             hasPermission(session.user, "VEHICLE", "CREATE") ||
-            hasPermission(session.user, "MASTER_DATA", "CREATE")
+            hasPermission(session.user, "VEHICLE", "EDIT")
         )
     )
 

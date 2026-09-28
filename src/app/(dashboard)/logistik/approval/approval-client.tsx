@@ -85,7 +85,7 @@ export function ApprovalClient({
     const [rejectMode, setRejectMode] = useState(false)
     const [rejectionReason, setRejectionReason] = useState("")
 
-    const isAdmin = ['SuperAdminBP', 'AdminLogistik'].includes(currentUser.role)
+    const isAdmin = ['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(currentUser.role)
 
     // Refresh Queue & History
     const refreshData = async () => {

@@ -40,6 +40,7 @@ export function POListClient({
     totalCount: initialTotal, 
     totalPages: initialTotalPages,
     userRole,
+    userPermissions = [],
     companies,
     categories
 }: { 
@@ -47,6 +48,7 @@ export function POListClient({
     totalCount: number,
     totalPages: number,
     userRole: string,
+    userPermissions?: string[],
     companies: any[],
     categories: any[]
 }) {
@@ -71,8 +73,8 @@ export function POListClient({
     const [detailLoading, setDetailLoading] = useState(false)
     const [detailError, setDetailError] = useState<string | null>(null)
 
-    const canApprove = ['SuperAdminBP', 'CEO', 'FVP', 'AdminLogistik', 'Approver'].includes(userRole)
-    const canManagePo = !['CEO', 'FVP', 'Approver'].includes(userRole) && ['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole)
+    const canApprove = ['SuperAdminBP', 'AdminBP', 'AdminLogistik', 'CEO', 'FVP', 'Approver'].includes(userRole) || userPermissions.includes('LOGISTIK_APPROVE')
+    const canManagePo = ['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole) || userPermissions.includes('LOGISTIK_CREATE') || userPermissions.includes('LOGISTIK_EDIT')
 
     const fetchData = async (
         p: number, 
@@ -1037,6 +1039,25 @@ export function POListClient({
                                     >
                                         Tutup
                                     </Button>
+                                    {detailPo.status === "SUBMITTED" && canApprove && (
+                                        <Button
+                                            size="sm"
+                                            className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                                            onClick={async () => {
+                                                if (!confirm(`Setujui PO "${detailPo.po_number}" (Bypass Administratif) sebagai ${userRole}?`)) return
+                                                const res = await updatePoStatus(detailPo.id, "APPROVED")
+                                                if (res.success) {
+                                                    setSelectedPoId(null)
+                                                    setDetailPo(null)
+                                                    fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
+                                                } else {
+                                                    alert(`Gagal: ${res.error}`)
+                                                }
+                                            }}
+                                        >
+                                            <CheckCircle2 className="w-3.5 h-3.5" /> Setujui PO (Bypass Admin)
+                                        </Button>
+                                    )}
                                     {detailPo.status === "APPROVED" && (
                                         <Link href={`/print/po/${detailPo.id}`} target="_blank">
                                             <Button size="sm" className="h-8 text-xs gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-medium">

@@ -38,6 +38,188 @@ export async function getRetaseSettings() {
     return settings
 }
 
+const mixerSettingSchema = z.object({
+    locationId: z.string().min(1, "Location required"),
+    price_per_cubic_km: z.coerce.number().min(0, "Tarif per KM tidak boleh negatif"),
+    calculation_mode: z.enum(["DISTANCE_ONLY", "DISTANCE_AND_VOLUME"]).default("DISTANCE_ONLY"),
+    apply_mode: z.enum(["FUTURE", "BACKDATE"]).default("FUTURE"),
+    effective_date: z.string().optional()
+})
+
+export async function saveMixerRetaseSetting(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+
+    try {
+        const parsed = mixerSettingSchema.parse(Object.fromEntries(formData.entries()))
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+
+        if (!isSuperAdmin && session.user.locationId !== parsed.locationId) {
+            return { error: "Permission Denied: Tidak dapat mengubah setting cabang lain." }
+        }
+
+        const effectiveFrom = parsed.apply_mode === 'BACKDATE' && parsed.effective_date
+            ? new Date(parsed.effective_date)
+            : new Date()
+
+        // 1. Update/create RetaseSetting KHUSUS mixer (price_per_cubic_km & calculation_mode)
+        await (prisma as any).retaseSetting.upsert({
+            where: { locationId: parsed.locationId },
+            update: {
+                price_per_cubic_km: parsed.price_per_cubic_km,
+                calculation_mode: parsed.calculation_mode,
+                effective_from: effectiveFrom,
+            },
+            create: {
+                locationId: parsed.locationId,
+                price_per_cubic_km: parsed.price_per_cubic_km,
+                calculation_mode: parsed.calculation_mode,
+                operator_rate_per_cubic: 1500,
+                effective_from: effectiveFrom,
+            }
+        })
+
+        // 2. Auto-sync KHUSUS ke MasterIncentiveRate untuk SOPIR_MIXER
+        if ((prisma as any).masterIncentiveRate) {
+            const loc = await prisma.location.findUnique({ where: { id: parsed.locationId } })
+            const locName = loc?.name || 'Cabang'
+
+            const existingMixer = await (prisma as any).masterIncentiveRate.findFirst({
+                where: { kategori_peran: "SOPIR_MIXER", locationId: parsed.locationId }
+            })
+
+            if (existingMixer) {
+                await (prisma as any).masterIncentiveRate.update({
+                    where: { id: existingMixer.id },
+                    data: {
+                        tarif_utama: parsed.price_per_cubic_km,
+                        effective_date: effectiveFrom,
+                        isActive: true
+                    }
+                })
+            } else {
+                await (prisma as any).masterIncentiveRate.create({
+                    data: {
+                        nama_insentif: `Retase Sopir Truk Mixer (${locName})`,
+                        kategori_peran: "SOPIR_MIXER",
+                        formula_type: "PER_KM",
+                        tarif_utama: parsed.price_per_cubic_km,
+                        tarif_sekunder: 0,
+                        locationId: parsed.locationId,
+                        effective_date: effectiveFrom,
+                        keterangan: `Pengaturan tarif retase mixer cabang ${locName}`,
+                        isActive: true,
+                    }
+                })
+            }
+        }
+
+        revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
+        revalidatePath("/admin/master-insentif")
+        revalidatePath("/admin/produksi")
+
+        const dateStr = effectiveFrom.toISOString().slice(0, 10)
+        return {
+            success: true,
+            message: `Tarif retase Sopir Mixer berhasil disimpan (berlaku mulai ${dateStr}). Tarif Operator BP tetap aman & tidak berubah.`
+        }
+    } catch (e: any) {
+        return { error: e.message || "Gagal menyimpan tarif Mixer." }
+    }
+}
+
+const operatorSettingSchema = z.object({
+    locationId: z.string().min(1, "Location required"),
+    operator_rate_per_cubic: z.coerce.number().min(0, "Tarif operator tidak boleh negatif"),
+    apply_mode: z.enum(["FUTURE", "BACKDATE"]).default("FUTURE"),
+    effective_date: z.string().optional()
+})
+
+export async function saveOperatorBPRateSetting(formData: FormData) {
+    const session = await auth()
+    if (!session?.user?.employeeId) return { error: "Unauthorized" }
+    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+
+    try {
+        const parsed = operatorSettingSchema.parse(Object.fromEntries(formData.entries()))
+        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+
+        if (!isSuperAdmin && session.user.locationId !== parsed.locationId) {
+            return { error: "Permission Denied: Tidak dapat mengubah setting cabang lain." }
+        }
+
+        const effectiveFrom = parsed.apply_mode === 'BACKDATE' && parsed.effective_date
+            ? new Date(parsed.effective_date)
+            : new Date()
+
+        // 1. Update/create RetaseSetting KHUSUS field operator_rate_per_cubic
+        // Nilai price_per_cubic_km & calculation_mode TETAP aman tidak disentuh!
+        await (prisma as any).retaseSetting.upsert({
+            where: { locationId: parsed.locationId },
+            update: {
+                operator_rate_per_cubic: parsed.operator_rate_per_cubic,
+            },
+            create: {
+                locationId: parsed.locationId,
+                price_per_cubic_km: 10000,
+                calculation_mode: "DISTANCE_ONLY",
+                operator_rate_per_cubic: parsed.operator_rate_per_cubic,
+                effective_from: effectiveFrom,
+            }
+        })
+
+        // 2. Auto-sync KHUSUS ke MasterIncentiveRate untuk OPERATOR_BP
+        if ((prisma as any).masterIncentiveRate) {
+            const loc = await prisma.location.findUnique({ where: { id: parsed.locationId } })
+            const locName = loc?.name || 'Cabang'
+
+            const existingOp = await (prisma as any).masterIncentiveRate.findFirst({
+                where: { kategori_peran: "OPERATOR_BP", locationId: parsed.locationId }
+            })
+
+            if (existingOp) {
+                await (prisma as any).masterIncentiveRate.update({
+                    where: { id: existingOp.id },
+                    data: {
+                        tarif_utama: parsed.operator_rate_per_cubic,
+                        effective_date: effectiveFrom,
+                        isActive: true
+                    }
+                })
+            } else {
+                await (prisma as any).masterIncentiveRate.create({
+                    data: {
+                        nama_insentif: `Insentif Operator BP (${locName})`,
+                        kategori_peran: "OPERATOR_BP",
+                        formula_type: "PER_M3",
+                        tarif_utama: parsed.operator_rate_per_cubic,
+                        tarif_sekunder: 0,
+                        locationId: parsed.locationId,
+                        effective_date: effectiveFrom,
+                        keterangan: `Pengaturan tarif operator BP cabang ${locName}`,
+                        isActive: true,
+                    }
+                })
+            }
+        }
+
+        revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
+        revalidatePath("/admin/master-insentif")
+        revalidatePath("/admin/produksi")
+
+        const dateStr = effectiveFrom.toISOString().slice(0, 10)
+        return {
+            success: true,
+            message: `Tarif Insentif Operator BP berhasil disimpan (berlaku mulai ${dateStr}). Tarif Sopir Mixer tetap aman & tidak berubah.`
+        }
+    } catch (e: any) {
+        return { error: e.message || "Gagal menyimpan tarif Operator BP." }
+    }
+}
+
 const updateSettingSchema = z.object({
     locationId: z.string().min(1, "Location required"),
     price_per_cubic_km: z.coerce.number().min(0, "Price cannot be negative"),
@@ -88,6 +270,64 @@ export async function upsertRetaseSetting(formData: FormData) {
                 effective_from: effectiveFrom,
             }
         })
+
+        // Auto-sync to MasterIncentiveRate agar konsisten di Data Master
+        if ((prisma as any).masterIncentiveRate) {
+            const loc = await prisma.location.findUnique({ where: { id: parsed.locationId } })
+            const locName = loc?.name || 'Cabang'
+
+            if (parsed.price_per_cubic_km > 0) {
+                const existingMixer = await (prisma as any).masterIncentiveRate.findFirst({
+                    where: { kategori_peran: "SOPIR_MIXER", locationId: parsed.locationId }
+                })
+                if (existingMixer) {
+                    await (prisma as any).masterIncentiveRate.update({
+                        where: { id: existingMixer.id },
+                        data: { tarif_utama: parsed.price_per_cubic_km, effective_date: effectiveFrom, isActive: true }
+                    })
+                } else {
+                    await (prisma as any).masterIncentiveRate.create({
+                        data: {
+                            nama_insentif: `Retase Sopir Truk Mixer (${locName})`,
+                            kategori_peran: "SOPIR_MIXER",
+                            formula_type: "PER_KM",
+                            tarif_utama: parsed.price_per_cubic_km,
+                            tarif_sekunder: 0,
+                            locationId: parsed.locationId,
+                            effective_date: effectiveFrom,
+                            keterangan: `Sinkronisasi otomatis dari setting retase cabang ${locName}`,
+                            isActive: true,
+                        }
+                    })
+                }
+            }
+
+            if (parsed.operator_rate_per_cubic > 0) {
+                const existingOp = await (prisma as any).masterIncentiveRate.findFirst({
+                    where: { kategori_peran: "OPERATOR_BP", locationId: parsed.locationId }
+                })
+                if (existingOp) {
+                    await (prisma as any).masterIncentiveRate.update({
+                        where: { id: existingOp.id },
+                        data: { tarif_utama: parsed.operator_rate_per_cubic, effective_date: effectiveFrom, isActive: true }
+                    })
+                } else {
+                    await (prisma as any).masterIncentiveRate.create({
+                        data: {
+                            nama_insentif: `Insentif Operator BP (${locName})`,
+                            kategori_peran: "OPERATOR_BP",
+                            formula_type: "PER_M3",
+                            tarif_utama: parsed.operator_rate_per_cubic,
+                            tarif_sekunder: 0,
+                            locationId: parsed.locationId,
+                            effective_date: effectiveFrom,
+                            keterangan: `Sinkronisasi otomatis dari setting tarif cabang ${locName}`,
+                            isActive: true,
+                        }
+                    })
+                }
+            }
+        }
 
         let revisedCount = 0
 
@@ -195,12 +435,14 @@ export async function upsertRetaseSetting(formData: FormData) {
 
         revalidatePath("/admin/retase")
         revalidatePath("/admin/reports/retase")
+        revalidatePath("/admin/master-insentif")
+        revalidatePath("/admin/produksi")
         return {
             success: true,
             revisedCount,
             message: revisedCount > 0
-                ? `Pengaturan disimpan dan ${revisedCount} transaksi sebelumnya telah dihitung ulang.`
-                : "Pengaturan harga retase berhasil disimpan."
+                ? `Pengaturan disimpan dan otomatis disinkronkan ke Data Master (${revisedCount} transaksi pada/setelah tanggal berlaku telah disesuaikan).`
+                : "Pengaturan harga retase berhasil disimpan dan otomatis disinkronkan ke Data Master."
         }
     } catch (e: any) {
         return { error: e.message || "Something went wrong" }

@@ -26,6 +26,7 @@ const ROUTE_MAP: Record<string, RouteMeta> = {
     "/admin/karyawan": { section: "Master Data", title: "Data Karyawan & Supir" },
     "/admin/mutu": { section: "Master Data", title: "Mutu Beton & Harga" },
     "/admin/item-pekerjaan": { section: "Master Data", title: "Master Item Pekerjaan" },
+    "/admin/master-insentif": { section: "Master Data", title: "Master Tarif Insentif" },
     "/admin/cabang": { section: "Master Data", title: "Cabang Batching Plant" },
     "/admin/users": { section: "Pengaturan", title: "Manajemen Pengguna" },
     "/admin/roles": { section: "Pengaturan", title: "Hak Akses & Role" },

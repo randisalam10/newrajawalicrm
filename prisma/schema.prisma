@@ -90,6 +90,7 @@ enum AggregateType {
   SplitHalfOne // Batu Split 1/2
   SplitTwoThree // Batu Split 2/3
   Pasir // Pasir
+  Semen // Semen
   Other // Lainnya
 }
 
@@ -194,6 +195,7 @@ model Employee {
   operator_sewa_transactions SewaTransaction[]       @relation("OperatorSewaRelation")
   retase_commissions         Retase[]                @relation("DriverRetase")
   driver_aggregate_incomings AggregateIncoming[]     @relation("DriverAggregate")
+  driver_aggregate_outgoings AggregateOutgoing[]     @relation("DriverAggregateOutgoing")
 
   @@index([driverCategoryId])
 }
@@ -209,6 +211,7 @@ model Location {
   transactions           ProductionTransaction[]
   materialIncomings      MaterialIncoming[]
   aggregateIncomings     AggregateIncoming[]
+  aggregateOutgoings     AggregateOutgoing[]
   retaseSetting          RetaseSetting?
   aggregateRetaseSetting AggregateRetaseSetting?
   invoices               Invoice[]
@@ -219,6 +222,7 @@ model Location {
   rblBudgets             RblBudget[]
   sewaTransactions       SewaTransaction[]
   sewaEquipments         MasterSewaAlat[]
+  masterIncentiveRates   MasterIncentiveRate[]
 }
 
 model Vehicle {
@@ -237,6 +241,7 @@ model Vehicle {
   dump_truck_size    String?                 // "BESAR" | "KECIL"
   capacity_cubic     Float?                  // Kapasitas bak (m³) spesifikasi referensi
   aggregateIncomings AggregateIncoming[]
+  aggregateOutgoings AggregateOutgoing[]
 
   // Equipment & Vehicle Meter Specifications
   meter_type         String?                 @default("KM") // "KM" | "HM"
@@ -330,6 +335,10 @@ model ConcreteQuality {
   composition_stone_12 Float
   composition_stone_23 Float
   composition_cement   Float
+  density_sand         Float?                  @default(1400) // Berat Jenis Pasir (Kg/m3)
+  density_stone_05     Float?                  @default(1400) // Berat Jenis Ciping / Batu 0.5 (Kg/m3)
+  density_stone_12     Float?                  @default(1450) // Berat Jenis Batu 1-2 (Kg/m3)
+  density_stone_23     Float?                  @default(1450) // Berat Jenis Batu 2-3 (Kg/m3)
   transactions         ProductionTransaction[]
   projectPrices        ProjectPrice[] // Added opposite relation for ProjectPrice
   concretePlans        ConcretePlan[]
@@ -437,6 +446,49 @@ model AggregateIncoming {
   @@index([driverId])
 }
 
+model AggregateOutgoing {
+  id              String              @id @default(uuid())
+  date            DateTime            @default(now())
+  no_bon          String?             // No Bon / Surat Jalan Keluar
+  aggregate_type  AggregateType
+  volume_cubic    Float               // Jumlah kubikasi keluar / kuantitas barang
+  unit            String?             @default("m³") // "m³" | "zak" | "ton" | "kg"
+
+  // Nilai Finansial (Penjualan Komersial / Pemakaian Proyek)
+  unit_price      Float?              @default(0) // Harga satuan (Rp)
+  total_price     Float?              @default(0) // Total nilai penjualan / proyek (Rp)
+
+  category        String              @default("PENJUALAN") // "PENJUALAN" | "INTERNAL_PROYEK" | "TRANSFER" | "KOREKSI_SUSUT" | "INTERNAL_PLANT" | "LAINNYA"
+  recipient       String?             // Pembeli / Lokasi / Proyek Tujuan
+
+  // Pengangkutan & Retase Dump Truck Internal
+  transport_mode  String?             @default("BUYER") // "INTERNAL_DT" | "BUYER"
+  vehicleId       String?
+  vehicle         Vehicle?            @relation(fields: [vehicleId], references: [id])
+  driverId        String?
+  driver          Employee?           @relation("DriverAggregateOutgoing", fields: [driverId], references: [id])
+  dump_truck_size String?             // "BESAR" | "KECIL" (snapshot saat transaksi)
+  distance_km     Float?              // Jarak tempuh kirim (KM)
+  rate_price      Float?              // Tarif retase per m³·km (Rp)
+  retase_amount   Float?              // Total komisi retase = volume_cubic * distance_km * rate_price
+  is_retase_paid  Boolean             @default(false)
+
+  plate_number    String?             // Plat kendaraan pengangkut
+  driver_name     String?             // Nama sopir pengangkut
+  notes           String?             // Catatan keperluan / alasan pengeluaran
+  location        Location            @relation(fields: [locationId], references: [id])
+  locationId      String
+  createdById     String?             // User pembuat
+  createdAt       DateTime            @default(now())
+
+  @@index([date])
+  @@index([locationId, date])
+  @@index([aggregate_type])
+  @@index([category])
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
 enum RetaseCalcMode {
   DISTANCE_ONLY
   DISTANCE_AND_VOLUME
@@ -478,6 +530,26 @@ model AggregateRetaseSetting {
   locationId          String   @unique // One setting per branch
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model MasterIncentiveRate {
+  id             String    @id @default(uuid())
+  nama_insentif  String    // e.g. "Insentif Operator BP", "Insentif Operator CP per Trip", "Insentif Operator Excavator"
+  kategori_peran String    // "OPERATOR_BP", "OPERATOR_CP", "OPERATOR_ALAT_BERAT", "SOPIR_MIXER", "SOPIR_DT", "LAINNYA"
+  formula_type   String    // "PER_M3", "PER_TRIP", "PER_JAM_HM", "PER_HARI", "PER_KM", "PER_M3_KM", "DT_TIERED"
+  tarif_utama    Float     @default(0) // Nominal tarif dasar (Rp)
+  tarif_sekunder Float?    @default(0) // Tarif tier 2 (misal untuk DT Kecil pada rumus DT)
+  locationId     String?   // null = Berlaku Semua Cabang, atau spesifik id cabang
+  location       Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  effective_date DateTime  // Tanggal Mulai Berlaku
+  keterangan     String?
+  isActive       Boolean   @default(true)
+  createdById    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([kategori_peran, locationId, effective_date])
+  @@index([isActive])
 }
 
 model AuditLog {
@@ -1012,7 +1084,14 @@ model SewaTransaction {
   total_days    Int            // Total jumlah hari sewa
 
   price_per_day Float          @default(0) // Free input harga per hari (opsional)
-  total_price   Float          @default(0) // Free input total harga sewa
+  total_price   Float          @default(0) // Free input total harga sewa (Grand Total)
+
+  // Pajak PPN
+  is_ppn        Boolean        @default(false)
+  ppn_mode      String         @default("NON_PPN") // "NON_PPN" | "INCLUDE" | "EXCLUDE"
+  ppn_rate      Float?         @default(11)        // Persentase PPN (%)
+  dpp_amount    Float?         @default(0)         // Dasar Pengenaan Pajak (Rp)
+  ppn_amount    Float?         @default(0)         // Nilai Pajak PPN (Rp)
 
   status        String         @default("Active") // "Pending", "Active", "Completed", "Cancelled"
   notes         String?        // Instruksi khusus / catatan pekerjaan

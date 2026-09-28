@@ -40,6 +40,11 @@ export type SewaDocumentData = {
     total_days: number
     price_per_day: number
     total_price: number
+    is_ppn?: boolean
+    ppn_mode?: string
+    ppn_rate?: number | null
+    dpp_amount?: number | null
+    ppn_amount?: number | null
     notes?: string | null
     location: {
         name: string
@@ -355,6 +360,12 @@ function SewaSingleCopy({
                         <Text style={[s.tableCell, { fontFamily: "Helvetica-Bold", color: COLORS.primary }]}>
                             {tx.total_price > 0 ? formatRupiah(tx.total_price) : "Sesuai Kesepakatan"}
                         </Text>
+                        {tx.is_ppn && (
+                            <Text style={{ fontSize: 5.5, color: COLORS.muted, textAlign: "right", marginTop: 1 }}>
+                                {tx.ppn_mode === "INCLUDE" ? `Inc. PPN ${tx.ppn_rate ?? 11}%` : `Exc. PPN ${tx.ppn_rate ?? 11}%`}
+                                {tx.ppn_amount ? ` (${formatRupiah(tx.ppn_amount)})` : ""}
+                            </Text>
+                        )}
                     </View>
                 </View>
             </View>

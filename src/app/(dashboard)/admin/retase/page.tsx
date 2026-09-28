@@ -2,6 +2,7 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { getTransactions, getRetaseSettings } from "./actions"
 import { getCustomersForReport } from "@/app/(dashboard)/admin/reports/retase/actions"
+import { getMasterIncentives } from "@/app/(dashboard)/admin/master-insentif/actions"
 import { prisma } from "@/lib/prisma"
 import { RetaseClient } from "./retase-client"
 import { isCorporateUser } from "@/lib/rbac"
@@ -24,11 +25,13 @@ export default async function RetasePage() {
         confirmedTransactions,
         settings,
         customers,
+        masterIncentives,
     ] = await Promise.all([
         getTransactions("Pending"),
         getTransactions("Confirmed"),
         getRetaseSettings(),
         getCustomersForReport(),
+        getMasterIncentives(),
     ])
 
     // Fetch locations for corporate users or branch admin
@@ -53,6 +56,7 @@ export default async function RetasePage() {
                 pendingTransactions={pendingTransactions}
                 confirmedTransactions={confirmedTransactions}
                 settings={settings || []}
+                masterIncentives={masterIncentives || []}
                 locations={locations}
                 userRole={role}
                 customers={customers}

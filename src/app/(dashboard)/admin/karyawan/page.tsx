@@ -10,10 +10,21 @@ export default async function KaryawanPage() {
     if (!session?.user) redirect("/login")
 
     const role = session.user.role || "OperatorBP"
-    const canView = hasPermission(session.user, "MASTER_DATA", "VIEW") || ["SuperAdminBP", "AdminBP", "CEO", "FVP"].includes(role)
-    if (!canView) redirect("/admin")
+    const canView = role === "SuperAdminBP" ||
+        hasPermission(session.user, "KARYAWAN", "VIEW") ||
+        (["AdminBP", "CEO", "FVP"].includes(role) && role !== "AdminLogistik")
 
-    const canManage = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
+    if (!canView) {
+        redirect(role === "AdminLogistik" ? "/logistik" : "/admin")
+    }
+
+    const canManage = role === "SuperAdminBP" || (
+        !["CEO", "FVP", "Approver"].includes(role) && (
+            role === "AdminBP" ||
+            hasPermission(session.user, "KARYAWAN", "CREATE") ||
+            hasPermission(session.user, "KARYAWAN", "EDIT")
+        )
+    )
 
     const [data, locations, driverCategories] = await Promise.all([
         getKaryawans(),

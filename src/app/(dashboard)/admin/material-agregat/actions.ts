@@ -257,13 +257,319 @@ export async function deleteAggregateIncoming(id: string) {
     }
 }
 
+// ─── AGGREGATE OUTGOING ACTIONS ───────────────────────────────────────────────
+
+const aggregateOutSchema = z.object({
+    id: z.string().optional(),
+    date: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Tanggal tidak valid" }),
+    no_bon: z.string().optional().nullable(),
+    aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Semen", "Other"]),
+    volume_cubic: z.coerce.number().min(0.001, "Volume / kuantitas harus lebih dari 0"),
+    unit: z.string().default("m³"),
+    unit_price: z.coerce.number().min(0).default(0),
+    total_price: z.coerce.number().min(0).default(0),
+    category: z.string().default("PENJUALAN"),
+    recipient: z.string().optional().nullable(),
+    transport_mode: z.enum(["INTERNAL_DT", "BUYER"]).default("BUYER"),
+    vehicleId: z.string().optional().nullable(),
+    driverId: z.string().optional().nullable(),
+    dump_truck_size: z.string().optional().nullable(),
+    distance_km: z.coerce.number().optional().nullable(),
+    rate_price: z.coerce.number().optional().nullable(),
+    retase_amount: z.coerce.number().optional().nullable(),
+    is_retase_paid: z.coerce.boolean().default(false),
+    plate_number: z.string().optional().nullable(),
+    driver_name: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+    locationId: z.string().min(1, "Cabang wajib dipilih"),
+})
+
+export async function createAggregateOutgoing(formData: FormData) {
+    try {
+        const session = await auth()
+        if (!session?.user) throw new Error("Unauthorized")
+
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
+        const rawData = {
+            date: formData.get("date") as string,
+            no_bon: (formData.get("no_bon") as string) || null,
+            aggregate_type: formData.get("aggregate_type") as string,
+            volume_cubic: formData.get("volume_cubic"),
+            unit: (formData.get("unit") as string) || "m³",
+            unit_price: formData.get("unit_price") || 0,
+            total_price: formData.get("total_price") || 0,
+            category: formData.get("category") || "PENJUALAN",
+            recipient: (formData.get("recipient") as string) || null,
+            transport_mode: (formData.get("transport_mode") as string) || "BUYER",
+            vehicleId: (formData.get("vehicleId") as string) || null,
+            driverId: (formData.get("driverId") as string) || null,
+            dump_truck_size: (formData.get("dump_truck_size") as string) || null,
+            distance_km: formData.get("distance_km") || null,
+            rate_price: formData.get("rate_price") || null,
+            retase_amount: formData.get("retase_amount") || null,
+            plate_number: (formData.get("plate_number") as string) || null,
+            driver_name: (formData.get("driver_name") as string) || null,
+            notes: (formData.get("notes") as string) || null,
+            locationId: targetLocationId,
+        }
+
+        const parsed = aggregateOutSchema.parse(rawData)
+
+        let resolvedDistance = parsed.distance_km ?? null
+        let resolvedRate = parsed.rate_price ?? null
+        let calculatedRetase = parsed.retase_amount ?? null
+        let finalPlate = parsed.plate_number
+        let finalDriver = parsed.driver_name
+
+        if (parsed.transport_mode === "INTERNAL_DT") {
+            const setting = await prisma.aggregateRetaseSetting.findUnique({
+                where: { locationId: parsed.locationId }
+            })
+
+            if (setting) {
+                resolvedRate = parsed.dump_truck_size === "BESAR" 
+                    ? setting.price_dt_besar 
+                    : (parsed.dump_truck_size === "KECIL" ? setting.price_dt_kecil : (setting.price_dt_besar || 0))
+
+                if (resolvedDistance == null || resolvedDistance <= 0) {
+                    resolvedDistance = setting.default_distance_km
+                }
+            }
+
+            if (resolvedRate != null && resolvedDistance != null) {
+                calculatedRetase = Math.round(Number(parsed.volume_cubic) * Number(resolvedDistance) * Number(resolvedRate))
+            }
+
+            if (parsed.vehicleId) {
+                const veh = await prisma.vehicle.findUnique({ where: { id: parsed.vehicleId } })
+                if (veh) finalPlate = veh.plate_number
+            }
+            if (parsed.driverId) {
+                const drv = await prisma.employee.findUnique({ where: { id: parsed.driverId } })
+                if (drv) finalDriver = drv.name
+            }
+        } else {
+            resolvedDistance = null
+            resolvedRate = null
+            calculatedRetase = null
+        }
+
+        const calculatedTotalPrice = parsed.total_price && parsed.total_price > 0
+            ? parsed.total_price
+            : (parsed.unit_price && parsed.unit_price > 0 ? Math.round(parsed.unit_price * parsed.volume_cubic) : 0)
+
+        const newOut = await prisma.aggregateOutgoing.create({
+            data: {
+                date: new Date(parsed.date),
+                no_bon: parsed.no_bon,
+                aggregate_type: parsed.aggregate_type,
+                volume_cubic: parsed.volume_cubic,
+                unit: parsed.unit,
+                unit_price: parsed.unit_price,
+                total_price: calculatedTotalPrice,
+                category: parsed.category,
+                recipient: parsed.recipient,
+                transport_mode: parsed.transport_mode,
+                vehicleId: parsed.transport_mode === "INTERNAL_DT" ? parsed.vehicleId : null,
+                driverId: parsed.transport_mode === "INTERNAL_DT" ? parsed.driverId : null,
+                dump_truck_size: parsed.transport_mode === "INTERNAL_DT" ? parsed.dump_truck_size : null,
+                distance_km: resolvedDistance,
+                rate_price: resolvedRate,
+                retase_amount: calculatedRetase,
+                plate_number: finalPlate,
+                driver_name: finalDriver,
+                notes: parsed.notes,
+                locationId: parsed.locationId,
+                createdById: session.user.employeeId || null,
+            },
+            include: { location: true, vehicle: true, driver: true }
+        })
+
+        revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/retase")
+        return { success: true, data: newOut }
+    } catch (error: any) {
+        return { error: error.message || "Gagal menyimpan data pengeluaran material" }
+    }
+}
+
+export async function updateAggregateOutgoing(id: string, formData: FormData) {
+    try {
+        const session = await auth()
+        if (!session?.user) throw new Error("Unauthorized")
+
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        }
+
+        const isCorp = isCorporateUser(session.user)
+        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+            ? (formData.get("locationId") as string)
+            : session.user.locationId
+
+        const rawData = {
+            date: formData.get("date") as string,
+            no_bon: (formData.get("no_bon") as string) || null,
+            aggregate_type: formData.get("aggregate_type") as string,
+            volume_cubic: formData.get("volume_cubic"),
+            unit: (formData.get("unit") as string) || "m³",
+            unit_price: formData.get("unit_price") || 0,
+            total_price: formData.get("total_price") || 0,
+            category: formData.get("category") || "PENJUALAN",
+            recipient: (formData.get("recipient") as string) || null,
+            transport_mode: (formData.get("transport_mode") as string) || "BUYER",
+            vehicleId: (formData.get("vehicleId") as string) || null,
+            driverId: (formData.get("driverId") as string) || null,
+            dump_truck_size: (formData.get("dump_truck_size") as string) || null,
+            distance_km: formData.get("distance_km") || null,
+            rate_price: formData.get("rate_price") || null,
+            retase_amount: formData.get("retase_amount") || null,
+            plate_number: (formData.get("plate_number") as string) || null,
+            driver_name: (formData.get("driver_name") as string) || null,
+            notes: (formData.get("notes") as string) || null,
+            locationId: targetLocationId,
+        }
+
+        const parsed = aggregateOutSchema.parse(rawData)
+
+        let resolvedDistance = parsed.distance_km ?? null
+        let resolvedRate = parsed.rate_price ?? null
+        let calculatedRetase = parsed.retase_amount ?? null
+        let finalPlate = parsed.plate_number
+        let finalDriver = parsed.driver_name
+
+        if (parsed.transport_mode === "INTERNAL_DT") {
+            const setting = await prisma.aggregateRetaseSetting.findUnique({
+                where: { locationId: parsed.locationId }
+            })
+
+            if (setting) {
+                resolvedRate = parsed.dump_truck_size === "BESAR" 
+                    ? setting.price_dt_besar 
+                    : (parsed.dump_truck_size === "KECIL" ? setting.price_dt_kecil : (setting.price_dt_besar || 0))
+
+                if (resolvedDistance == null || resolvedDistance <= 0) {
+                    resolvedDistance = setting.default_distance_km
+                }
+            }
+
+            if (resolvedRate != null && resolvedDistance != null) {
+                calculatedRetase = Math.round(Number(parsed.volume_cubic) * Number(resolvedDistance) * Number(resolvedRate))
+            }
+
+            if (parsed.vehicleId) {
+                const veh = await prisma.vehicle.findUnique({ where: { id: parsed.vehicleId } })
+                if (veh) finalPlate = veh.plate_number
+            }
+            if (parsed.driverId) {
+                const drv = await prisma.employee.findUnique({ where: { id: parsed.driverId } })
+                if (drv) finalDriver = drv.name
+            }
+        } else {
+            resolvedDistance = null
+            resolvedRate = null
+            calculatedRetase = null
+        }
+
+        const calculatedTotalPrice = parsed.total_price && parsed.total_price > 0
+            ? parsed.total_price
+            : (parsed.unit_price && parsed.unit_price > 0 ? Math.round(parsed.unit_price * parsed.volume_cubic) : 0)
+
+        const updated = await prisma.aggregateOutgoing.update({
+            where: { id },
+            data: {
+                date: new Date(parsed.date),
+                no_bon: parsed.no_bon,
+                aggregate_type: parsed.aggregate_type,
+                volume_cubic: parsed.volume_cubic,
+                unit: parsed.unit,
+                unit_price: parsed.unit_price,
+                total_price: calculatedTotalPrice,
+                category: parsed.category,
+                recipient: parsed.recipient,
+                transport_mode: parsed.transport_mode,
+                vehicleId: parsed.transport_mode === "INTERNAL_DT" ? parsed.vehicleId : null,
+                driverId: parsed.transport_mode === "INTERNAL_DT" ? parsed.driverId : null,
+                dump_truck_size: parsed.transport_mode === "INTERNAL_DT" ? parsed.dump_truck_size : null,
+                distance_km: resolvedDistance,
+                rate_price: resolvedRate,
+                retase_amount: calculatedRetase,
+                plate_number: finalPlate,
+                driver_name: finalDriver,
+                notes: parsed.notes,
+                locationId: parsed.locationId,
+            },
+            include: { location: true, vehicle: true, driver: true }
+        })
+
+        revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/retase")
+        return { success: true, data: updated }
+    } catch (error: any) {
+        return { error: error.message || "Gagal memperbarui data" }
+    }
+}
+
+export async function deleteAggregateOutgoing(id: string) {
+    try {
+        const session = await auth()
+        if (!session?.user) throw new Error("Unauthorized")
+
+        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
+            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        }
+
+        await prisma.aggregateOutgoing.delete({ where: { id } })
+        revalidatePath("/admin/material-agregat")
+        return { success: true }
+    } catch (error: any) {
+        return { error: error.message || "Gagal menghapus data" }
+    }
+}
+
 // ─── AGGREGATE STOCK LEDGER ENGINE ───────────────────────────────────────────
-// Maps AggregateType to ConcreteQuality composition field and display label
-const AGGREGATE_MAP: Record<string, { label: string; compositionKeys: string[] }> = {
-    SplitHalfOne: { label: "Batu Split 1/2", compositionKeys: ["composition_stone_05", "composition_stone_12"] },
-    SplitTwoThree: { label: "Batu Split 2/3", compositionKeys: ["composition_stone_23"] },
-    Pasir: { label: "Pasir", compositionKeys: ["composition_sand"] },
-    Other: { label: "Lainnya", compositionKeys: [] },
+// Maps AggregateType to concrete composition keys and their matching density field in ConcreteQuality
+interface AggregateCompConfig {
+    key: string
+    densityKey: string
+    defaultDensity: number
+}
+
+const AGGREGATE_COMPOSITION_MAP: Record<string, { label: string; compositions: AggregateCompConfig[] }> = {
+    SplitHalfOne: {
+        label: "Batu Split 1/2",
+        compositions: [
+            { key: "composition_stone_05", densityKey: "density_stone_05", defaultDensity: 1400 },
+            { key: "composition_stone_12", densityKey: "density_stone_12", defaultDensity: 1450 },
+        ],
+    },
+    SplitTwoThree: {
+        label: "Batu Split 2/3",
+        compositions: [
+            { key: "composition_stone_23", densityKey: "density_stone_23", defaultDensity: 1450 },
+        ],
+    },
+    Pasir: {
+        label: "Pasir Cor",
+        compositions: [
+            { key: "composition_sand", densityKey: "density_sand", defaultDensity: 1400 },
+        ],
+    },
+    Semen: {
+        label: "Semen (Zak / Curah)",
+        compositions: [
+            { key: "composition_cement", densityKey: "density_cement", defaultDensity: 1400 },
+        ],
+    },
+    Other: { label: "Lainnya", compositions: [] },
 }
 
 export async function getAggregateStockLedger(aggregateType: string, locationId?: string) {
@@ -291,44 +597,114 @@ export async function getAggregateStockLedger(aggregateType: string, locationId?
         orderBy: { date: "asc" },
     })
 
-    const compositionKeys = AGGREGATE_MAP[aggregateType]?.compositionKeys ?? []
+    // 3. Fetch OUTGOING manual from AggregateOutgoing
+    const outgoings = await prisma.aggregateOutgoing.findMany({
+        where: { aggregate_type: aggregateType as any, ...locWhere },
+        include: { location: true },
+        orderBy: { date: "asc" },
+    })
 
+    const compConfigs = AGGREGATE_COMPOSITION_MAP[aggregateType]?.compositions ?? []
     const timeline: any[] = []
 
+    // Map Incomings
     incomings.forEach((inc) => {
         timeline.push({
             id: "in_" + inc.id,
             timestamp: inc.date.getTime(),
             dateObj: inc.date,
             type: "IN",
-            description: `${AGGREGATE_MAP[aggregateType]?.label || aggregateType} Masuk`,
+            category: inc.source_type === "Internal" ? "QUARRY_INTERNAL" : "VENDOR_EKSTERNAL",
+            description: `${AGGREGATE_COMPOSITION_MAP[aggregateType]?.label || aggregateType} Masuk`,
             reference: `No Bon: ${inc.no_bon} | ${inc.driver_name} (${inc.plate_number}) | ${inc.source_type === "Internal" ? "🏔️ Internal/Quarry" : "🛒 Eksternal"}`,
+            weight_kg: null,
+            detail_conversion: null,
             qty_in: inc.volume_cubic,
             qty_out: 0,
             locationName: inc.location.name,
         })
     })
 
+    // Map Production Usage (Convert KG to M3 using Berat Jenis in ConcreteQuality)
     production.forEach((prod) => {
-        const qty: number = compositionKeys.reduce((sum, key) => {
-            return sum + (prod.volume_cubic * ((prod.concreteQuality as any)[key] || 0))
-        }, 0)
-        if (qty > 0) {
+        let totalOutM3 = 0
+        let totalWeightKg = 0
+        const details: string[] = []
+
+        compConfigs.forEach((comp) => {
+            const weightPerM3Beton = Number((prod.concreteQuality as any)?.[comp.key] || 0)
+            if (weightPerM3Beton > 0) {
+                let density = Number((prod.concreteQuality as any)?.[comp.densityKey] || comp.defaultDensity)
+                if (density < 10) density = density * 1000 // Handle if entered as ton/m³ (e.g. 1.4 -> 1400)
+
+                const batchWeightKg = prod.volume_cubic * weightPerM3Beton
+                const batchM3 = density > 0 ? (batchWeightKg / density) : 0
+
+                totalWeightKg += batchWeightKg
+                totalOutM3 += batchM3
+                details.push(`${Math.round(batchWeightKg).toLocaleString("id-ID")} kg @ BJ ${density}`)
+            }
+        })
+
+        if (totalOutM3 > 0) {
             timeline.push({
-                id: "out_" + prod.id,
+                id: "out_prod_" + prod.id,
                 timestamp: prod.date.getTime(),
                 dateObj: prod.date,
                 type: "OUT",
-                description: `Produksi Mutu ${prod.concreteQuality.name} (${prod.volume_cubic} m³)`,
+                category: "PRODUKSI",
+                description: `Produksi Mutu ${prod.concreteQuality.name} (${prod.volume_cubic} m³ beton)`,
                 reference: `Proyek: ${prod.project?.name || ""} - ${prod.project?.customer?.customer_name || ""}`,
+                weight_kg: totalWeightKg,
+                detail_conversion: details.join(" + "),
                 qty_in: 0,
-                qty_out: qty,
+                qty_out: Number(totalOutM3.toFixed(3)),
                 locationName: prod.location.name,
             })
         }
     })
 
-    // 3. Sort chronologically (oldest first) to compute running balance
+    // Map Manual Outgoings (Penjualan / Transfer / Koreksi / Internal Proyek)
+    const categoryLabels: Record<string, string> = {
+        PENJUALAN: "Penjualan Bebas",
+        INTERNAL_PROYEK: "Internal Non-BP (Proyek)",
+        TRANSFER: "Transfer Antar Plant",
+        KOREKSI_SUSUT: "Koreksi / Opname Susut",
+        INTERNAL_PLANT: "Pemakaian Internal Plant",
+        INTERNAL: "Pemakaian Internal Plant",
+        LAINNYA: "Pengeluaran Lainnya",
+    }
+
+    outgoings.forEach((out) => {
+        const parts: string[] = []
+        if (out.no_bon) parts.push(`No Bon: ${out.no_bon}`)
+        if (out.recipient) parts.push(`Tujuan: ${out.recipient}`)
+        if (out.total_price && out.total_price > 0) parts.push(`Nilai: Rp ${out.total_price.toLocaleString("id-ID")}`)
+        if (out.transport_mode === "INTERNAL_DT") {
+            parts.push(`DT Internal: ${out.plate_number || ""} (${out.driver_name || ""})`)
+            if (out.retase_amount) parts.push(`Retase: Rp ${out.retase_amount.toLocaleString("id-ID")}`)
+        } else if (out.plate_number || out.driver_name) {
+            parts.push(`Angkutan Pembeli: ${out.plate_number || ""} ${out.driver_name ? `(${out.driver_name})` : ""}`)
+        }
+        if (out.notes) parts.push(`Ket: ${out.notes}`)
+
+        timeline.push({
+            id: "out_manual_" + out.id,
+            timestamp: out.date.getTime(),
+            dateObj: out.date,
+            type: "OUT",
+            category: out.category,
+            description: `${AGGREGATE_COMPOSITION_MAP[aggregateType]?.label || aggregateType} Keluar (${categoryLabels[out.category] || out.category})`,
+            reference: parts.join(" | "),
+            weight_kg: null,
+            detail_conversion: out.unit && out.unit !== "m³" ? `Satuan: ${out.unit}` : "Input Manual",
+            qty_in: 0,
+            qty_out: out.volume_cubic,
+            locationName: out.location.name,
+        })
+    })
+
+    // 4. Sort chronologically (oldest first) to compute running balance
     timeline.sort((a, b) => a.timestamp - b.timestamp)
 
     let runningBalance = 0
@@ -343,7 +719,7 @@ export async function getAggregateStockLedger(aggregateType: string, locationId?
                 hour: "2-digit",
                 minute: "2-digit",
             }),
-            balance: runningBalance,
+            balance: Number(runningBalance.toFixed(3)),
         }
     })
 
@@ -393,8 +769,43 @@ export async function saveAggregateRetaseSetting(formData: FormData) {
             }
         })
 
+        // Auto-sync to MasterIncentiveRate agar data master selalu up to date
+        if ((prisma as any).masterIncentiveRate) {
+            const loc = await prisma.location.findUnique({ where: { id: parsed.locationId } })
+            const locName = loc?.name || 'Cabang'
+            const existingDt = await (prisma as any).masterIncentiveRate.findFirst({
+                where: { kategori_peran: "SOPIR_DT", locationId: parsed.locationId }
+            })
+
+            if (existingDt) {
+                await (prisma as any).masterIncentiveRate.update({
+                    where: { id: existingDt.id },
+                    data: {
+                        tarif_utama: parsed.price_dt_besar,
+                        tarif_sekunder: parsed.price_dt_kecil,
+                        isActive: true,
+                    }
+                })
+            } else {
+                await (prisma as any).masterIncentiveRate.create({
+                    data: {
+                        nama_insentif: `Retase Sopir Dump Truck (${locName})`,
+                        kategori_peran: "SOPIR_DT",
+                        formula_type: "DT_TIERED",
+                        tarif_utama: parsed.price_dt_besar,
+                        tarif_sekunder: parsed.price_dt_kecil,
+                        locationId: parsed.locationId,
+                        effective_date: new Date(),
+                        keterangan: `Sinkronisasi otomatis dari setting Dump Truck cabang ${locName} (Jarak: ${parsed.default_distance_km} km)`,
+                        isActive: true,
+                    }
+                })
+            }
+        }
+
         revalidatePath("/admin/material-agregat")
         revalidatePath("/admin/reports/retase")
+        revalidatePath("/admin/master-insentif")
         return { success: true, message: "Pengaturan tarif retase Dump Truck berhasil disimpan." }
     } catch (e: any) {
         console.error(e)

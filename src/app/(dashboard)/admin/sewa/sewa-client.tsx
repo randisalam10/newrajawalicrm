@@ -126,10 +126,25 @@ export function SewaClient({
     const [specificDates, setSpecificDates] = useState<string[]>([todayStr])
     const [dateInputVal, setDateInputVal] = useState<string>(todayStr)
 
-    // Pricing (Free Input)
-    const [pricePerDay, setPricePerDay] = useState<number>(0)
-    const [totalPrice, setTotalPrice] = useState<number>(0)
+    // Helper to parse decimal numbers supporting comma (3153153,15 or 3.153.153,15)
+    const parseDecimal = (val: string): number => {
+        if (!val) return 0
+        let clean = String(val).trim()
+        if (clean.includes(",") && clean.includes(".")) {
+            clean = clean.replace(/\./g, "").replace(/,/g, ".")
+        } else if (clean.includes(",")) {
+            clean = clean.replace(/,/g, ".")
+        }
+        const num = parseFloat(clean)
+        return isNaN(num) ? 0 : num
+    }
+
+    // Pricing & PPN (Free Input)
+    const [pricePerDayInput, setPricePerDayInput] = useState<string>("")
+    const [totalPriceInput, setTotalPriceInput] = useState<string>("")
     const [isTotalPriceManual, setIsTotalPriceManual] = useState<boolean>(false)
+    const [ppnMode, setPpnMode] = useState<"NON_PPN" | "INCLUDE" | "EXCLUDE">("NON_PPN")
+    const [ppnRate, setPpnRate] = useState<number>(11)
     const [notes, setNotes] = useState<string>("")
 
     // Detail Modal State
@@ -149,16 +164,39 @@ export function SewaClient({
         }
     }, [dateMode, rangeStart, rangeEnd, specificDates])
 
-    const handleDailyRateChange = (newRate: number) => {
-        setPricePerDay(newRate)
+    const numPricePerDay = useMemo(() => parseDecimal(pricePerDayInput), [pricePerDayInput])
+    const rawBaseTotal = useMemo(() => {
+        if (isTotalPriceManual) {
+            return parseDecimal(totalPriceInput)
+        }
+        return numPricePerDay * calculatedDays
+    }, [isTotalPriceManual, totalPriceInput, numPricePerDay, calculatedDays])
+
+    const { dppAmount, ppnAmount, grandTotal } = useMemo(() => {
+        if (ppnMode === "INCLUDE") {
+            const factor = 1 + (ppnRate / 100)
+            const dpp = factor > 0 ? (rawBaseTotal / factor) : rawBaseTotal
+            const ppn = rawBaseTotal - dpp
+            return { dppAmount: dpp, ppnAmount: ppn, grandTotal: rawBaseTotal }
+        } else if (ppnMode === "EXCLUDE") {
+            const ppn = rawBaseTotal * (ppnRate / 100)
+            return { dppAmount: rawBaseTotal, ppnAmount: ppn, grandTotal: rawBaseTotal + ppn }
+        } else {
+            return { dppAmount: rawBaseTotal, ppnAmount: 0, grandTotal: rawBaseTotal }
+        }
+    }, [rawBaseTotal, ppnMode, ppnRate])
+
+    const handleDailyRateChange = (rateStr: string) => {
+        setPricePerDayInput(rateStr)
+        const rate = parseDecimal(rateStr)
         if (!isTotalPriceManual) {
-            setTotalPrice(newRate * calculatedDays)
+            setTotalPriceInput(rate > 0 ? String(rate * calculatedDays) : "")
         }
     }
 
     const handleDaysChanged = (days: number) => {
-        if (!isTotalPriceManual) {
-            setTotalPrice(pricePerDay * days)
+        if (!isTotalPriceManual && numPricePerDay > 0) {
+            setTotalPriceInput(String(numPricePerDay * days))
         }
     }
 
@@ -180,7 +218,7 @@ export function SewaClient({
         setSelectedEquipmentId(equipmentId)
         const eq = masters.equipments.find(e => e.id === equipmentId)
         if (eq && eq.default_day_rate && eq.default_day_rate > 0) {
-            handleDailyRateChange(eq.default_day_rate)
+            handleDailyRateChange(String(eq.default_day_rate))
         }
     }
 
@@ -215,9 +253,11 @@ export function SewaClient({
         setRangeStart(todayStr)
         setRangeEnd(todayStr)
         setSpecificDates([todayStr])
-        setPricePerDay(0)
-        setTotalPrice(0)
+        setPricePerDayInput("")
+        setTotalPriceInput("")
         setIsTotalPriceManual(false)
+        setPpnMode("NON_PPN")
+        setPpnRate(11)
         setNotes("")
         setOpenCustomer(false)
         setOpenProject(false)
@@ -275,8 +315,13 @@ export function SewaClient({
             formData.append("total_days", String(sorted.length))
         }
 
-        formData.append("price_per_day", String(pricePerDay))
-        formData.append("total_price", String(totalPrice))
+        formData.append("price_per_day", String(numPricePerDay))
+        formData.append("total_price", String(grandTotal))
+        formData.append("is_ppn", String(ppnMode !== "NON_PPN"))
+        formData.append("ppn_mode", ppnMode)
+        formData.append("ppn_rate", String(ppnRate))
+        formData.append("dpp_amount", String(dppAmount))
+        formData.append("ppn_amount", String(ppnAmount))
         formData.append("notes", notes)
         if (selectedLocationId) {
             formData.append("locationId", selectedLocationId)
@@ -320,8 +365,12 @@ export function SewaClient({
         })
     }, [transactions, filterStatus, filterBranch, filterStartDate, filterEndDate, searchQuery])
 
-    const formatRp = (num: number) => {
-        return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(num || 0)
+    const formatRp = (num: number, withDecimals = false) => {
+        return new Intl.NumberFormat("id-ID", {
+            style: "currency",
+            currency: "IDR",
+            maximumFractionDigits: withDecimals || (num % 1 !== 0) ? 2 : 0,
+        }).format(num || 0)
     }
 
     const getStatusBadge = (status: string) => {
@@ -542,7 +591,12 @@ export function SewaClient({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right font-mono text-xs font-bold text-slate-900">
-                                        {formatRp(tx.total_price)}
+                                        <div>{formatRp(tx.total_price)}</div>
+                                        {tx.is_ppn && (
+                                            <span className="text-[10px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                                                {tx.ppn_mode === "INCLUDE" ? "Inc." : "Exc."} PPN {tx.ppn_rate ?? 11}%
+                                            </span>
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-center">
                                         {getStatusBadge(tx.status)}
@@ -1015,54 +1069,130 @@ export function SewaClient({
                             </div>
                         </div>
 
-                        {/* ── Biaya (Free Input) ── */}
-                        <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                            <div className="space-y-1">
-                                <Label className="text-xs font-semibold text-slate-700">Tarif / Hari (Rp)</Label>
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="1000"
-                                    placeholder="Opsional"
-                                    value={pricePerDay || ""}
-                                    onChange={e => handleDailyRateChange(Number(e.target.value))}
-                                    className="h-8 text-xs bg-white font-mono"
-                                />
-                                <span className="text-[10px] text-slate-400">
-                                    {pricePerDay > 0 ? formatRp(pricePerDay) : "Tarif harian"}
-                                </span>
+                        {/* ── Biaya (Free Input with Koma / Decimal Support) ── */}
+                        <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <Label className="text-xs font-semibold text-slate-700">Tarif / Hari (Rp)</Label>
+                                    <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="Contoh: 3.500.000 atau 3153153,15"
+                                        value={pricePerDayInput}
+                                        onChange={e => handleDailyRateChange(e.target.value)}
+                                        className="h-8 text-xs bg-white font-mono"
+                                    />
+                                    <span className="text-[10px] text-slate-500">
+                                        {numPricePerDay > 0 ? formatRp(numPricePerDay, true) : "Opsional / Tarif harian"}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-semibold text-slate-700">
+                                            {ppnMode === "INCLUDE" ? "Nilai Sewa (Gross/Include PPN) *" : "Nilai Dasar Sewa (DPP) *"}
+                                        </Label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setIsTotalPriceManual(false)
+                                                setTotalPriceInput(numPricePerDay > 0 ? String(numPricePerDay * calculatedDays) : "")
+                                            }}
+                                            className="text-[10px] text-blue-600 hover:underline"
+                                        >
+                                            Hitung Ulang
+                                        </button>
+                                    </div>
+                                    <Input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder="Total biaya sewa"
+                                        value={isTotalPriceManual ? totalPriceInput : (rawBaseTotal > 0 ? String(rawBaseTotal) : "")}
+                                        onChange={e => {
+                                            setIsTotalPriceManual(true)
+                                            setTotalPriceInput(e.target.value)
+                                        }}
+                                        className="h-8 text-xs bg-white font-mono font-bold text-slate-800"
+                                        required
+                                    />
+                                    <span className="text-[10px] text-slate-500">
+                                        {rawBaseTotal > 0 ? formatRp(rawBaseTotal, true) : "Free input nilai sewa"}
+                                    </span>
+                                </div>
                             </div>
 
-                            <div className="space-y-1">
-                                <div className="flex items-center justify-between">
-                                    <Label className="text-xs font-semibold text-slate-700">Total Nilai Sewa (Rp) *</Label>
+                            {/* Opsi PPN */}
+                            <div className="pt-2 border-t border-slate-200">
+                                <div className="flex items-center justify-between mb-2">
+                                    <Label className="text-xs font-semibold text-slate-800">Opsi Pajak (PPN)</Label>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[11px] text-slate-500">Tarif PPN:</span>
+                                        <div className="flex items-center gap-1">
+                                            <Input
+                                                type="number"
+                                                step="any"
+                                                min="0"
+                                                value={ppnRate}
+                                                onChange={e => setPpnRate(Number(e.target.value) || 0)}
+                                                disabled={ppnMode === "NON_PPN"}
+                                                className="h-7 w-14 text-xs font-mono text-center bg-white"
+                                            />
+                                            <span className="text-xs text-slate-600 font-bold">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            setIsTotalPriceManual(false)
-                                            setTotalPrice(pricePerDay * calculatedDays)
-                                        }}
-                                        className="text-[10px] text-blue-600 hover:underline"
+                                        onClick={() => setPpnMode("NON_PPN")}
+                                        className={`px-2 py-1.5 rounded-md text-xs font-medium border text-center transition-all ${
+                                            ppnMode === "NON_PPN"
+                                                ? "bg-slate-800 text-white border-slate-800 shadow-xs"
+                                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                        }`}
                                     >
-                                        Hitung Ulang
+                                        Non-PPN
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPpnMode("INCLUDE")}
+                                        className={`px-2 py-1.5 rounded-md text-xs font-medium border text-center transition-all ${
+                                            ppnMode === "INCLUDE"
+                                                ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        Include PPN (Sudah PPN)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPpnMode("EXCLUDE")}
+                                        className={`px-2 py-1.5 rounded-md text-xs font-medium border text-center transition-all ${
+                                            ppnMode === "EXCLUDE"
+                                                ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        Exclude PPN (+ PPN)
                                     </button>
                                 </div>
-                                <Input
-                                    type="number"
-                                    min="0"
-                                    step="1000"
-                                    placeholder="Total biaya sewa"
-                                    value={totalPrice || ""}
-                                    onChange={e => {
-                                        setIsTotalPriceManual(true)
-                                        setTotalPrice(Number(e.target.value))
-                                    }}
-                                    className="h-8 text-xs bg-white font-mono font-bold text-emerald-700"
-                                    required
-                                />
-                                <span className="text-[10px] text-slate-400">
-                                    {totalPrice > 0 ? formatRp(totalPrice) : "Free input total"}
-                                </span>
+
+                                {/* Live Breakdown Preview */}
+                                <div className="mt-2.5 p-2 bg-white rounded border border-slate-200 grid grid-cols-3 gap-2 text-center">
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Dasar Pajak (DPP)</span>
+                                        <span className="text-xs font-semibold font-mono text-slate-800">{formatRp(dppAmount, true)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">PPN ({ppnMode === "NON_PPN" ? "0%" : `${ppnRate}%`})</span>
+                                        <span className="text-xs font-semibold font-mono text-blue-700">{formatRp(ppnAmount, true)}</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] text-slate-400 block">Total Tagihan</span>
+                                        <span className="text-xs font-extrabold font-mono text-emerald-700">{formatRp(grandTotal, true)}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -1173,14 +1303,26 @@ export function SewaClient({
                             </div>
 
                             {/* Biaya */}
-                            <div className="p-2.5 border border-slate-200 rounded flex justify-between items-center bg-slate-50/50">
-                                <div>
-                                    <span className="text-slate-400 text-[10px]">Tarif Satuan / Hari:</span>
-                                    <p className="font-semibold text-slate-800">{formatRp(selectedTxDetail.price_per_day)}</p>
+                            <div className="p-3 border border-slate-200 rounded-lg bg-slate-50/70 space-y-2">
+                                <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-500">Tarif Satuan / Hari:</span>
+                                    <span className="font-semibold text-slate-800">{formatRp(selectedTxDetail.price_per_day, true)}</span>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-slate-400 text-[10px]">Total Biaya:</span>
-                                    <p className="font-extrabold text-sm text-emerald-700">{formatRp(selectedTxDetail.total_price)}</p>
+                                {selectedTxDetail.is_ppn && (
+                                    <>
+                                        <div className="flex justify-between items-center text-xs border-t border-slate-200 pt-1.5">
+                                            <span className="text-slate-500">Dasar Pengenaan Pajak (DPP):</span>
+                                            <span className="font-mono text-slate-700">{formatRp(selectedTxDetail.dpp_amount || selectedTxDetail.total_price, true)}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center text-xs">
+                                            <span className="text-slate-500">PPN ({selectedTxDetail.ppn_mode === "INCLUDE" ? "Include" : "Exclude"} {selectedTxDetail.ppn_rate ?? 11}%):</span>
+                                            <span className="font-mono text-blue-700 font-semibold">{formatRp(selectedTxDetail.ppn_amount, true)}</span>
+                                        </div>
+                                    </>
+                                )}
+                                <div className="flex justify-between items-center text-xs border-t border-slate-200 pt-1.5">
+                                    <span className="font-bold text-slate-900">Total Nilai Tagihan Sewa:</span>
+                                    <span className="font-extrabold text-sm text-emerald-700 font-mono">{formatRp(selectedTxDetail.total_price, true)}</span>
                                 </div>
                             </div>
 

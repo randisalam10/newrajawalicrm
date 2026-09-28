@@ -2,18 +2,35 @@ import { getMutu } from "./actions"
 import { MutuClient } from "./mutu-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 import { Eye } from "lucide-react"
+import { redirect } from "next/navigation"
 
 export default async function MutuPage() {
     const session = await auth()
+    if (!session?.user) redirect("/login")
+
+    const userRole = session.user.role || "OperatorBP"
+    const canView = userRole === "SuperAdminBP" ||
+        hasPermission(session.user, "MUTU", "VIEW") ||
+        (["AdminBP", "CEO", "FVP"].includes(userRole) && userRole !== "AdminLogistik")
+
+    if (!canView) {
+        redirect(userRole === "AdminLogistik" ? "/logistik" : "/admin")
+    }
+
     const [data, locations] = await Promise.all([
         getMutu(),
         getLocations()
     ])
-    const userRole = session?.user?.role || "OperatorBP"
-    const isCorporate = isCorporateUser(session?.user)
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP"].includes(userRole)
+    const isCorporate = isCorporateUser(session.user)
+    const canManage = userRole === "SuperAdminBP" || (
+        !["CEO", "FVP", "Approver"].includes(userRole) && (
+            userRole === "AdminBP" ||
+            hasPermission(session.user, "MUTU", "CREATE") ||
+            hasPermission(session.user, "MUTU", "EDIT")
+        )
+    )
 
     return (
         <div className="space-y-6">

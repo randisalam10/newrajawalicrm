@@ -122,6 +122,35 @@ export function MutuClient({
                                     </div>
                                 </div>
 
+                                {/* Konfigurasi Berat Jenis (Density) untuk Konversi Stok Material */}
+                                <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-lg space-y-3">
+                                    <div>
+                                        <div className="text-xs font-bold text-amber-900 flex items-center justify-between">
+                                            <span>Konfigurasi Berat Jenis Material (Kg/m³)</span>
+                                            <span className="text-[10px] text-amber-700 font-normal">Konversi Kg &rarr; m³ Stok</span>
+                                        </div>
+                                        <p className="text-[11px] text-amber-700/80">Acuan densitas gembur untuk menghitung pengurangan stok material m³ saat produksi cor.</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                                        <div className="space-y-1">
+                                            <Label htmlFor="density_sand" className="text-[11px] text-slate-700">BJ Pasir</Label>
+                                            <Input id="density_sand" name="density_sand" type="number" step="any" placeholder="1400" defaultValue={editData?.density_sand ?? 1400} className="h-8 text-xs bg-white" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="density_stone_05" className="text-[11px] text-slate-700">BJ Ciping (0.5)</Label>
+                                            <Input id="density_stone_05" name="density_stone_05" type="number" step="any" placeholder="1400" defaultValue={editData?.density_stone_05 ?? 1400} className="h-8 text-xs bg-white" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="density_stone_12" className="text-[11px] text-slate-700">BJ Batu 1-2</Label>
+                                            <Input id="density_stone_12" name="density_stone_12" type="number" step="any" placeholder="1450" defaultValue={editData?.density_stone_12 ?? 1450} className="h-8 text-xs bg-white" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label htmlFor="density_stone_23" className="text-[11px] text-slate-700">BJ Batu 2-3</Label>
+                                            <Input id="density_stone_23" name="density_stone_23" type="number" step="any" placeholder="1450" defaultValue={editData?.density_stone_23 ?? 1450} className="h-8 text-xs bg-white" />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {userRole === "SuperAdminBP" && (
                                     <div className="space-y-2">
                                         <Label htmlFor="locationId">Cabang (Lokasi) *</Label>
@@ -201,10 +230,22 @@ export function MutuClient({
                                         </TableCell>
                                     )}
                                     <TableCell className="font-medium text-sm text-primary">{item.name}</TableCell>
-                                    <TableCell className="text-sm">{item.composition_sand} Kg</TableCell>
-                                    <TableCell className="text-sm">{item.composition_stone_05} Kg</TableCell>
-                                    <TableCell className="text-sm">{item.composition_stone_12} Kg</TableCell>
-                                    <TableCell className="text-sm">{item.composition_stone_23} Kg</TableCell>
+                                    <TableCell className="text-sm">
+                                        <div>{item.composition_sand} Kg</div>
+                                        <div className="text-[10px] text-slate-400">BJ: {item.density_sand ?? 1400}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                        <div>{item.composition_stone_05} Kg</div>
+                                        <div className="text-[10px] text-slate-400">BJ: {item.density_stone_05 ?? 1400}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                        <div>{item.composition_stone_12} Kg</div>
+                                        <div className="text-[10px] text-slate-400">BJ: {item.density_stone_12 ?? 1450}</div>
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                        <div>{item.composition_stone_23} Kg</div>
+                                        <div className="text-[10px] text-slate-400">BJ: {item.density_stone_23 ?? 1450}</div>
+                                    </TableCell>
                                     <TableCell className="text-sm font-semibold text-slate-700">{item.composition_cement} Kg</TableCell>
                                     {canManage && (
                                         <TableCell>

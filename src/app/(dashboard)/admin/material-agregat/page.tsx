@@ -26,13 +26,23 @@ export default async function MaterialAgregatPage() {
     const locationFilter = getLocationFilter(session.user)
     const vehicleFilter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
-    const [data, locations, vehicles, drivers, retaseSettings] = await Promise.all([
+    const [data, outData, locations, vehicles, drivers, retaseSettings] = await Promise.all([
         prisma.aggregateIncoming.findMany({
             where: locationFilter,
             include: { 
                 location: true,
                 vehicle: true,
                 driver: true
+            },
+            take: 250,
+            orderBy: { date: "desc" },
+        }),
+        prisma.aggregateOutgoing.findMany({
+            where: locationFilter,
+            include: {
+                location: true,
+                vehicle: true,
+                driver: true,
             },
             take: 250,
             orderBy: { date: "desc" },
@@ -64,6 +74,7 @@ export default async function MaterialAgregatPage() {
         <div className="p-6 space-y-6">
             <MaterialAgregatClient
                 initialData={JSON.parse(JSON.stringify(data))}
+                initialOutData={JSON.parse(JSON.stringify(outData))}
                 locations={locations}
                 vehicles={JSON.parse(JSON.stringify(vehicles))}
                 drivers={JSON.parse(JSON.stringify(drivers))}

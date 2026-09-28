@@ -14,18 +14,38 @@ const mutuSchema = z.object({
     composition_stone_12: z.coerce.number().min(0),
     composition_stone_23: z.coerce.number().min(0),
     composition_cement: z.coerce.number().min(0),
+    density_sand: z.coerce.number().min(0).default(1400),
+    density_stone_05: z.coerce.number().min(0).default(1400),
+    density_stone_12: z.coerce.number().min(0).default(1450),
+    density_stone_23: z.coerce.number().min(0).default(1450),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
 })
 
+function normalizeDensity(val: number | undefined, fallback: number): number {
+    if (!val || val <= 0) return fallback
+    if (val < 10) return Math.round(val * 1000) // Support ton/m³ input e.g. 1.4 -> 1400 kg/m³
+    return val
+}
+
 function canManageMutu(user: any) {
     if (!user) return false
+    if (user.role === "SuperAdminBP") return true
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+    const perms: string[] = user.permissions || []
+    return user.role === "AdminBP" || perms.includes("MUTU_CREATE") || perms.includes("MUTU_EDIT")
 }
 
 export async function getMutu() {
     const session = await auth()
     if (!session?.user) return []
+
+    const userRole = session.user.role || ""
+    const perms: string[] = session.user.permissions || []
+    const canView = userRole === "SuperAdminBP" ||
+        perms.includes("MUTU_VIEW") ||
+        (["AdminBP", "CEO", "FVP"].includes(userRole) && userRole !== "AdminLogistik")
+
+    if (!canView) return []
 
     const isCorp = isCorporateUser(session.user)
     const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
@@ -56,7 +76,14 @@ export async function createMutu(formData: FormData) {
 
         if (!finalLocationId) return { success: false, error: "Location is required" }
 
-        const { locationId, ...insertData } = parsed.data
+        const { locationId, ...rawInsert } = parsed.data
+        const insertData = {
+            ...rawInsert,
+            density_sand: normalizeDensity(rawInsert.density_sand, 1400),
+            density_stone_05: normalizeDensity(rawInsert.density_stone_05, 1400),
+            density_stone_12: normalizeDensity(rawInsert.density_stone_12, 1450),
+            density_stone_23: normalizeDensity(rawInsert.density_stone_23, 1450),
+        }
 
         await prisma.concreteQuality.create({
             data: {
@@ -96,7 +123,14 @@ export async function updateMutu(id: string, formData: FormData) {
 
         if (!finalLocationId) return { success: false, error: "Location is required" }
 
-        const { locationId, ...updateData } = parsed.data
+        const { locationId, ...rawUpdate } = parsed.data
+        const updateData = {
+            ...rawUpdate,
+            density_sand: normalizeDensity(rawUpdate.density_sand, 1400),
+            density_stone_05: normalizeDensity(rawUpdate.density_stone_05, 1400),
+            density_stone_12: normalizeDensity(rawUpdate.density_stone_12, 1450),
+            density_stone_23: normalizeDensity(rawUpdate.density_stone_23, 1450),
+        }
 
         await prisma.concreteQuality.update({
             where: { id },

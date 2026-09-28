@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
+import { syncExistingRetaseSettingsToMasterIncentives } from "../master-insentif/actions"
+
 const productionSchema = z.object({
     projectId: z.string().min(1, "Project required"),
     vehicleId: z.string().min(1, "Mixer required"),
@@ -26,9 +28,14 @@ export async function getProductionMasters() {
     if (!session.user.employeeId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
     if (!session.user.locationId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
 
+    // Auto-sinkronisasi settingan retase eksisting cabang ke data master secara otomatis
+    await syncExistingRetaseSettingsToMasterIncentives().catch(() => null)
+
     const filter: any = isCorp ? {} : { locationId: session.user.locationId! }
 
-    const [projects, vehicles, drivers, qualities, workItems, operators] = await Promise.all([
+    const hasMasterIncentive = Boolean((prisma as any).masterIncentiveRate)
+
+    const [projects, vehicles, drivers, qualities, workItems, operators, incentiveRates, retaseSettings] = await Promise.all([
         prisma.project.findMany({
             where: {
                 customer: {
@@ -43,10 +50,30 @@ export async function getProductionMasters() {
         prisma.employee.findMany({ where: { position: "Sopir", status: "Active", ...filter }, orderBy: { name: 'asc' } }),
         prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } }),
         prisma.workItem.findMany({ where: filter, orderBy: { name: 'asc' } }),
-        prisma.employee.findMany({ where: { position: "Operator", status: "Active", ...filter }, include: { location: true }, orderBy: { name: 'asc' } })
+        prisma.employee.findMany({ where: { position: "Operator", status: "Active", ...filter }, include: { location: true }, orderBy: { name: 'asc' } }),
+        hasMasterIncentive
+            ? (prisma as any).masterIncentiveRate.findMany({
+                where: {
+                    isActive: true,
+                    ...(isCorp ? {} : {
+                        OR: [
+                            { locationId: session.user.locationId! },
+                            { locationId: null }
+                        ]
+                    })
+                },
+                orderBy: [
+                    { effective_date: 'desc' },
+                    { createdAt: 'desc' }
+                ]
+            }).catch(() => [])
+            : Promise.resolve([]),
+        prisma.retaseSetting.findMany({
+            where: isCorp ? {} : { locationId: session.user.locationId! }
+        }).catch(() => [])
     ])
 
-    return { projects, vehicles, drivers, qualities, workItems, operators }
+    return { projects, vehicles, drivers, qualities, workItems, operators, incentiveRates, retaseSettings }
 }
 
 export async function getRecentProductions() {

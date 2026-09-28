@@ -23,12 +23,6 @@ export function hasPermission(user: SessionUser | null | undefined, module: stri
     const code = `${module}_${action.toUpperCase()}`
     if (user.permissions && user.permissions.includes(code)) return true
 
-    // Fallbacks for module mappings (e.g. VEHICLE/KARYAWAN can fallback to MASTER_DATA)
-    if (module === "VEHICLE" || module === "KARYAWAN") {
-        const masterDataCode = `MASTER_DATA_${action.toUpperCase()}`
-        if (user.permissions && user.permissions.includes(masterDataCode)) return true
-    }
-
     return false
 }
 

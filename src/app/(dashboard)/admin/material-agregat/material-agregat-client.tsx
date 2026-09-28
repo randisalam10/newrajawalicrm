@@ -26,6 +26,7 @@ import { Label } from "@/components/ui/label"
 import {
     Plus,
     PackagePlus,
+    PackageMinus,
     ClipboardList,
     Edit,
     Trash2,
@@ -43,19 +44,29 @@ import {
     FileSpreadsheet,
     CheckCircle2,
     AlertCircle,
+    ArrowDownLeft,
+    ArrowUpRight,
+    ArrowUpDown,
+    Coins,
 } from "lucide-react"
 import {
     AggregateInRow,
+    AggregateOutRow,
     AggregateLedgerRow,
+    AggregateCombinedRow,
     AGGREGATE_TYPE_LABELS,
     AGGREGATE_TYPE_OPTIONS,
+    OUTGOING_CATEGORY_LABELS,
+    OUTGOING_CATEGORY_OPTIONS,
 } from "./columns"
 import { MaterialAgregatForm } from "./material-agregat-form"
-import { deleteAggregateIncoming, getAggregateStockLedger, saveAggregateRetaseSetting } from "./actions"
+import { MaterialAgregatOutForm } from "./material-agregat-out-form"
+import { deleteAggregateIncoming, deleteAggregateOutgoing, getAggregateStockLedger, saveAggregateRetaseSetting } from "./actions"
 import { useToast } from "@/hooks/use-toast"
 
 type Props = {
     initialData: any[]
+    initialOutData?: any[]
     locations: { id: string; name: string }[]
     vehicles?: any[]
     drivers?: any[]
@@ -71,11 +82,13 @@ const MATERIAL_COLORS: Record<string, string> = {
     SplitHalfOne: "bg-amber-50 text-amber-800 ring-1 ring-amber-600/30 border-amber-200",
     SplitTwoThree: "bg-rose-50 text-rose-800 ring-1 ring-rose-600/30 border-rose-200",
     Pasir: "bg-yellow-50 text-yellow-800 ring-1 ring-yellow-600/30 border-yellow-200",
+    Semen: "bg-stone-100 text-stone-800 ring-1 ring-stone-600/30 border-stone-200",
     Other: "bg-slate-100 text-slate-800 ring-1 ring-slate-600/20 border-slate-200",
 }
 
 export function MaterialAgregatClient({
     initialData,
+    initialOutData = [],
     locations,
     vehicles = [],
     drivers = [],
@@ -89,6 +102,13 @@ export function MaterialAgregatClient({
     const { toast } = useToast()
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingData, setEditingData] = useState<AggregateInRow | null>(null)
+
+    // Outgoing state
+    const [isOutFormOpen, setIsOutFormOpen] = useState(false)
+    const [editingOutData, setEditingOutData] = useState<AggregateOutRow | null>(null)
+    const [filterOutCabang, setFilterOutCabang] = useState<string>("ALL")
+    const [filterOutMaterial, setFilterOutMaterial] = useState<string>("ALL")
+    const [filterOutCategory, setFilterOutCategory] = useState<string>("ALL")
 
     // Ledger state
     const [ledgerType, setLedgerType] = useState("SplitHalfOne")
@@ -242,6 +262,136 @@ export function MaterialAgregatClient({
         setFilterDtSize("ALL")
     }
 
+    const formattedOutData: AggregateOutRow[] = useMemo(() => {
+        return (initialOutData || []).map((t: any) => ({
+            id: t.id,
+            date: new Date(t.date).toISOString().split("T")[0],
+            no_bon: t.no_bon,
+            aggregate_type: t.aggregate_type,
+            aggregateLabel: AGGREGATE_TYPE_LABELS[t.aggregate_type] || t.aggregate_type,
+            volume_cubic: t.volume_cubic,
+            unit: t.unit || "m³",
+            unit_price: t.unit_price,
+            total_price: t.total_price,
+            category: t.category,
+            categoryLabel: OUTGOING_CATEGORY_LABELS[t.category] || t.category,
+            recipient: t.recipient,
+            transport_mode: t.transport_mode || "BUYER",
+            vehicleId: t.vehicleId,
+            driverId: t.driverId,
+            dump_truck_size: t.dump_truck_size,
+            distance_km: t.distance_km,
+            rate_price: t.rate_price,
+            retase_amount: t.retase_amount,
+            is_retase_paid: t.is_retase_paid,
+            vehicle: t.vehicle,
+            driver: t.driver,
+            plate_number: t.plate_number,
+            driver_name: t.driver_name,
+            notes: t.notes,
+            locationName: t.location?.name || "N/A",
+            locationId: t.locationId,
+            createdById: t.createdById,
+        }))
+    }, [initialOutData])
+
+    const filteredOutData = useMemo(() => {
+        return formattedOutData.filter((row) => {
+            if (filterOutCabang !== "ALL" && row.locationId !== filterOutCabang) return false
+            if (filterOutMaterial !== "ALL" && row.aggregate_type !== filterOutMaterial) return false
+            if (filterOutCategory !== "ALL" && row.category !== filterOutCategory) return false
+            return true
+        })
+    }, [formattedOutData, filterOutCabang, filterOutMaterial, filterOutCategory])
+
+    // Summary calculations from outgoing data
+    const summaryOut = useMemo(() => {
+        let totalVol = 0
+        let totalSales = 0
+        let totalRetase = 0
+        const byType: Record<string, number> = {}
+
+        filteredOutData.forEach((row) => {
+            byType[row.aggregate_type] = (byType[row.aggregate_type] || 0) + row.volume_cubic
+            totalVol += row.volume_cubic
+            if (row.total_price) totalSales += row.total_price
+            if (row.retase_amount) totalRetase += row.retase_amount
+        })
+
+        return {
+            totalVol,
+            totalSales,
+            totalRetase,
+            totalRit: filteredOutData.length,
+            byType,
+        }
+    }, [filteredOutData])
+
+    // Unified combined transactions (Masuk & Keluar side-by-side)
+    const combinedData: AggregateCombinedRow[] = useMemo(() => {
+        const inRows: AggregateCombinedRow[] = filteredData.map(r => ({
+            id: "in_" + r.id,
+            date: r.date,
+            direction: "IN",
+            no_bon: r.no_bon,
+            aggregate_type: r.aggregate_type,
+            aggregateLabel: r.aggregateLabel,
+            volume: r.volume_cubic,
+            unit: "m³",
+            categoryOrSource: r.source_type === "Internal" ? "Internal Quarry" : "Eksternal",
+            party: r.supplier || (r.source_type === "Internal" ? "Quarry PT" : "-"),
+            vehicleInfo: `${r.plate_number} • ${r.driver_name}${r.dump_truck_size ? ` (${r.dump_truck_size})` : ""}`,
+            financialInfo: r.retase_amount ? `Retase: Rp ${r.retase_amount.toLocaleString("id-ID")}` : undefined,
+            notes: r.notes,
+            locationName: r.locationName,
+            locationId: r.locationId,
+            rawIn: r,
+        }))
+
+        const outRows: AggregateCombinedRow[] = filteredOutData.map(r => ({
+            id: "out_" + r.id,
+            date: r.date,
+            direction: "OUT",
+            no_bon: r.no_bon || "-",
+            aggregate_type: r.aggregate_type,
+            aggregateLabel: r.aggregateLabel,
+            volume: r.volume_cubic,
+            unit: r.unit || "m³",
+            categoryOrSource: r.categoryLabel,
+            party: r.recipient || "-",
+            vehicleInfo: r.transport_mode === "INTERNAL_DT"
+                ? `DT Internal: ${r.plate_number || "-"} • ${r.driver_name || "-"}`
+                : (r.plate_number ? `Pembeli: ${r.plate_number}` : "Ambil Sendiri"),
+            financialInfo: r.total_price && r.total_price > 0
+                ? `Rp ${r.total_price.toLocaleString("id-ID")}`
+                : (r.retase_amount ? `Retase: Rp ${r.retase_amount.toLocaleString("id-ID")}` : undefined),
+            notes: r.notes,
+            locationName: r.locationName,
+            locationId: r.locationId,
+            rawOut: r,
+        }))
+
+        return [...inRows, ...outRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    }, [filteredData, filteredOutData])
+
+    const handleEditOut = (row: AggregateOutRow) => {
+        if (!canManage) return
+        setEditingOutData(row)
+        setIsOutFormOpen(true)
+    }
+
+    const handleDeleteOut = async (row: AggregateOutRow) => {
+        if (!canManage) return
+        if (
+            confirm(
+                `Yakin ingin menghapus pengeluaran ${row.aggregateLabel} sebesar ${row.volume_cubic} m³ (${row.recipient || row.categoryLabel})?`
+            )
+        ) {
+            await deleteAggregateOutgoing(row.id)
+            toast({ title: "Data Dihapus", description: "Pengeluaran material berhasil dihapus." })
+        }
+    }
+
     const handleEdit = (row: AggregateInRow) => {
         if (!canManage) return
         setEditingData(row)
@@ -279,53 +429,49 @@ export function MaterialAgregatClient({
 
     // Export CSV
     const exportCSV = () => {
-        if (filteredData.length === 0) {
+        if (combinedData.length === 0) {
             return toast({ title: "Data Kosong", description: "Tidak ada data untuk diekspor." })
         }
 
         const headers = [
             "Tanggal",
+            "Arah",
             "Cabang",
             "Jenis Material",
-            "Sumber",
+            "Kategori / Sumber",
             "No Bon / Surat Jalan",
-            "Nama Sopir",
-            "Plat Nomor",
-            "Ukuran DT",
-            "Volume (m3)",
-            "Jarak (KM)",
-            "Tarif (Rp/m3/km)",
-            "Total Retase (Rp)",
-            "Supplier Eksternal",
+            "Pihak / Rekanan",
+            "Armada & Sopir",
+            "Volume",
+            "Satuan",
+            "Info Finansial",
             "Catatan",
         ]
 
-        const rows = filteredData.map((row) => [
+        const rows = combinedData.map((row) => [
             `"${row.date}"`,
+            `"${row.direction === "IN" ? "MASUK" : "KELUAR"}"`,
             `"${row.locationName}"`,
             `"${row.aggregateLabel}"`,
-            `"${row.source_type}"`,
+            `"${row.categoryOrSource}"`,
             `"${row.no_bon}"`,
-            `"${row.driver_name}"`,
-            `"${row.plate_number}"`,
-            `"${row.dump_truck_size || '-'}"`,
-            `"${row.volume_cubic}"`,
-            `"${row.distance_km ?? ''}"`,
-            `"${row.rate_price ?? ''}"`,
-            `"${row.retase_amount ?? ''}"`,
-            `"${row.supplier || ''}"`,
-            `"${(row.notes || '').replace(/"/g, '""')}"`,
+            `"${row.party}"`,
+            `"${row.vehicleInfo}"`,
+            `"${row.volume}"`,
+            `"${row.unit}"`,
+            `"${row.financialInfo || '-'}"`,
+            `"${(row.notes || "").replace(/"/g, '""')}"`,
         ])
 
         const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(","), ...rows.map(r => r.join(","))].join("\n")
         const encodedUri = encodeURI(csvContent)
         const link = document.createElement("a")
         link.setAttribute("href", encodedUri)
-        link.setAttribute("download", `Penerimaan_Material_Agregat_${new Date().toISOString().split("T")[0]}.csv`)
+        link.setAttribute("download", `Mutasi_Material_Agregat_${new Date().toISOString().split("T")[0]}.csv`)
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
-        toast({ title: "Ekspor Berhasil", description: "File CSV berhasil diunduh." })
+        toast({ title: "Ekspor Berhasil", description: "File CSV mutasi material berhasil diunduh." })
     }
 
     const showCabang = userRole === "SuperAdminBP" || isCorporate
@@ -365,153 +511,168 @@ export function MaterialAgregatClient({
                     </Button>
 
                     {canManage && (
-                        <Button
-                            onClick={() => {
-                                setEditingData(null)
-                                setIsFormOpen(true)
-                            }}
-                            size="sm"
-                            className="h-9 gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
-                        >
-                            <Plus className="h-4 w-4" />
-                            <span>Input Penerimaan Material</span>
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => {
+                                    setEditingOutData(null)
+                                    setIsOutFormOpen(true)
+                                }}
+                                variant="outline"
+                                size="sm"
+                                className="h-9 gap-1.5 text-xs font-bold border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800 shadow-xs"
+                            >
+                                <PackageMinus className="h-4 w-4 text-rose-600" />
+                                <span>Input Material Keluar</span>
+                            </Button>
+                            <Button
+                                onClick={() => {
+                                    setEditingData(null)
+                                    setIsFormOpen(true)
+                                }}
+                                size="sm"
+                                className="h-9 gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs"
+                            >
+                                <Plus className="h-4 w-4" />
+                                <span>Input Penerimaan Material</span>
+                            </Button>
+                        </div>
                     )}
                 </div>
             </div>
 
-            {/* ── EXECUTIVE KPI METRICS (FULL WIDTH RESPONSIVE) ── */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                {/* Total Muatan */}
-                <Card className="border-slate-200/80 shadow-xs bg-white">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                            <span>Total Muatan</span>
-                            <PackagePlus className="w-3.5 h-3.5 text-blue-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-xl font-black text-slate-900 font-mono">
-                            {summary.totalVol.toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-                            <span className="text-xs font-semibold text-slate-400 ml-1">m³</span>
+            {/* ── COMPACT KPI METRICS (SPACE-EFFICIENT & INFORMATIVE) ── */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                {/* 1. Total Masuk */}
+                <div className="bg-white border border-slate-200/90 rounded-xl p-3 shadow-2xs hover:border-slate-300 transition-colors">
+                    <div className="flex items-center justify-between text-slate-500 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Masuk</span>
+                        <div className="p-1 rounded-md bg-blue-50 text-blue-600">
+                            <PackagePlus className="w-3.5 h-3.5" />
                         </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5 font-medium">
-                            {summary.totalRit} Rit Transaksi
-                        </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black font-mono text-slate-900 leading-tight">
+                            +{summary.totalVol.toLocaleString("id-ID", { maximumFractionDigits: 1 })}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold">m³</span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                        {summary.totalRit} Rit ({summary.internalVol.toFixed(0)}m³ Quarry / {summary.externalVol.toFixed(0)}m³ Vendor)
+                    </div>
+                </div>
 
-                {/* Batu Split 1/2 */}
-                <Card className="border-amber-200/70 shadow-xs bg-amber-50/30">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center justify-between">
-                            <span>Split 1/2</span>
-                            <Layers className="w-3.5 h-3.5 text-amber-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-xl font-black text-amber-950 font-mono">
+                {/* 2. Total Keluar */}
+                <div className="bg-white border border-rose-200/80 rounded-xl p-3 shadow-2xs hover:border-rose-300 transition-colors bg-rose-50/20">
+                    <div className="flex items-center justify-between text-rose-700 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">Total Keluar</span>
+                        <div className="p-1 rounded-md bg-rose-100 text-rose-700">
+                            <PackageMinus className="w-3.5 h-3.5" />
+                        </div>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black font-mono text-rose-700 leading-tight">
+                            -{summaryOut.totalVol.toLocaleString("id-ID", { maximumFractionDigits: 1 })}
+                        </span>
+                        <span className="text-[10px] text-rose-500 font-semibold">m³</span>
+                    </div>
+                    <div className="text-[10px] text-rose-700/80 mt-0.5 truncate font-medium">
+                        {summaryOut.totalRit} Transaksi {summaryOut.totalSales > 0 ? `• Rp ${(summaryOut.totalSales / 1000000).toFixed(1)}M` : ""}
+                    </div>
+                </div>
+
+                {/* 3. Split 1/2 */}
+                <div className="bg-white border border-amber-200/80 rounded-xl p-3 shadow-2xs hover:border-amber-300 transition-colors bg-amber-50/20">
+                    <div className="flex items-center justify-between text-amber-800 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800">Split 1/2</span>
+                        <Layers className="w-3.5 h-3.5 text-amber-600" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black font-mono text-amber-950 leading-tight">
                             {(summary.byType["SplitHalfOne"] || 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-                            <span className="text-xs font-semibold text-amber-700 ml-1">m³</span>
-                        </div>
-                        <div className="text-[11px] text-amber-700/80 mt-0.5 font-medium">
-                            {summary.totalVol > 0
-                                ? `${(((summary.byType["SplitHalfOne"] || 0) / summary.totalVol) * 100).toFixed(1)}% porsi`
-                                : "0% porsi"}
-                        </div>
-                    </CardContent>
-                </Card>
+                        </span>
+                        <span className="text-[10px] text-amber-700 font-semibold">m³</span>
+                    </div>
+                    <div className="text-[10px] text-amber-800/80 mt-0.5 truncate">
+                        Keluar: {(summaryOut.byType["SplitHalfOne"] || 0).toFixed(1)} m³
+                    </div>
+                </div>
 
-                {/* Batu Split 2/3 */}
-                <Card className="border-rose-200/70 shadow-xs bg-rose-50/30">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-rose-800 uppercase tracking-wider flex items-center justify-between">
-                            <span>Split 2/3</span>
-                            <Layers className="w-3.5 h-3.5 text-rose-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-xl font-black text-rose-950 font-mono">
+                {/* 4. Split 2/3 */}
+                <div className="bg-white border border-rose-200/80 rounded-xl p-3 shadow-2xs hover:border-rose-300 transition-colors bg-rose-50/20">
+                    <div className="flex items-center justify-between text-rose-800 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800">Split 2/3</span>
+                        <Layers className="w-3.5 h-3.5 text-rose-600" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black font-mono text-rose-950 leading-tight">
                             {(summary.byType["SplitTwoThree"] || 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-                            <span className="text-xs font-semibold text-rose-700 ml-1">m³</span>
-                        </div>
-                        <div className="text-[11px] text-rose-700/80 mt-0.5 font-medium">
-                            {summary.totalVol > 0
-                                ? `${(((summary.byType["SplitTwoThree"] || 0) / summary.totalVol) * 100).toFixed(1)}% porsi`
-                                : "0% porsi"}
-                        </div>
-                    </CardContent>
-                </Card>
+                        </span>
+                        <span className="text-[10px] text-rose-700 font-semibold">m³</span>
+                    </div>
+                    <div className="text-[10px] text-rose-800/80 mt-0.5 truncate">
+                        Keluar: {(summaryOut.byType["SplitTwoThree"] || 0).toFixed(1)} m³
+                    </div>
+                </div>
 
-                {/* Pasir */}
-                <Card className="border-yellow-200/80 shadow-xs bg-yellow-50/30">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-yellow-800 uppercase tracking-wider flex items-center justify-between">
-                            <span>Pasir Cor</span>
-                            <Layers className="w-3.5 h-3.5 text-yellow-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-xl font-black text-yellow-950 font-mono">
+                {/* 5. Pasir Cor */}
+                <div className="bg-white border border-yellow-200/80 rounded-xl p-3 shadow-2xs hover:border-yellow-300 transition-colors bg-yellow-50/20">
+                    <div className="flex items-center justify-between text-yellow-800 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-yellow-800">Pasir Cor</span>
+                        <Layers className="w-3.5 h-3.5 text-yellow-600" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-black font-mono text-yellow-950 leading-tight">
                             {(summary.byType["Pasir"] || 0).toLocaleString("id-ID", { maximumFractionDigits: 1 })}
-                            <span className="text-xs font-semibold text-yellow-700 ml-1">m³</span>
-                        </div>
-                        <div className="text-[11px] text-yellow-700/80 mt-0.5 font-medium">
-                            {summary.totalVol > 0
-                                ? `${(((summary.byType["Pasir"] || 0) / summary.totalVol) * 100).toFixed(1)}% porsi`
-                                : "0% porsi"}
-                        </div>
-                    </CardContent>
-                </Card>
+                        </span>
+                        <span className="text-[10px] text-yellow-700 font-semibold">m³</span>
+                    </div>
+                    <div className="text-[10px] text-yellow-800/80 mt-0.5 truncate">
+                        Keluar: {(summaryOut.byType["Pasir"] || 0).toFixed(1)} m³
+                    </div>
+                </div>
 
-                {/* Komposisi Sumber */}
-                <Card className="border-emerald-200/70 shadow-xs bg-emerald-50/30">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider flex items-center justify-between">
-                            <span>Quarry vs Vendor</span>
-                            <Mountain className="w-3.5 h-3.5 text-emerald-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-sm font-bold text-emerald-950 flex items-center justify-between">
-                            <span>Quarry:</span>
-                            <span className="font-mono">{summary.internalVol.toFixed(1)} m³</span>
-                        </div>
-                        <div className="text-xs text-slate-500 flex items-center justify-between mt-0.5">
-                            <span>Vendor:</span>
-                            <span className="font-mono">{summary.externalVol.toFixed(1)} m³</span>
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* Total Retase DT */}
-                <Card className="border-blue-200/70 shadow-xs bg-blue-50/40">
-                    <CardHeader className="pb-1 pt-3.5 px-3.5">
-                        <CardTitle className="text-[11px] font-bold text-blue-800 uppercase tracking-wider flex items-center justify-between">
-                            <span>Retase Sopir DT</span>
-                            <Calculator className="w-3.5 h-3.5 text-blue-600" />
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3.5 pb-3.5">
-                        <div className="text-lg font-black text-blue-900 font-mono">
-                            Rp {summary.totalRetase.toLocaleString("id-ID")}
-                        </div>
-                        <div className="text-[11px] text-blue-700/80 mt-0.5 font-medium">
-                            Akumulasi Komisi Quarry
-                        </div>
-                    </CardContent>
-                </Card>
+                {/* 6. Retase Sopir DT */}
+                <div className="bg-white border border-blue-200/80 rounded-xl p-3 shadow-2xs hover:border-blue-300 transition-colors bg-blue-50/30">
+                    <div className="flex items-center justify-between text-blue-800 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900">Retase Sopir DT</span>
+                        <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                        <span className="text-base font-black font-mono text-blue-900 leading-tight truncate">
+                            Rp {(summary.totalRetase + summaryOut.totalRetase).toLocaleString("id-ID")}
+                        </span>
+                    </div>
+                    <div className="text-[10px] text-blue-700/80 mt-0.5 truncate">
+                        Quarry: Rp {summary.totalRetase.toLocaleString("id-ID")} • Keluar: Rp {summaryOut.totalRetase.toLocaleString("id-ID")}
+                    </div>
+                </div>
             </div>
 
-            {/* ── 3 MAIN TABS ── */}
-            <Tabs defaultValue="masuk" className="space-y-4">
+            {/* ── MAIN TABS ── */}
+            <Tabs defaultValue="semua" className="space-y-4">
                 <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200 pb-2">
                     <TabsList className="bg-slate-100 p-1">
-                        <TabsTrigger value="masuk" className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-xs">
-                            <PackagePlus className="h-3.5 w-3.5" />
-                            <span>Data Material Masuk</span>
-                            <span className="bg-slate-200 text-slate-700 rounded-full px-1.5 py-0.2 text-[10px] font-mono">
+                        <TabsTrigger value="semua" className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-xs">
+                            <ArrowUpDown className="h-3.5 w-3.5 text-blue-600" />
+                            <span>Semua Mutasi (Masuk & Keluar)</span>
+                            <span className="bg-slate-200 text-slate-800 rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold">
+                                {combinedData.length}
+                            </span>
+                        </TabsTrigger>
+
+                        <TabsTrigger value="masuk" className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-xs">
+                            <PackagePlus className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>Penerimaan Masuk</span>
+                            <span className="bg-emerald-100 text-emerald-800 rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold">
                                 {filteredData.length}
+                            </span>
+                        </TabsTrigger>
+
+                        <TabsTrigger value="keluar" className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-xs">
+                            <PackageMinus className="h-3.5 w-3.5 text-rose-600" />
+                            <span>Pengeluaran Keluar</span>
+                            <span className="bg-rose-100 text-rose-800 rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold">
+                                {filteredOutData.length}
                             </span>
                         </TabsTrigger>
 
@@ -532,6 +693,172 @@ export function MaterialAgregatClient({
                         )}
                     </TabsList>
                 </div>
+
+                {/* ══════════════════════════════════════════════════════════
+                    TAB 0: SEMUA MUTASI (MASUK & KELUAR BERDAMPINGAN)
+                ══════════════════════════════════════════════════════════ */}
+                <TabsContent value="semua" className="space-y-4">
+                    {/* TABLE SEMUA MUTASI */}
+                    <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+                        <SimpleDataTable<AggregateCombinedRow>
+                            data={combinedData}
+                            searchKeys={["no_bon", "party", "vehicleInfo", "notes", "aggregateLabel", "categoryOrSource"]}
+                            searchPlaceholder="Cari surat jalan, supplier/pembeli, kendaraan, sopir, atau keperluan..."
+                            pageSize={15}
+                        >
+                            {(items, sortConfig, toggleSort) => (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-slate-50 border-b border-slate-200">
+                                            <TableHead className="w-[105px]">
+                                                <SortableHeader<AggregateCombinedRow>
+                                                    label="Tanggal"
+                                                    sortKey="date"
+                                                    sortConfig={sortConfig}
+                                                    onSort={toggleSort}
+                                                />
+                                            </TableHead>
+                                            <TableHead className="w-[100px] text-center">Arah Mutasi</TableHead>
+                                            {showCabang && <TableHead className="w-[110px]">Cabang</TableHead>}
+                                            <TableHead className="w-[115px]">Material</TableHead>
+                                            <TableHead className="w-[130px]">Kategori / Sumber</TableHead>
+                                            <TableHead className="w-[105px]">No. Surat Jalan</TableHead>
+                                            <TableHead className="min-w-[130px]">Pihak / Rekanan</TableHead>
+                                            <TableHead className="w-[140px]">Armada & Sopir</TableHead>
+                                            <TableHead className="w-[110px] text-right">
+                                                <SortableHeader<AggregateCombinedRow>
+                                                    label="Volume / Qty"
+                                                    sortKey="volume"
+                                                    sortConfig={sortConfig}
+                                                    onSort={toggleSort}
+                                                />
+                                            </TableHead>
+                                            <TableHead className="w-[125px] text-right">Nilai / Retase</TableHead>
+                                            <TableHead className="min-w-[120px]">Catatan</TableHead>
+                                            {canManage && <TableHead className="w-[75px] text-right">Aksi</TableHead>}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {items.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={showCabang ? 12 : 11} className="h-24 text-center text-muted-foreground text-xs">
+                                                    Belum ada transaksi mutasi material agregat.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            items.map((row) => {
+                                                const isIncoming = row.direction === "IN"
+                                                return (
+                                                    <TableRow key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                                                        <TableCell className="text-xs font-mono whitespace-nowrap text-slate-700">
+                                                            {row.date}
+                                                        </TableCell>
+                                                        <TableCell className="text-center">
+                                                            {isIncoming ? (
+                                                                <Badge variant="outline" className="border-emerald-300 bg-emerald-50 text-emerald-800 text-[10px] px-1.5 py-0.5 font-bold gap-1">
+                                                                    <ArrowDownLeft className="w-3 h-3 text-emerald-600" />
+                                                                    MASUK
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="border-rose-300 bg-rose-50 text-rose-800 text-[10px] px-1.5 py-0.5 font-bold gap-1">
+                                                                    <ArrowUpRight className="w-3 h-3 text-rose-600" />
+                                                                    KELUAR
+                                                                </Badge>
+                                                            )}
+                                                        </TableCell>
+                                                        {showCabang && (
+                                                            <TableCell className="text-xs font-medium text-slate-800">
+                                                                {row.locationName}
+                                                            </TableCell>
+                                                        )}
+                                                        <TableCell>
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${MATERIAL_COLORS[row.aggregate_type] || "bg-slate-100 text-slate-700"}`}>
+                                                                {row.aggregateLabel}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant="outline" className={`text-[10px] font-medium ${isIncoming ? "border-emerald-200 bg-emerald-50/30 text-emerald-900" : "border-slate-300"}`}>
+                                                                {row.categoryOrSource}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-xs font-mono text-slate-700">
+                                                            {row.no_bon}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs font-semibold text-slate-800">
+                                                            {row.party}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs text-slate-600">
+                                                            <div className="font-mono text-[11px]">{row.vehicleInfo}</div>
+                                                        </TableCell>
+                                                        <TableCell className="text-right font-mono font-bold text-xs">
+                                                            {isIncoming ? (
+                                                                <span className="text-emerald-700 font-black">
+                                                                    +{row.volume.toLocaleString("id-ID", { maximumFractionDigits: 2 })} {row.unit}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-rose-700 font-black">
+                                                                    -{row.volume.toLocaleString("id-ID", { maximumFractionDigits: 2 })} {row.unit}
+                                                                </span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-xs font-mono">
+                                                            {row.financialInfo ? (
+                                                                <span className="font-bold text-slate-900 text-[11px]">
+                                                                    {row.financialInfo}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-slate-300">-</span>
+                                                            )}
+                                                        </TableCell>
+                                                        <TableCell className="text-xs text-slate-500 max-w-[140px] truncate" title={row.notes || ""}>
+                                                            {row.notes || "-"}
+                                                        </TableCell>
+                                                        {canManage && (
+                                                            <TableCell className="text-right">
+                                                                <div className="flex items-center justify-end gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                                                        onClick={() => {
+                                                                            if (isIncoming && row.rawIn) {
+                                                                                handleEdit(row.rawIn)
+                                                                            } else if (!isIncoming && row.rawOut) {
+                                                                                handleEditOut(row.rawOut)
+                                                                            }
+                                                                        }}
+                                                                        title="Edit transaksi"
+                                                                    >
+                                                                        <Edit className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                                                        onClick={() => {
+                                                                            if (isIncoming && row.rawIn) {
+                                                                                handleDelete(row.rawIn)
+                                                                            } else if (!isIncoming && row.rawOut) {
+                                                                                handleDeleteOut(row.rawOut)
+                                                                            }
+                                                                        }}
+                                                                        title="Hapus transaksi"
+                                                                    >
+                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                    </Button>
+                                                                </div>
+                                                            </TableCell>
+                                                        )}
+                                                    </TableRow>
+                                                )
+                                            })
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </SimpleDataTable>
+                    </Card>
+                </TabsContent>
 
                 {/* ══════════════════════════════════════════════════════════
                     TAB 1: DATA MATERIAL MASUK
@@ -872,6 +1199,254 @@ export function MaterialAgregatClient({
                 </TabsContent>
 
                 {/* ══════════════════════════════════════════════════════════
+                    TAB 2: DATA MATERIAL KELUAR
+                ══════════════════════════════════════════════════════════ */}
+                <TabsContent value="keluar" className="space-y-4">
+                    {/* FILTER TOOLBAR KELUAR */}
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            {/* Filter Cabang */}
+                            {showCabang && (
+                                <div className="w-[180px]">
+                                    <Select value={filterOutCabang} onValueChange={setFilterOutCabang}>
+                                        <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                            <SelectValue placeholder="Semua Cabang" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ALL" className="text-xs font-semibold">Semua Cabang BP</SelectItem>
+                                            {locations.map((loc) => (
+                                                <SelectItem key={loc.id} value={loc.id} className="text-xs">
+                                                    📍 {loc.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+
+                            {/* Filter Jenis Material */}
+                            <div className="w-[170px]">
+                                <Select value={filterOutMaterial} onValueChange={setFilterOutMaterial}>
+                                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                        <SelectValue placeholder="Semua Material" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ALL" className="text-xs font-semibold">Semua Jenis Material</SelectItem>
+                                        {AGGREGATE_TYPE_OPTIONS.map((opt) => (
+                                            <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                                {opt.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Filter Kategori */}
+                            <div className="w-[180px]">
+                                <Select value={filterOutCategory} onValueChange={setFilterOutCategory}>
+                                    <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
+                                        <SelectValue placeholder="Semua Kategori" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ALL" className="text-xs font-semibold">Semua Kategori</SelectItem>
+                                        {OUTGOING_CATEGORY_OPTIONS.map((cat) => (
+                                            <SelectItem key={cat.value} value={cat.value} className="text-xs">
+                                                {cat.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 font-medium">
+                                Total: <strong className="font-mono text-slate-800">{filteredOutData.reduce((acc, r) => acc + r.volume_cubic, 0).toFixed(1)} m³</strong> ({filteredOutData.length} transaksi)
+                            </span>
+                            {canManage && (
+                                <Button
+                                    onClick={() => {
+                                        setEditingOutData(null)
+                                        setIsOutFormOpen(true)
+                                    }}
+                                    size="sm"
+                                    className="h-8 gap-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
+                                >
+                                    <PackageMinus className="h-3.5 w-3.5" />
+                                    <span>+ Catat Material Keluar</span>
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* TABLE MATERIAL KELUAR */}
+                    <Card className="border-slate-200 shadow-sm overflow-hidden bg-white">
+                        <SimpleDataTable<AggregateOutRow>
+                            data={filteredOutData}
+                            searchKeys={["no_bon", "recipient", "driver_name", "plate_number", "notes", "aggregateLabel", "categoryLabel"]}
+                            searchPlaceholder="Cari no. bon, penerima, supir, plat nomor, material, atau keperluan..."
+                            pageSize={15}
+                        >
+                            {(items, sortConfig, toggleSort) => (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="bg-slate-50 border-b border-slate-200">
+                                            <TableHead className="w-[110px]">
+                                                <SortableHeader<AggregateOutRow>
+                                                    label="Tanggal"
+                                                    sortKey="date"
+                                                    sortConfig={sortConfig}
+                                                    onSort={toggleSort}
+                                                />
+                                            </TableHead>
+                                            {showCabang && (
+                                                <TableHead className="w-[120px]">
+                                                    <SortableHeader<AggregateOutRow>
+                                                        label="Cabang"
+                                                        sortKey="locationName"
+                                                        sortConfig={sortConfig}
+                                                        onSort={toggleSort}
+                                                    />
+                                                </TableHead>
+                                            )}
+                                            <TableHead className="w-[120px]">Jenis Material</TableHead>
+                                            <TableHead className="w-[130px]">Kategori</TableHead>
+                                            <TableHead className="w-[110px]">No. Bon</TableHead>
+                                            <TableHead className="min-w-[130px]">Penerima / Tujuan</TableHead>
+                                            <TableHead className="w-[145px]">Armada & Sopir</TableHead>
+                                            <TableHead className="w-[105px] text-right">
+                                                <SortableHeader<AggregateOutRow>
+                                                    label="Volume / Qty"
+                                                    sortKey="volume_cubic"
+                                                    sortConfig={sortConfig}
+                                                    onSort={toggleSort}
+                                                />
+                                            </TableHead>
+                                            <TableHead className="w-[125px] text-right">Nilai Jual (Rp)</TableHead>
+                                            <TableHead className="w-[110px] text-right">Retase DT (Rp)</TableHead>
+                                            <TableHead className="min-w-[120px]">Catatan</TableHead>
+                                            {canManage && <TableHead className="w-[75px] text-right">Aksi</TableHead>}
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {items.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={showCabang ? 12 : 11} className="h-24 text-center text-muted-foreground text-xs">
+                                                    Tidak ada data pengeluaran material agregat yang sesuai filter.
+                                                </TableCell>
+                                            </TableRow>
+                                        ) : (
+                                            items.map((row) => (
+                                                <TableRow key={row.id} className="hover:bg-slate-50/80 transition-colors">
+                                                    <TableCell className="text-xs font-mono whitespace-nowrap text-slate-700">
+                                                        {row.date}
+                                                    </TableCell>
+                                                    {showCabang && (
+                                                        <TableCell className="text-xs font-medium text-slate-800">
+                                                            {row.locationName}
+                                                        </TableCell>
+                                                    )}
+                                                    <TableCell>
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${MATERIAL_COLORS[row.aggregate_type] || "bg-slate-100 text-slate-700"}`}>
+                                                            {row.aggregateLabel}
+                                                        </span>
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Badge variant="outline" className="text-[10px] font-medium border-slate-300">
+                                                            {row.categoryLabel}
+                                                        </Badge>
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-mono text-slate-700">
+                                                        {row.no_bon || "-"}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs font-semibold text-slate-800">
+                                                        {row.recipient || "-"}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-slate-600">
+                                                        {row.transport_mode === "INTERNAL_DT" ? (
+                                                            <div>
+                                                                <span className="font-mono font-bold text-blue-700">{row.plate_number}</span>
+                                                                <div className="flex items-center gap-1 mt-0.5">
+                                                                    <Badge className="bg-blue-600 text-white text-[9px] px-1 py-0 h-3.5">DT Internal</Badge>
+                                                                    {row.driver_name && <span className="text-[10px] text-slate-500">{row.driver_name}</span>}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <div>
+                                                                <span className="font-mono font-medium text-slate-700">{row.plate_number || "-"}</span>
+                                                                <div className="text-[10px] text-slate-400">Pembeli: {row.driver_name || "Ambil Sendiri"}</div>
+                                                            </div>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono font-bold text-xs text-rose-700">
+                                                        -{row.volume_cubic.toLocaleString("id-ID", { maximumFractionDigits: 2 })} {row.unit || "m³"}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-xs">
+                                                        {row.total_price && row.total_price > 0 ? (
+                                                            <div>
+                                                                <span className="font-bold text-emerald-700">
+                                                                    Rp {row.total_price.toLocaleString("id-ID")}
+                                                                </span>
+                                                                {row.unit_price && (
+                                                                    <div className="text-[9px] text-slate-400">
+                                                                        @Rp {row.unit_price.toLocaleString("id-ID")}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-300">-</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-right font-mono text-xs">
+                                                        {row.retase_amount && row.retase_amount > 0 ? (
+                                                            <div>
+                                                                <span className="font-bold text-blue-800">
+                                                                    Rp {row.retase_amount.toLocaleString("id-ID")}
+                                                                </span>
+                                                                <div className="text-[9px] text-slate-400">
+                                                                    {row.distance_km ? `${row.distance_km} KM` : ""}
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-slate-300">-</span>
+                                                        )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs text-slate-500 max-w-[130px] truncate" title={row.notes || ""}>
+                                                        {row.notes || "-"}
+                                                    </TableCell>
+                                                    {canManage && (
+                                                        <TableCell className="text-right">
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                                                    onClick={() => handleEditOut(row)}
+                                                                >
+                                                                    <Edit className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-7 w-7 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                                                    onClick={() => handleDeleteOut(row)}
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </div>
+                                                        </TableCell>
+                                                    )}
+                                                </TableRow>
+                                            ))
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </SimpleDataTable>
+                    </Card>
+                </TabsContent>
+
+                {/* ══════════════════════════════════════════════════════════
                     TAB 2: KARTU STOK (LEDGER MUTASI)
                 ══════════════════════════════════════════════════════════ */}
                 <TabsContent value="stok" className="space-y-4">
@@ -989,8 +1564,13 @@ export function MaterialAgregatClient({
                                                                     {isOut ? "OUT" : "IN"}
                                                                 </Badge>
                                                             </TableCell>
-                                                            <TableCell className="font-medium text-xs max-w-[260px] truncate text-slate-800">
-                                                                {item.description}
+                                                            <TableCell className="font-medium text-xs max-w-[260px] text-slate-800">
+                                                                <div>{item.description}</div>
+                                                                {item.detail_conversion && (
+                                                                    <span className="text-[10px] text-slate-500 font-normal block font-mono">
+                                                                        Konversi: {item.detail_conversion}
+                                                                    </span>
+                                                                )}
                                                             </TableCell>
                                                             <TableCell className="text-xs font-mono text-slate-500 max-w-[160px] truncate">
                                                                 {item.reference}
@@ -1280,6 +1860,27 @@ export function MaterialAgregatClient({
                 userLocationId={userLocationId}
                 onSuccess={() => setIsFormOpen(false)}
                 onCancel={() => setIsFormOpen(false)}
+            />
+
+            {/* ── MODAL INPUT & EDIT PENGELUARAN ── */}
+            <MaterialAgregatOutForm
+                isOpen={isOutFormOpen}
+                initialData={editingOutData}
+                locations={locations}
+                vehicles={vehicles}
+                drivers={drivers}
+                retaseSettings={retaseSettings}
+                userRole={userRole}
+                userLocationId={userLocationId}
+                onSuccess={() => {
+                    setIsOutFormOpen(false)
+                    setEditingOutData(null)
+                    toast({ title: "Berhasil", description: "Data pengeluaran material berhasil dicatat." })
+                }}
+                onCancel={() => {
+                    setIsOutFormOpen(false)
+                    setEditingOutData(null)
+                }}
             />
         </div>
     )

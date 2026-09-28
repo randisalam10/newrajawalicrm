@@ -48,6 +48,24 @@ export default async function PrintRetasePage({
             if (setting) opRate = setting.operator_rate_per_cubic || 0
         }
 
+        const masterRates = await (prisma as any).masterIncentiveRate.findMany({
+            where: { kategori_peran: "OPERATOR_BP", isActive: true },
+            orderBy: [{ effective_date: 'desc' }, { createdAt: 'desc' }]
+        }).catch(() => [])
+
+        const getOpRateForTx = (txDate: Date, locId?: string) => {
+            const d = new Date(txDate)
+            const match = masterRates.filter((m: any) =>
+                new Date(m.effective_date) <= d &&
+                (m.locationId === locId || m.locationId === null)
+            )
+            if (match.length > 0) {
+                const spec = match.find((m: any) => m.locationId === locId)
+                return Number(spec ? spec.tarif_utama : match[0].tarif_utama) || 0
+            }
+            return opRate || 0
+        }
+
         const transactions = await prisma.productionTransaction.findMany({
             where: {
                 status: "Confirmed",
@@ -70,12 +88,12 @@ export default async function PrintRetasePage({
         const totalTrip = transactions.length
         const totalVolume = transactions.reduce((s, t) => s + t.volume_cubic, 0)
         const totalIncome = transactions.reduce((s, t) => {
-            const r = opRate || t.location?.retaseSetting?.operator_rate_per_cubic || 0
+            const r = getOpRateForTx(t.date, t.locationId) || opRate || t.location?.retaseSetting?.operator_rate_per_cubic || 0
             return s + (t.volume_cubic * r)
         }, 0)
 
         const records = transactions.map(tx => {
-            const r = opRate || tx.location?.retaseSetting?.operator_rate_per_cubic || 0
+            const r = getOpRateForTx(tx.date, tx.locationId) || opRate || tx.location?.retaseSetting?.operator_rate_per_cubic || 0
             return {
                 id: tx.id,
                 date: tx.date.toISOString(),

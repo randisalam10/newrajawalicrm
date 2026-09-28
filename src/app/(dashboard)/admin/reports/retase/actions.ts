@@ -52,7 +52,7 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         opWhere.locationId = filter.locationId
     }
 
-    const [transactions, dumpTruckIncomings, opTransactions, branchOperators, retaseSettings] = await Promise.all([
+    const [transactions, dumpTruckIncomings, opTransactions, branchOperators, retaseSettings, masterIncentives] = await Promise.all([
         (prisma as any).productionTransaction.findMany({
             where,
             include: {
@@ -97,14 +97,12 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
             include: { location: true },
             orderBy: { name: 'asc' }
         }),
-        (prisma as any).retaseSetting.findMany()
+        (prisma as any).retaseSetting.findMany(),
+        (prisma as any).masterIncentiveRate.findMany({
+            where: { isActive: true },
+            orderBy: [{ effective_date: 'desc' }, { createdAt: 'desc' }]
+        }).catch(() => [])
     ])
-
-    // Map tarif insentif operator per cabang
-    const settingMap = new Map<string, number>()
-    retaseSettings.forEach((s: any) => {
-        settingMap.set(s.locationId, s.operator_rate_per_cubic || 0)
-    })
 
     // Map active operators per cabang untuk auto-mapping
     const branchOperatorsMap = new Map<string, any[]>()
@@ -115,10 +113,37 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         }
     })
 
+    // Resolver tarif insentif operator BP berdasarkan tanggal transaksi (Effective Date Rule)
+    const resolveOpRate = (locId: string, txDate: Date): number => {
+        const txDateObj = new Date(txDate)
+        // 1. Cari di MasterIncentiveRate yang effective_date <= txDate
+        const matchingRates = (masterIncentives || []).filter((r: any) =>
+            r.kategori_peran === "OPERATOR_BP" &&
+            new Date(r.effective_date) <= txDateObj &&
+            (r.locationId === locId || r.locationId === null)
+        )
+        if (matchingRates.length > 0) {
+            // Prioritaskan cabang spesifik
+            const branchSpecific = matchingRates.find((r: any) => r.locationId === locId)
+            if (branchSpecific) return Number(branchSpecific.tarif_utama) || 0
+            return Number(matchingRates[0].tarif_utama) || 0
+        }
+
+        // 2. Fallback ke RetaseSetting jika ada
+        const fallback = (retaseSettings || []).find((s: any) => s.locationId === locId)
+        if (fallback) {
+            const effDate = fallback.effective_from ? new Date(fallback.effective_from) : null
+            if (!effDate || txDateObj >= effDate) {
+                return Number(fallback.operator_rate_per_cubic) || 0
+            }
+        }
+        return 0
+    }
+
     // Proses data transaksi operator BP
     const operatorRecords: any[] = []
     opTransactions.forEach((tx: any) => {
-        const locRate = settingMap.get(tx.locationId) || 0
+        const locRate = resolveOpRate(tx.locationId, tx.date)
         const locOperators = branchOperatorsMap.get(tx.locationId) || []
 
         // Resolusi operator:

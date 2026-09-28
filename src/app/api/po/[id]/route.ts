@@ -189,7 +189,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     updateData.approvalChannel = 'MOBILE'
                     updateData.isBypassed = false
                 }
-            } else if (user.role === 'SuperAdminBP' || user.role === 'AdminLogistik') {
+            } else if (user.role === 'SuperAdminBP' || user.role === 'AdminLogistik' || user.role === 'AdminBP' || (user as any).permissions?.includes('LOGISTIK_APPROVE')) {
                 // Admin bypass: Sesuai aturan, admin yg approve TIDAK menambahkan TTD
                 updateData.fvpApprovedAt = now
                 updateData.ceoApprovedAt = now

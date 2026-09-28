@@ -2,18 +2,35 @@ import { getWorkItems } from "./actions"
 import { ItemPekerjaanClient } from "./item-pekerjaan-client"
 import { getLocations } from "../cabang/actions"
 import { auth } from "@/auth"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 import { Eye } from "lucide-react"
+import { redirect } from "next/navigation"
 
 export default async function ItemPekerjaanPage() {
     const session = await auth()
+    if (!session?.user) redirect("/login")
+
+    const userRole = session.user.role || "OperatorBP"
+    const canView = userRole === "SuperAdminBP" ||
+        hasPermission(session.user, "ITEM_PEKERJAAN", "VIEW") ||
+        (["AdminBP", "CEO", "FVP"].includes(userRole) && userRole !== "AdminLogistik")
+
+    if (!canView) {
+        redirect(userRole === "AdminLogistik" ? "/logistik" : "/admin")
+    }
+
     const [data, locations] = await Promise.all([
         getWorkItems(),
         getLocations()
     ])
-    const userRole = session?.user?.role || "OperatorBP"
-    const isCorporate = isCorporateUser(session?.user)
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP"].includes(userRole)
+    const isCorporate = isCorporateUser(session.user)
+    const canManage = userRole === "SuperAdminBP" || (
+        !["CEO", "FVP", "Approver"].includes(userRole) && (
+            userRole === "AdminBP" ||
+            hasPermission(session.user, "ITEM_PEKERJAAN", "CREATE") ||
+            hasPermission(session.user, "ITEM_PEKERJAAN", "EDIT")
+        )
+    )
 
     return (
         <div className="space-y-6">

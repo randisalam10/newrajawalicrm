@@ -27,6 +27,8 @@ import { id } from "date-fns/locale"
 import { 
     confirmTransaction, 
     upsertRetaseSetting, 
+    saveMixerRetaseSetting,
+    saveOperatorBPRateSetting,
     deleteConfirmedTransaction,
     upsertAggregateRetaseSetting,
     toggleAggregateRetasePaid
@@ -38,6 +40,7 @@ export function RetaseClient({
     pendingTransactions,
     confirmedTransactions,
     settings,
+    masterIncentives = [],
     locations,
     userRole,
     customers,
@@ -48,6 +51,7 @@ export function RetaseClient({
     pendingTransactions: any[],
     confirmedTransactions: any[],
     settings: any[],
+    masterIncentives?: any[],
     locations: any[],
     userRole: string,
     customers: any[],
@@ -69,6 +73,15 @@ export function RetaseClient({
     const [filterCustomer, setFilterCustomer] = useState("all")
     const [customerPopoverOpen, setCustomerPopoverOpen] = useState(false)
 
+    // Helper untuk mencari tarif peran tertentu berdasarkan cabang atau fallback global
+    const resolveRate = (locId: string, role: string, fallback: number) => {
+        const branchRate = (masterIncentives || []).find((r: any) => r.kategori_peran === role && r.locationId === locId && r.isActive)
+        if (branchRate && Number(branchRate.tarif_utama) > 0) return Number(branchRate.tarif_utama)
+        const globalRate = (masterIncentives || []).find((r: any) => r.kategori_peran === role && !r.locationId && r.isActive)
+        if (globalRate && Number(globalRate.tarif_utama) > 0) return Number(globalRate.tarif_utama)
+        return fallback
+    }
+
     // Unique customer list derived from confirmedTransactions
     const uniqueCustomers = useMemo(() => {
         const map = new Map<string, string>()
@@ -88,16 +101,33 @@ export function RetaseClient({
         })
     }, [confirmedTransactions, filterCabang, filterCustomer])
 
-    // Setting State Mixer
+    // Setting State Mixer & Operator BP
     const initialLoc = locations[0]?.id || ""
     const initialSetting = settings.find((s: any) => s.locationId === initialLoc)
     const [settingLocation, setSettingLocation] = useState(initialLoc)
-    const [settingPrice, setSettingPrice] = useState(initialSetting?.price_per_cubic_km != null ? String(initialSetting.price_per_cubic_km) : "")
-    const [settingCalcMode, setSettingCalcMode] = useState<"DISTANCE_ONLY" | "DISTANCE_AND_VOLUME">(initialSetting?.calculation_mode || "DISTANCE_ONLY")
-    const [settingOperatorRate, setSettingOperatorRate] = useState(initialSetting?.operator_rate_per_cubic != null ? String(initialSetting.operator_rate_per_cubic) : "0")
-    const [applyScope, setApplyScope] = useState<"FUTURE" | "BACKDATE">("FUTURE")
-    const [effectiveDate, setEffectiveDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
-    const [showBackdateAlert, setShowBackdateAlert] = useState(false)
+
+    const initialMixerPrice = initialSetting?.price_per_cubic_km != null && Number(initialSetting.price_per_cubic_km) > 0
+        ? String(initialSetting.price_per_cubic_km)
+        : String(resolveRate(initialLoc, "SOPIR_MIXER", 10000))
+
+    const initialOpRate = initialSetting?.operator_rate_per_cubic != null && Number(initialSetting.operator_rate_per_cubic) > 0
+        ? String(initialSetting.operator_rate_per_cubic)
+        : String(resolveRate(initialLoc, "OPERATOR_BP", 1500))
+
+    // 1. Mixer Retase State
+    const [mixerPrice, setMixerPrice] = useState(initialMixerPrice)
+    const [mixerCalcMode, setMixerCalcMode] = useState<"DISTANCE_ONLY" | "DISTANCE_AND_VOLUME">(initialSetting?.calculation_mode || "DISTANCE_ONLY")
+    const [mixerApplyScope, setMixerApplyScope] = useState<"FUTURE" | "BACKDATE">("FUTURE")
+    const [mixerEffectiveDate, setMixerEffectiveDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
+    const [isSavingMixer, setIsSavingMixer] = useState(false)
+    const [showMixerBackdateAlert, setShowMixerBackdateAlert] = useState(false)
+
+    // 2. Operator BP State
+    const [operatorRate, setOperatorRate] = useState(initialOpRate)
+    const [operatorApplyScope, setOperatorApplyScope] = useState<"FUTURE" | "BACKDATE">("FUTURE")
+    const [operatorEffectiveDate, setOperatorEffectiveDate] = useState(() => format(new Date(), "yyyy-MM-dd"))
+    const [isSavingOperator, setIsSavingOperator] = useState(false)
+    const [showOperatorBackdateAlert, setShowOperatorBackdateAlert] = useState(false)
 
     const handleConfirm = async () => {
         if (!isConfirming) return
@@ -121,45 +151,86 @@ export function RetaseClient({
         setDistanceInput(t.project?.default_distance?.toString() || "")
     }
 
-    const executeSaveSetting = async () => {
-        setIsLoading(true)
+    // --- MIXER HANDLERS (TERISOLASI 100%) ---
+    const executeSaveMixer = async () => {
+        setIsSavingMixer(true)
         const formData = new FormData()
         formData.append("locationId", settingLocation)
-        formData.append("price_per_cubic_km", settingPrice)
-        formData.append("calculation_mode", settingCalcMode)
-        formData.append("operator_rate_per_cubic", settingOperatorRate || "0")
-        formData.append("apply_mode", applyScope)
-        if (applyScope === "BACKDATE") {
-            formData.append("effective_date", effectiveDate)
+        formData.append("price_per_cubic_km", mixerPrice)
+        formData.append("calculation_mode", mixerCalcMode)
+        formData.append("apply_mode", mixerApplyScope)
+        if (mixerApplyScope === "BACKDATE") {
+            formData.append("effective_date", mixerEffectiveDate)
         }
 
-        const res = await upsertRetaseSetting(formData)
-        setIsLoading(false)
-        setShowBackdateAlert(false)
+        const res = await saveMixerRetaseSetting(formData)
+        setIsSavingMixer(false)
+        setShowMixerBackdateAlert(false)
 
         if (res.error) {
-            toast({ title: "Gagal", description: res.error, variant: "destructive" })
+            toast({ title: "Gagal Menyimpan Tarif Mixer", description: res.error, variant: "destructive" })
         } else {
             toast({
-                title: "Tersimpan",
-                description: res.message || "Harga & Rumus Retase berhasil diperbarui."
+                title: "Tarif Sopir Mixer Tersimpan",
+                description: res.message || "Harga & Rumus Retase Sopir Mixer berhasil diperbarui."
             })
         }
     }
 
-    const handleSaveSetting = (e: React.FormEvent) => {
+    const handleSaveMixer = (e: React.FormEvent) => {
         e.preventDefault()
-        if (!settingPrice || Number(settingPrice) < 0) {
+        if (!mixerPrice || Number(mixerPrice) < 0) {
             return toast({ title: "Harga tidak valid", description: "Masukkan nilai harga dasar yang valid", variant: "destructive" })
         }
 
-        if (applyScope === "BACKDATE") {
-            if (!effectiveDate) {
-                return toast({ title: "Tanggal Wajib Diisi", description: "Pilih tanggal mulai berlaku mundur", variant: "destructive" })
+        if (mixerApplyScope === "BACKDATE") {
+            if (!mixerEffectiveDate) {
+                return toast({ title: "Tanggal Wajib Diisi", description: "Pilih tanggal mulai berlaku mundur untuk Sopir Mixer", variant: "destructive" })
             }
-            setShowBackdateAlert(true)
+            setShowMixerBackdateAlert(true)
         } else {
-            executeSaveSetting()
+            executeSaveMixer()
+        }
+    }
+
+    // --- OPERATOR BP HANDLERS (TERISOLASI 100%) ---
+    const executeSaveOperator = async () => {
+        setIsSavingOperator(true)
+        const formData = new FormData()
+        formData.append("locationId", settingLocation)
+        formData.append("operator_rate_per_cubic", operatorRate || "0")
+        formData.append("apply_mode", operatorApplyScope)
+        if (operatorApplyScope === "BACKDATE") {
+            formData.append("effective_date", operatorEffectiveDate)
+        }
+
+        const res = await saveOperatorBPRateSetting(formData)
+        setIsSavingOperator(false)
+        setShowOperatorBackdateAlert(false)
+
+        if (res.error) {
+            toast({ title: "Gagal Menyimpan Insentif Operator", description: res.error, variant: "destructive" })
+        } else {
+            toast({
+                title: "Insentif Operator BP Tersimpan",
+                description: res.message || "Tarif insentif Operator BP berhasil diperbarui."
+            })
+        }
+    }
+
+    const handleSaveOperator = (e: React.FormEvent) => {
+        e.preventDefault()
+        if (!operatorRate || Number(operatorRate) < 0) {
+            return toast({ title: "Tarif tidak valid", description: "Masukkan nilai tarif operator BP yang valid", variant: "destructive" })
+        }
+
+        if (operatorApplyScope === "BACKDATE") {
+            if (!operatorEffectiveDate) {
+                return toast({ title: "Tanggal Wajib Diisi", description: "Pilih tanggal mulai berlaku mundur untuk Operator BP", variant: "destructive" })
+            }
+            setShowOperatorBackdateAlert(true)
+        } else {
+            executeSaveOperator()
         }
     }
 
@@ -176,18 +247,25 @@ export function RetaseClient({
         }
     }
 
-    // Prefill setting form when location changes if setting exists
+    // Prefill setting form when location changes if setting exists, with fallback to Master Data
     const onLocationChange = (val: string) => {
         setSettingLocation(val)
         const existing = settings.find((s: any) => s.locationId === val)
-        if (existing) {
-            setSettingPrice(existing.price_per_cubic_km != null ? existing.price_per_cubic_km.toString() : "")
-            setSettingCalcMode(existing.calculation_mode || "DISTANCE_ONLY")
-            setSettingOperatorRate(existing.operator_rate_per_cubic != null ? existing.operator_rate_per_cubic.toString() : "0")
+        const mixerRate = resolveRate(val, "SOPIR_MIXER", 10000)
+        const opRate = resolveRate(val, "OPERATOR_BP", 1500)
+
+        if (existing && Number(existing.price_per_cubic_km) > 0) {
+            setMixerPrice(existing.price_per_cubic_km.toString())
+            setMixerCalcMode(existing.calculation_mode || "DISTANCE_ONLY")
         } else {
-            setSettingPrice("")
-            setSettingCalcMode("DISTANCE_ONLY")
-            setSettingOperatorRate("0")
+            setMixerPrice(String(mixerRate))
+            setMixerCalcMode("DISTANCE_ONLY")
+        }
+
+        if (existing && Number(existing.operator_rate_per_cubic) > 0) {
+            setOperatorRate(existing.operator_rate_per_cubic.toString())
+        } else {
+            setOperatorRate(String(opRate))
         }
     }
 
@@ -511,298 +589,556 @@ export function RetaseClient({
 
                 {canManageSettings && (
                     <TabsContent value="settings" className="space-y-4">
-                        <Card className="max-w-2xl border-slate-200">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <Settings className="w-5 h-5 text-blue-600" />
-                                    Pengaturan Rumus & Tarif Retase Mixer BP
-                                </CardTitle>
-                                <CardDescription className="text-xs">
-                                    Atur rumus komisi sopir dan tarif dasar per kilometer untuk armada Mixer di masing-masing cabang operasional.
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <form onSubmit={handleSaveSetting} className="space-y-6">
-                                    {userRole === 'SuperAdminBP' && (
-                                        <div className="space-y-2">
-                                            <Label className="font-semibold text-slate-800">Pilih Cabang Operasional</Label>
-                                            <select
-                                                className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2"
-                                                value={settingLocation}
-                                                onChange={(e) => onLocationChange(e.target.value)}
-                                                required
-                                            >
-                                                {locations.map((loc: any) => (
-                                                    <option key={loc.id} value={loc.id}>{loc.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
+                        {/* Banner Akses Data Master Insentif Terpusat */}
+                        <div className="max-w-2xl bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <Calculator className="w-4 h-4 text-blue-600" />
+                                    <span className="font-semibold text-sm text-slate-900">Pusat Data Master Insentif & Tarif Operasional</span>
+                                </div>
+                                <p className="text-xs text-slate-500 leading-relaxed">
+                                    Pengaturan seluruh peran operasional (Operator BP, Operator Concrete Pump, Operator Excavator, Sopir Mixer, dan Dump Truck) kini tersedia lengkap di Data Master.
+                                </p>
+                            </div>
+                            <a
+                                href="/admin/master-insentif"
+                                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold shadow-sm transition-colors shrink-0"
+                            >
+                                Buka Data Master ↗
+                            </a>
+                        </div>
 
-                                    {/* PILIHAN RUMUS PERHITUNGAN */}
-                                    <div className="space-y-3">
-                                        <Label className="font-semibold text-slate-800">Metode & Rumus Perhitungan Komisi</Label>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div
-                                                onClick={() => setSettingCalcMode("DISTANCE_ONLY")}
-                                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                                    settingCalcMode === "DISTANCE_ONLY"
-                                                        ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
-                                                        : "border-slate-200 hover:border-slate-300 bg-white"
-                                                }`}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-slate-900 text-sm">Harga × Jarak (KM)</span>
-                                                            <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0">Default Baru</Badge>
-                                                        </div>
-                                                        <p className="text-xs text-slate-500 leading-relaxed">
-                                                            Komisi supir hanya dihitung berdasarkan kilometer jarak tempuh (Rp/KM). Volume kubikasi mixer tidak mempengaruhi komisi.
-                                                        </p>
-                                                    </div>
-                                                    <input
-                                                        type="radio"
-                                                        checked={settingCalcMode === "DISTANCE_ONLY"}
-                                                        onChange={() => setSettingCalcMode("DISTANCE_ONLY")}
-                                                        className="mt-1 accent-blue-600"
-                                                    />
-                                                </div>
-                                            </div>
+                        {/* Ringkasan Tarif Aktif Cabang Terpilih */}
+                        <div className="max-w-2xl grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                            <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider block">Operator BP</span>
+                                <span className="text-sm font-bold text-slate-800">
+                                    Rp {resolveRate(settingLocation, "OPERATOR_BP", 1500).toLocaleString("id-ID")}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">/ m³ beton</span>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider block">Operator CP</span>
+                                <span className="text-sm font-bold text-slate-800">
+                                    Rp {resolveRate(settingLocation, "OPERATOR_CP", 150000).toLocaleString("id-ID")}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">/ trip cor</span>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider block">Operator Exca</span>
+                                <span className="text-sm font-bold text-slate-800">
+                                    Rp {resolveRate(settingLocation, "OPERATOR_ALAT_BERAT", 35000).toLocaleString("id-ID")}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">/ jam HM</span>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-slate-200">
+                                <span className="text-[10px] text-slate-400 font-medium uppercase tracking-wider block">Sopir DT</span>
+                                <span className="text-sm font-bold text-slate-800">
+                                    Rp {resolveRate(settingLocation, "SOPIR_DT", 45000).toLocaleString("id-ID")}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">agregat</span>
+                            </div>
+                        </div>
 
-                                            <div
-                                                onClick={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
-                                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                                                    settingCalcMode === "DISTANCE_AND_VOLUME"
-                                                        ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
-                                                        : "border-slate-200 hover:border-slate-300 bg-white"
-                                                }`}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div className="space-y-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-bold text-slate-900 text-sm">Harga × Jarak × Kubikasi</span>
-                                                            <Badge variant="outline" className="text-[10px] text-slate-600 px-1.5 py-0">Rumus Lama</Badge>
-                                                        </div>
-                                                        <p className="text-xs text-slate-500 leading-relaxed">
-                                                            Komisi supir dihitung proporsional terhadap jarak tempuh dan kubikasi volume beton yang diangkut (Rp/M³/KM).
-                                                        </p>
-                                                    </div>
-                                                    <input
-                                                        type="radio"
-                                                        checked={settingCalcMode === "DISTANCE_AND_VOLUME"}
-                                                        onChange={() => setSettingCalcMode("DISTANCE_AND_VOLUME")}
-                                                        className="mt-1 accent-blue-600"
-                                                    />
-                                                </div>
-                                            </div>
-                                        </div>
+                        {/* Selector Cabang untuk SuperAdmin */}
+                        {userRole === 'SuperAdminBP' && (
+                            <Card className="border-slate-200 bg-white">
+                                <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div>
+                                        <Label className="font-bold text-slate-800 text-sm">Pilih Cabang Operasional</Label>
+                                        <p className="text-xs text-slate-500">Pilih cabang yang ingin diatur tarif komisi Sopir Mixer dan insentif Operator BP-nya</p>
                                     </div>
+                                    <select
+                                        className="flex h-10 w-full sm:w-64 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold ring-offset-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2"
+                                        value={settingLocation}
+                                        onChange={(e) => onLocationChange(e.target.value)}
+                                        required
+                                    >
+                                        {locations.map((loc: any) => (
+                                            <option key={loc.id} value={loc.id}>{loc.name}</option>
+                                        ))}
+                                    </select>
+                                </CardContent>
+                            </Card>
+                        )}
 
-                                    {/* INPUT HARGA DASAR */}
-                                    <div className="space-y-2">
-                                        <Label className="font-semibold text-slate-800">
-                                            {settingCalcMode === "DISTANCE_ONLY"
-                                                ? "Harga Dasar Retase per KM (Rp/KM) *"
-                                                : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
-                                        </Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
-                                            <Input
-                                                type="number"
-                                                required
-                                                min="0"
-                                                step="any"
-                                                value={settingPrice}
-                                                onChange={(e) => setSettingPrice(e.target.value)}
-                                                placeholder={settingCalcMode === "DISTANCE_ONLY" ? "Misal: 2500" : "Misal: 1500"}
-                                                className="pl-10 text-base font-semibold"
-                                            />
-                                        </div>
-                                        <p className="text-xs text-slate-500">
-                                            Rumus aktif:{" "}
-                                            <span className="font-semibold text-slate-700">
-                                                {settingCalcMode === "DISTANCE_ONLY"
-                                                    ? "Jarak Tempuh (KM) × Harga ini"
-                                                    : "Jarak Tempuh (KM) × Kubikasi Beton (M³) × Harga ini"}
-                                            </span>
-                                        </p>
-                                    </div>
-
-                                    {/* INPUT TARIF INSENTIF OPERATOR BP */}
-                                    <div className="space-y-2 pt-2 border-t">
-                                        <Label className="font-semibold text-slate-800">
-                                            Tarif Insentif Operator BP per M³ (Rp/M³) *
-                                        </Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
-                                            <Input
-                                                type="number"
-                                                min="0"
-                                                step="any"
-                                                value={settingOperatorRate}
-                                                onChange={(e) => setSettingOperatorRate(e.target.value)}
-                                                placeholder="Misal: 2000"
-                                                className="pl-10 text-base font-semibold"
-                                            />
-                                        </div>
-                                        <p className="text-xs text-slate-500">
-                                            Insentif operator BP dihitung:{" "}
-                                            <span className="font-semibold text-slate-700">
-                                                Total Kubikasi Produksi (M³) × Rp {(Number(settingOperatorRate) || 0).toLocaleString("id-ID")}
-                                            </span>
-                                        </p>
-                                    </div>
-
-                                    {/* SIMULASI LIVE */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase tracking-wider">
-                                            <Calculator className="w-4 h-4 text-blue-600" />
-                                            Simulasi Live Perhitungan (Contoh: Jarak 10 KM, Muatan 7 M³)
-                                        </div>
-                                        <div className="flex items-center justify-between pt-1">
-                                            <span className="text-xs text-slate-600">
-                                                {settingCalcMode === "DISTANCE_ONLY"
-                                                    ? `10 KM × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`
-                                                    : `10 KM × 7 M³ × Rp ${(Number(settingPrice) || 0).toLocaleString("id-ID")}`}
-                                            </span>
-                                            <div className="text-sm font-black text-blue-700">
-                                                Rp{" "}
-                                                {(
-                                                    settingCalcMode === "DISTANCE_ONLY"
-                                                        ? 10 * (Number(settingPrice) || 0)
-                                                        : 10 * 7 * (Number(settingPrice) || 0)
-                                                ).toLocaleString("id-ID")}
+                        {/* Dua Kartu Pengaturan Terpisah 100%: Sopir Mixer & Operator BP */}
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+                            {/* KARTU 1: PENGATURAN KOMISI SOPIR TRUK MIXER */}
+                            <Card className="border-slate-200 shadow-sm">
+                                <CardHeader className="bg-slate-50/50 border-b pb-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-700">
+                                                <Truck className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <CardTitle className="text-base text-slate-900">
+                                                    1. Komisi Sopir Truk Mixer
+                                                </CardTitle>
+                                                <CardDescription className="text-xs">
+                                                    Pengaturan khusus komisi pengiriman armada Mixer
+                                                </CardDescription>
                                             </div>
                                         </div>
+                                        <Badge className="bg-blue-600 text-white text-[11px]">Sopir Mixer</Badge>
                                     </div>
-
-                                    {/* CAKUPAN KEBERLAKUAN (FUTURE vs BACKDATE) */}
-                                    <div className="space-y-3 pt-2 border-t">
-                                        <Label className="font-semibold text-slate-800">Cakupan Keberlakuan Perubahan</Label>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                            <div
-                                                onClick={() => setApplyScope("FUTURE")}
-                                                className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
-                                                    applyScope === "FUTURE"
-                                                        ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
-                                                        : "border-slate-200 hover:border-slate-300 bg-white"
-                                                }`}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
-                                                            <span>Berlaku Mulai Sekarang</span>
-                                                            <Badge variant="outline" className="text-[10px] text-emerald-700 border-emerald-300">Default</Badge>
+                                </CardHeader>
+                                <CardContent className="pt-5">
+                                    <form onSubmit={handleSaveMixer} className="space-y-5">
+                                        {/* PILIHAN RUMUS PERHITUNGAN MIXER */}
+                                        <div className="space-y-2.5">
+                                            <Label className="font-semibold text-slate-800 text-xs">Metode & Rumus Perhitungan</Label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                <div
+                                                    onClick={() => setMixerCalcMode("DISTANCE_ONLY")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        mixerCalcMode === "DISTANCE_ONLY"
+                                                            ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-bold text-slate-900 text-xs">Harga × Jarak (KM)</span>
+                                                                <Badge className="bg-blue-600 text-white text-[9px] px-1 py-0">Default</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 leading-tight">
+                                                                Dihitung per kilometer jarak tempuh. Volume tidak mempengaruhi.
+                                                            </p>
                                                         </div>
-                                                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                                                            Hanya berlaku untuk konfirmasi transaksi mendatang. Data pengiriman lama tidak berubah.
-                                                        </p>
+                                                        <input
+                                                            type="radio"
+                                                            checked={mixerCalcMode === "DISTANCE_ONLY"}
+                                                            onChange={() => setMixerCalcMode("DISTANCE_ONLY")}
+                                                            className="mt-0.5 accent-blue-600"
+                                                        />
                                                     </div>
-                                                    <input
-                                                        type="radio"
-                                                        checked={applyScope === "FUTURE"}
-                                                        onChange={() => setApplyScope("FUTURE")}
-                                                        className="mt-0.5 accent-emerald-600"
-                                                    />
                                                 </div>
-                                            </div>
 
-                                            <div
-                                                onClick={() => setApplyScope("BACKDATE")}
-                                                className={`p-3.5 rounded-lg border-2 cursor-pointer transition-all ${
-                                                    applyScope === "BACKDATE"
-                                                        ? "border-amber-600 bg-amber-50/40 shadow-sm ring-1 ring-amber-600"
-                                                        : "border-slate-200 hover:border-slate-300 bg-white"
-                                                }`}
-                                            >
-                                                <div className="flex items-start justify-between">
-                                                    <div>
-                                                        <div className="font-semibold text-slate-900 text-xs flex items-center gap-1.5">
-                                                            <span>Berlaku Mundur (Backdate)</span>
-                                                            <Badge variant="outline" className="text-[10px] text-amber-700 border-amber-300">Revisi Data</Badge>
+                                                <div
+                                                    onClick={() => setMixerCalcMode("DISTANCE_AND_VOLUME")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        mixerCalcMode === "DISTANCE_AND_VOLUME"
+                                                            ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="font-bold text-slate-900 text-xs">Harga × Jarak × M³</span>
+                                                                <Badge variant="outline" className="text-[9px] text-slate-600 px-1 py-0">Rumus Lama</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 leading-tight">
+                                                                Dihitung proporsional jarak tempuh dan kubikasi (Rp/M³/KM).
+                                                            </p>
                                                         </div>
-                                                        <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
-                                                            Menghitung ulang komisi seluruh pengiriman selesai yang ada sejak tanggal tertentu.
-                                                        </p>
+                                                        <input
+                                                            type="radio"
+                                                            checked={mixerCalcMode === "DISTANCE_AND_VOLUME"}
+                                                            onChange={() => setMixerCalcMode("DISTANCE_AND_VOLUME")}
+                                                            className="mt-0.5 accent-blue-600"
+                                                        />
                                                     </div>
-                                                    <input
-                                                        type="radio"
-                                                        checked={applyScope === "BACKDATE"}
-                                                        onChange={() => setApplyScope("BACKDATE")}
-                                                        className="mt-0.5 accent-amber-600"
-                                                    />
                                                 </div>
                                             </div>
                                         </div>
 
-                                        {applyScope === "BACKDATE" && (
-                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3.5 space-y-2 mt-2">
-                                                <div className="flex items-center gap-2 text-amber-800 text-xs font-semibold">
-                                                    <AlertTriangle className="w-4 h-4 text-amber-600" />
-                                                    Pilih Tanggal Awal Berlaku Mundur
+                                        {/* INPUT HARGA DASAR MIXER */}
+                                        <div className="space-y-1.5">
+                                            <Label className="font-semibold text-slate-800 text-xs">
+                                                {mixerCalcMode === "DISTANCE_ONLY"
+                                                    ? "Harga Dasar Retase per KM (Rp/KM) *"
+                                                    : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
+                                            </Label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
+                                                <Input
+                                                    type="number"
+                                                    required
+                                                    min="0"
+                                                    step="any"
+                                                    value={mixerPrice}
+                                                    onChange={(e) => setMixerPrice(e.target.value)}
+                                                    placeholder={mixerCalcMode === "DISTANCE_ONLY" ? "Misal: 10000" : "Misal: 1500"}
+                                                    className="pl-10 text-base font-semibold"
+                                                />
+                                            </div>
+                                            <p className="text-[11px] text-slate-500">
+                                                Rumus aktif:{" "}
+                                                <span className="font-semibold text-slate-700">
+                                                    {mixerCalcMode === "DISTANCE_ONLY"
+                                                        ? "Jarak Tempuh (KM) × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")
+                                                        : "Jarak (KM) × M³ × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")}
+                                                </span>
+                                            </p>
+                                        </div>
+
+                                        {/* SIMULASI LIVE MIXER */}
+                                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+                                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                                <Calculator className="w-3.5 h-3.5 text-blue-600" />
+                                                Simulasi Live (Contoh: Jarak 10 KM, Muatan 7 M³)
+                                            </div>
+                                            <div className="flex items-center justify-between pt-1">
+                                                <span className="text-xs text-slate-600">
+                                                    {mixerCalcMode === "DISTANCE_ONLY"
+                                                        ? `10 KM × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`
+                                                        : `10 KM × 7 M³ × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`}
+                                                </span>
+                                                <div className="text-sm font-black text-blue-700">
+                                                    Rp{" "}
+                                                    {(
+                                                        mixerCalcMode === "DISTANCE_ONLY"
+                                                            ? 10 * (Number(mixerPrice) || 0)
+                                                            : 10 * 7 * (Number(mixerPrice) || 0)
+                                                    ).toLocaleString("id-ID")}
                                                 </div>
-                                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                                            </div>
+                                        </div>
+
+                                        {/* CAKUPAN KEBERLAKUAN MIXER */}
+                                        <div className="space-y-2.5 pt-2 border-t">
+                                            <Label className="font-semibold text-slate-800 text-xs">Cakupan Keberlakuan Tarif Mixer</Label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                <div
+                                                    onClick={() => setMixerApplyScope("FUTURE")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        mixerApplyScope === "FUTURE"
+                                                            ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <div className="font-semibold text-slate-900 text-xs flex items-center gap-1">
+                                                                <span>Mulai Sekarang</span>
+                                                                <Badge variant="outline" className="text-[9px] text-emerald-700 border-emerald-300">Default</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                                                                Hanya transaksi mendatang.
+                                                            </p>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={mixerApplyScope === "FUTURE"}
+                                                            onChange={() => setMixerApplyScope("FUTURE")}
+                                                            className="mt-0.5 accent-emerald-600"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    onClick={() => setMixerApplyScope("BACKDATE")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        mixerApplyScope === "BACKDATE"
+                                                            ? "border-blue-600 bg-blue-50/40 shadow-sm ring-1 ring-blue-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <div className="font-semibold text-slate-900 text-xs flex items-center gap-1">
+                                                                <span>Tanggal Tertentu</span>
+                                                                <Badge variant="outline" className="text-[9px] text-blue-700 border-blue-300">Backdate</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                                                                Berlaku dari tanggal pilihan.
+                                                            </p>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={mixerApplyScope === "BACKDATE"}
+                                                            onChange={() => setMixerApplyScope("BACKDATE")}
+                                                            className="mt-0.5 accent-blue-600"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {mixerApplyScope === "BACKDATE" && (
+                                                <div className="bg-blue-50/60 border border-blue-200 rounded-lg p-3 space-y-1.5 mt-2">
+                                                    <div className="flex items-center gap-1.5 text-blue-900 text-xs font-semibold">
+                                                        <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                                                        Pilih Tanggal Mulai Berlaku Tarif Mixer
+                                                    </div>
                                                     <Input
                                                         type="date"
-                                                        value={effectiveDate}
-                                                        onChange={(e) => setEffectiveDate(e.target.value)}
-                                                        className="max-w-xs bg-white text-sm"
+                                                        value={mixerEffectiveDate}
+                                                        onChange={(e) => setMixerEffectiveDate(e.target.value)}
+                                                        className="bg-white text-sm"
                                                         required
                                                     />
-                                                    <span className="text-xs text-amber-800 leading-tight">
-                                                        Seluruh data retase cabang ini sejak tanggal tersebut akan direvisi dan dicatat ke Audit Log.
+                                                    <span className="text-[11px] text-blue-800 leading-tight block">
+                                                        Tarif Mixer baru berlaku untuk transaksi pada tanggal tersebut ke depan.
                                                     </span>
                                                 </div>
-                                            </div>
-                                        )}
-                                    </div>
+                                            )}
+                                        </div>
 
-                                    <Button disabled={isLoading} type="submit" className="w-full">
-                                        {isLoading ? "Menyimpan..." : "Simpan Pengaturan"}
-                                    </Button>
-                                </form>
-                            </CardContent>
-                        </Card>
+                                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[11px] text-slate-600">
+                                            ℹ️ <strong>Isolasi Aman:</strong> Menyimpan form ini <strong>hanya mengubah tarif Sopir Mixer</strong> dan tidak menyentuh tarif Operator BP.
+                                        </div>
+
+                                        <Button disabled={isSavingMixer} type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                                            {isSavingMixer ? "Menyimpan Tarif Mixer..." : "Simpan Tarif Sopir Mixer"}
+                                        </Button>
+                                    </form>
+                                </CardContent>
+                            </Card>
+
+                            {/* KARTU 2: PENGATURAN INSENTIF OPERATOR BP */}
+                            <Card className="border-slate-200 shadow-sm">
+                                <CardHeader className="bg-slate-50/50 border-b pb-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-700">
+                                                <Calculator className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <CardTitle className="text-base text-slate-900">
+                                                    2. Insentif Operator BP
+                                                </CardTitle>
+                                                <CardDescription className="text-xs">
+                                                    Pengaturan insentif produksi Operator Batching Plant
+                                                </CardDescription>
+                                            </div>
+                                        </div>
+                                        <Badge className="bg-emerald-600 text-white text-[11px]">Operator BP</Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="pt-5">
+                                    <form onSubmit={handleSaveOperator} className="space-y-5">
+                                        {/* INFO METODE OPERATOR BP */}
+                                        <div className="bg-emerald-50/50 border border-emerald-200 rounded-lg p-3 space-y-1">
+                                            <span className="text-xs font-semibold text-emerald-950 block">
+                                                Metode Perhitungan Volume (M³)
+                                            </span>
+                                            <p className="text-[11px] text-emerald-800 leading-relaxed">
+                                                Insentif Operator BP dihitung murni berdasarkan total volume kubikasi beton yang diproduksi (Rp/M³).
+                                            </p>
+                                        </div>
+
+                                        {/* INPUT TARIF INSENTIF OPERATOR BP */}
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="font-semibold text-slate-800 text-xs">
+                                                    Tarif Insentif Operator BP per M³ (Rp/M³) *
+                                                </Label>
+                                                <span className="text-[10px] text-slate-400">
+                                                    (Peran lain diatur di Data Master)
+                                                </span>
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
+                                                <Input
+                                                    type="number"
+                                                    required
+                                                    min="0"
+                                                    step="any"
+                                                    value={operatorRate}
+                                                    onChange={(e) => setOperatorRate(e.target.value)}
+                                                    placeholder="Misal: 1500"
+                                                    className="pl-10 text-base font-semibold"
+                                                />
+                                            </div>
+                                            <p className="text-[11px] text-slate-500">
+                                                Rumus aktif:{" "}
+                                                <span className="font-semibold text-slate-700">
+                                                    Total Kubikasi Produksi (M³) × Rp {(Number(operatorRate) || 0).toLocaleString("id-ID")}
+                                                </span>
+                                            </p>
+                                        </div>
+
+                                        {/* SIMULASI LIVE OPERATOR BP */}
+                                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
+                                            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                                                <Calculator className="w-3.5 h-3.5 text-emerald-600" />
+                                                Simulasi Live (Contoh: Produksi 100 M³ Beton)
+                                            </div>
+                                            <div className="flex items-center justify-between pt-1">
+                                                <span className="text-xs text-slate-600">
+                                                    100 M³ × Rp {(Number(operatorRate) || 0).toLocaleString("id-ID")}
+                                                </span>
+                                                <div className="text-sm font-black text-emerald-700">
+                                                    Rp {(100 * (Number(operatorRate) || 0)).toLocaleString("id-ID")}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CAKUPAN KEBERLAKUAN OPERATOR BP */}
+                                        <div className="space-y-2.5 pt-2 border-t">
+                                            <Label className="font-semibold text-slate-800 text-xs">Cakupan Keberlakuan Insentif Operator</Label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                <div
+                                                    onClick={() => setOperatorApplyScope("FUTURE")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        operatorApplyScope === "FUTURE"
+                                                            ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <div className="font-semibold text-slate-900 text-xs flex items-center gap-1">
+                                                                <span>Mulai Sekarang</span>
+                                                                <Badge variant="outline" className="text-[9px] text-emerald-700 border-emerald-300">Default</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                                                                Hanya produksi mendatang.
+                                                            </p>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={operatorApplyScope === "FUTURE"}
+                                                            onChange={() => setOperatorApplyScope("FUTURE")}
+                                                            className="mt-0.5 accent-emerald-600"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div
+                                                    onClick={() => setOperatorApplyScope("BACKDATE")}
+                                                    className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                                        operatorApplyScope === "BACKDATE"
+                                                            ? "border-emerald-600 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-600"
+                                                            : "border-slate-200 hover:border-slate-300 bg-white"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div>
+                                                            <div className="font-semibold text-slate-900 text-xs flex items-center gap-1">
+                                                                <span>Tanggal Tertentu</span>
+                                                                <Badge variant="outline" className="text-[9px] text-emerald-700 border-emerald-300">Backdate</Badge>
+                                                            </div>
+                                                            <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">
+                                                                Berlaku dari tanggal pilihan.
+                                                            </p>
+                                                        </div>
+                                                        <input
+                                                            type="radio"
+                                                            checked={operatorApplyScope === "BACKDATE"}
+                                                            onChange={() => setOperatorApplyScope("BACKDATE")}
+                                                            className="mt-0.5 accent-emerald-600"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {operatorApplyScope === "BACKDATE" && (
+                                                <div className="bg-emerald-50/60 border border-emerald-200 rounded-lg p-3 space-y-1.5 mt-2">
+                                                    <div className="flex items-center gap-1.5 text-emerald-900 text-xs font-semibold">
+                                                        <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                                                        Pilih Tanggal Mulai Berlaku Insentif Operator
+                                                    </div>
+                                                    <Input
+                                                        type="date"
+                                                        value={operatorEffectiveDate}
+                                                        onChange={(e) => setOperatorEffectiveDate(e.target.value)}
+                                                        className="bg-white text-sm"
+                                                        required
+                                                    />
+                                                    <span className="text-[11px] text-emerald-800 leading-tight block">
+                                                        Tarif Operator baru berlaku untuk produksi pada tanggal tersebut ke depan.
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-[11px] text-slate-600">
+                                            ℹ️ <strong>Isolasi Aman:</strong> Menyimpan form ini <strong>hanya mengubah tarif Operator BP</strong> dan tidak menyentuh tarif atau transaksi Sopir Mixer.
+                                        </div>
+
+                                        <Button disabled={isSavingOperator} type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white">
+                                            {isSavingOperator ? "Menyimpan Insentif Operator..." : "Simpan Insentif Operator BP"}
+                                        </Button>
+                                    </form>
+                                </CardContent>
+                            </Card>
+                        </div>
                     </TabsContent>
                 )}
             </Tabs>
 
-            {/* Dialog Alert Peringatan Konfirmasi Backdate */}
-            <Dialog open={showBackdateAlert} onOpenChange={setShowBackdateAlert}>
+            {/* Dialog Alert Konfirmasi Backdate Sopir Mixer */}
+            <Dialog open={showMixerBackdateAlert} onOpenChange={setShowMixerBackdateAlert}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
-                        <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2 text-amber-600">
-                            <AlertTriangle className="w-6 h-6" />
+                        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-2 text-blue-600">
+                            <Truck className="w-5 h-5" />
                         </div>
-                        <DialogTitle className="text-slate-900">Konfirmasi Revisi Data Masa Lalu (Backdate)</DialogTitle>
+                        <DialogTitle className="text-slate-900">Konfirmasi Tanggal Berlaku Tarif Mixer</DialogTitle>
                         <DialogDescription className="text-sm text-slate-600 leading-relaxed pt-2">
-                            Anda memilih untuk menerapkan tarif <strong>Rp {Number(settingPrice).toLocaleString("id-ID")}</strong> ({settingCalcMode === "DISTANCE_ONLY" ? "Jarak Saja" : "Jarak & Kubikasi"}) secara <strong>berlaku mundur</strong> sejak{" "}
+                            Tarif Sopir Mixer <strong>Rp {Number(mixerPrice).toLocaleString("id-ID")}</strong> ({mixerCalcMode === "DISTANCE_ONLY" ? "Jarak Saja" : "Jarak & Kubikasi"}) akan mulai berlaku untuk pengiriman per tanggal{" "}
                             <span className="font-bold text-slate-900">
-                                {effectiveDate ? format(new Date(effectiveDate), "dd MMMM yyyy", { locale: id }) : "-"}
-                            </span>.
+                                {mixerEffectiveDate ? format(new Date(mixerEffectiveDate), "dd MMMM yyyy", { locale: id }) : "-"}
+                            </span> ke depan.
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="bg-amber-50 rounded-lg p-3 border border-amber-200 text-xs text-amber-800 space-y-1.5 my-2">
-                        <p className="font-semibold text-amber-900">Peringatan & Konsekuensi Tindakan:</p>
-                        <ul className="list-disc list-inside space-y-1 text-amber-900">
-                            <li>Seluruh surat jalan yang telah selesai di cabang ini sejak tanggal tersebut akan <strong>dihitung ulang nilai komisinya</strong>.</li>
-                            <li>Perubahan ini akan langsung mempengaruhi laporan rekapitulasi retase supir.</li>
-                            <li>Tindakan revisi ini akan <strong>tercatat secara permanen di Audit Log sistem</strong>.</li>
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs text-slate-700 space-y-1.5 my-2">
+                        <p className="font-semibold text-slate-900">Isolasi Keberlakuan Sistem:</p>
+                        <ul className="list-disc list-inside space-y-1 text-slate-600">
+                            <li>Transaksi Mixer pada atau setelah tanggal tersebut akan menggunakan tarif baru ini.</li>
+                            <li>Transaksi Mixer sebelum tanggal tersebut tetap aman dan menggunakan tarif lama.</li>
+                            <li><strong>Tarif Operator BP tidak akan tersentuh sama sekali.</strong></li>
+                            <li>Tersinkronisasi otomatis ke Data Master Insentif (Peran Sopir Mixer).</li>
                         </ul>
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-0">
-                        <Button variant="outline" onClick={() => setShowBackdateAlert(false)}>
+                        <Button variant="outline" onClick={() => setShowMixerBackdateAlert(false)}>
                             Batal
                         </Button>
                         <Button
-                            disabled={isLoading}
-                            onClick={executeSaveSetting}
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold"
+                            disabled={isSavingMixer}
+                            onClick={executeSaveMixer}
+                            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold"
                         >
-                            {isLoading ? "Memproses Revisi..." : "Ya, Revisi & Simpan Pengaturan"}
+                            {isSavingMixer ? "Menyimpan..." : "Simpan & Terapkan Mixer"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Dialog Alert Konfirmasi Backdate Operator BP */}
+            <Dialog open={showOperatorBackdateAlert} onOpenChange={setShowOperatorBackdateAlert}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mb-2 text-emerald-600">
+                            <Calculator className="w-5 h-5" />
+                        </div>
+                        <DialogTitle className="text-slate-900">Konfirmasi Tanggal Berlaku Insentif Operator BP</DialogTitle>
+                        <DialogDescription className="text-sm text-slate-600 leading-relaxed pt-2">
+                            Insentif Operator BP <strong>Rp {Number(operatorRate).toLocaleString("id-ID")}/M³</strong> akan mulai berlaku untuk produksi per tanggal{" "}
+                            <span className="font-bold text-slate-900">
+                                {operatorEffectiveDate ? format(new Date(operatorEffectiveDate), "dd MMMM yyyy", { locale: id }) : "-"}
+                            </span> ke depan.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 text-xs text-slate-700 space-y-1.5 my-2">
+                        <p className="font-semibold text-slate-900">Isolasi Keberlakuan Sistem:</p>
+                        <ul className="list-disc list-inside space-y-1 text-slate-600">
+                            <li>Produksi pada atau setelah tanggal tersebut akan menggunakan tarif insentif baru ini.</li>
+                            <li>Produksi sebelum tanggal tersebut tetap menggunakan tarif insentif lama.</li>
+                            <li><strong>Tarif dan transaksi Sopir Mixer tidak akan tersentuh sama sekali.</strong></li>
+                            <li>Tersinkronisasi otomatis ke Data Master Insentif (Peran Operator BP).</li>
+                        </ul>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={() => setShowOperatorBackdateAlert(false)}>
+                            Batal
+                        </Button>
+                        <Button
+                            disabled={isSavingOperator}
+                            onClick={executeSaveOperator}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                        >
+                            {isSavingOperator ? "Menyimpan..." : "Simpan & Terapkan Operator"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -8,6 +8,7 @@ import { auth } from "@/auth"
 export default async function POListPage() {
     const session = await auth()
     const userRole = session?.user?.role || ""
+    const userPermissions = (session?.user as any)?.permissions || []
 
     const [ordersResult, formData] = await Promise.all([
         getPurchaseOrders({ page: 1, pageSize: 10 }),
@@ -30,6 +31,7 @@ export default async function POListPage() {
                                 totalCount={ordersResult.totalCount}
                                 totalPages={ordersResult.totalPages}
                                 userRole={userRole}
+                                userPermissions={userPermissions}
                                 companies={formData.companies}
                                 categories={formData.categories}
                             />

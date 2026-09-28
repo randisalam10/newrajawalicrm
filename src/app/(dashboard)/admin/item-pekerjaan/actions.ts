@@ -14,13 +14,23 @@ const workItemSchema = z.object({
 
 function canManageWorkItem(user: any) {
     if (!user) return false
+    if (user.role === "SuperAdminBP") return true
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+    const perms: string[] = user.permissions || []
+    return user.role === "AdminBP" || perms.includes("ITEM_PEKERJAAN_CREATE") || perms.includes("ITEM_PEKERJAAN_EDIT")
 }
 
 export async function getWorkItems() {
     const session = await auth()
     if (!session?.user) return []
+
+    const userRole = session.user.role || ""
+    const perms: string[] = session.user.permissions || []
+    const canView = userRole === "SuperAdminBP" ||
+        perms.includes("ITEM_PEKERJAAN_VIEW") ||
+        (["AdminBP", "CEO", "FVP"].includes(userRole) && userRole !== "AdminLogistik")
+
+    if (!canView) return []
 
     const isCorp = isCorporateUser(session.user)
     const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})

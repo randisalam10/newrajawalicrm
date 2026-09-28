@@ -232,11 +232,14 @@ export async function getPurchaseOrders(params?: {
     if (companyGroupId && companyGroupId !== "ALL") where.companyGroupId = companyGroupId
     if (categoryId && categoryId !== "ALL") where.categoryId = categoryId
 
-    // Scoping hak akses: Admin BP hanya melihat PO cabangnya sendiri
+    // Scoping hak akses: non-corporate (seperti Admin BP) hanya melihat PO yang dibuat oleh user / cabangnya sendiri
     const isCorp = isCorporateUser(session.user)
     if (!isCorp) {
-        if (!session.user.locationId) return { orders: [], totalCount: 0, totalPages: 0 }
-        where.locationId = session.user.locationId
+        where.OR = [
+            { submittedById: session.user.id },
+            ...(session.user.locationId ? [{ locationId: session.user.locationId }] : []),
+            ...(session.user.username ? [{ pembuat_admin: { equals: session.user.username, mode: 'insensitive' } }] : [])
+        ]
     } else if (params?.locationId && params.locationId !== "ALL") {
         where.locationId = params.locationId
     }
@@ -661,10 +664,13 @@ export async function updatePoStatus(
     options?: { notes?: string; signatureUrl?: string; channel?: "WEB" | "MOBILE" }
 ) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" }
 
     const userRole = session.user.role as string
-    if (!['SuperAdminBP', 'CEO', 'FVP', 'Approver', 'AdminLogistik'].includes(userRole)) {
+    const userPermissions = (session.user as any)?.permissions || []
+    const hasApprovePerm = userPermissions.includes('LOGISTIK_APPROVE')
+
+    if (!['SuperAdminBP', 'CEO', 'FVP', 'Approver', 'AdminLogistik', 'AdminBP'].includes(userRole) && !hasApprovePerm) {
         return { success: false, error: "Forbidden: Anda tidak memiliki izin untuk mengubah status PO" }
     }
 
@@ -738,7 +744,12 @@ export async function updatePoStatus(
                     updateData.approvalChannel = channel
                     updateData.isBypassed = false
                 }
-            } else if (userRole === 'SuperAdminBP' || userRole === 'AdminLogistik') {
+            } else if (
+                userRole === 'SuperAdminBP' || 
+                userRole === 'AdminLogistik' || 
+                userRole === 'AdminBP' || 
+                hasApprovePerm
+            ) {
                 // Admin bypass: Sesuai instruksi, admin yg approve TIDAK menambahkan gambar TTD
                 updateData.fvpApprovedAt = now
                 updateData.ceoApprovedAt = now
@@ -967,6 +978,16 @@ export async function getPOReport(filters: {
     status?: "DRAFT" | "APPROVED" | "CANCELLED" | "ALL"
 }) {
     const session = await auth()
+    if (!session?.user) {
+        return {
+            groups: [],
+            grandTotal: 0,
+            totalPO: 0,
+            filters,
+            pembuat: "-",
+        }
+    }
+
     const startDate = new Date(filters.tahun, filters.bulan - 1, 1)
     const endDate = new Date(filters.tahun, filters.bulan, 0, 23, 59, 59)
 
@@ -976,6 +997,16 @@ export async function getPOReport(filters: {
     if (filters.categoryId) where.categoryId = filters.categoryId
     if (filters.companyGroupId) where.companyGroupId = filters.companyGroupId
     if (filters.status && filters.status !== "ALL") where.status = filters.status
+
+    // Scoping hak akses: non-corporate (seperti Admin Cabang) hanya melihat PO yang dibuat oleh user / cabangnya sendiri
+    const isCorp = isCorporateUser(session.user)
+    if (!isCorp) {
+        where.OR = [
+            { submittedById: session.user.id },
+            ...(session.user.locationId ? [{ locationId: session.user.locationId }] : []),
+            ...(session.user.username ? [{ pembuat_admin: { equals: session.user.username, mode: 'insensitive' } }] : [])
+        ]
+    }
 
     const orders = await prisma.purchaseOrder.findMany({
         where,
@@ -1192,6 +1223,9 @@ export async function getApproverQueue() {
     try {
         let where: any = { status: 'SUBMITTED' }
 
+        const userPermissions = (user as any)?.permissions || []
+        const hasApprovePerm = userPermissions.includes('LOGISTIK_APPROVE')
+
         if (userRole === 'FVP' || userRole === 'Approver') {
             where.fvpApprovedAt = null
             where.OR = [
@@ -1204,7 +1238,15 @@ export async function getApproverQueue() {
                 { ceoId: user.id },
                 { ceoId: null }
             ]
-        } else if (!['SuperAdminBP', 'AdminLogistik'].includes(userRole)) {
+        } else if (['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole) || hasApprovePerm) {
+            // Admin bypass queue: can see all submitted POs (scoped to branch for AdminBP if applicable)
+            if (user.locationId && userRole === 'AdminBP') {
+                where.OR = [
+                    { locationId: user.locationId },
+                    { locationId: null }
+                ]
+            }
+        } else {
             return { success: true, data: [] }
         }
 
@@ -1285,8 +1327,18 @@ export async function getApproverHistory() {
     try {
         let where: any = {}
 
-        if (['SuperAdminBP', 'AdminLogistik'].includes(userRole)) {
+        const userPermissions = (user as any)?.permissions || []
+        const hasApprovePerm = userPermissions.includes('LOGISTIK_APPROVE')
+
+        if (['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole) || hasApprovePerm) {
             where.status = { in: ['APPROVED', 'REJECTED', 'CANCELLED'] }
+            if (user.locationId && userRole === 'AdminBP') {
+                where.OR = [
+                    { locationId: user.locationId },
+                    { locationId: null },
+                    { approvedById: user.id }
+                ]
+            }
         } else {
             where.OR = [
                 { fvpApprovedById: user.id },

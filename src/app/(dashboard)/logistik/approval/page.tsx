@@ -15,8 +15,9 @@ export default async function ApprovalPage() {
     }
 
     const userRole = session.user.role as string
-    const allowedRoles = ['SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP', 'Approver']
-    if (!allowedRoles.includes(userRole)) {
+    const userPerms = (session.user as any)?.permissions || []
+    const allowedRoles = ['SuperAdminBP', 'AdminBP', 'AdminLogistik', 'CEO', 'FVP', 'Approver']
+    if (!allowedRoles.includes(userRole) && !userPerms.includes('LOGISTIK_APPROVE')) {
         redirect("/logistik/po")
     }
 

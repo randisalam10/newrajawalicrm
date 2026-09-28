@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
+import { isCorporateUser } from "@/lib/rbac"
 
 type DashboardFilter = {
     month?: number
@@ -13,6 +14,8 @@ type DashboardFilter = {
 export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
     const session = await auth()
     if (!session?.user) return { error: "Unauthorized" }
+
+    const isCorp = isCorporateUser(session.user)
 
     const now = new Date()
     const targetMonth = filter.month ?? now.getMonth() + 1
@@ -36,9 +39,40 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
         whereClause.status = filter.status
     }
 
+    // Scoping hak akses: non-corporate (seperti Admin Cabang) hanya melihat PO yang dibuat oleh user / cabangnya sendiri
+    if (!isCorp) {
+        whereClause.OR = [
+            { submittedById: session.user.id },
+            ...(session.user.locationId ? [{ locationId: session.user.locationId }] : []),
+            ...(session.user.username ? [{ pembuat_admin: { equals: session.user.username, mode: 'insensitive' } }] : [])
+        ]
+    }
+
     // Previous month for MoM comparison
     const prevMonthStart = new Date(targetYear, targetMonth - 2, 1)
     const prevMonthEnd = new Date(targetYear, targetMonth - 1, 0, 23, 59, 59, 999)
+
+    const prevWhereClause: any = {
+        tanggal_terbit: { gte: prevMonthStart, lte: prevMonthEnd },
+        ...(filter.companyGroupId && filter.companyGroupId !== 'all' ? { companyGroupId: filter.companyGroupId } : {}),
+        ...(filter.status && filter.status !== 'ALL' ? { status: filter.status } : {})
+    }
+    if (!isCorp) {
+        prevWhereClause.OR = [
+            { submittedById: session.user.id },
+            ...(session.user.locationId ? [{ locationId: session.user.locationId }] : []),
+            ...(session.user.username ? [{ pembuat_admin: { equals: session.user.username, mode: 'insensitive' } }] : [])
+        ]
+    }
+
+    let branchName: string | null = null
+    if (session.user.locationId) {
+        const loc = await prisma.location.findUnique({
+            where: { id: session.user.locationId },
+            select: { name: true }
+        })
+        branchName = loc?.name || null
+    }
 
     const [pos, companies, categories, prevMonthPos] = await Promise.all([
         prisma.purchaseOrder.findMany({
@@ -53,11 +87,7 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
         prisma.poCompanyGroup.findMany({ orderBy: { name: 'asc' } }),
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
         prisma.purchaseOrder.findMany({
-            where: {
-                tanggal_terbit: { gte: prevMonthStart, lte: prevMonthEnd },
-                ...(filter.companyGroupId && filter.companyGroupId !== 'all' ? { companyGroupId: filter.companyGroupId } : {}),
-                ...(filter.status && filter.status !== 'ALL' ? { status: filter.status } : {})
-            },
+            where: prevWhereClause,
             include: { items: true }
         })
     ])
@@ -165,6 +195,8 @@ export async function getLogistikDashboardData(filter: DashboardFilter = {}) {
     return {
         success: true,
         data: {
+            isCorporate: isCorp,
+            branchName,
             summary: {
                 totalPengeluaran,
                 totalPo: pos.length,

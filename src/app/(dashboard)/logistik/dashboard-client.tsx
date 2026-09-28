@@ -99,7 +99,7 @@ export function DashboardClient() {
                         <div className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
                         <h1 className="text-xl font-bold tracking-tight text-slate-900">Dashboard Logistik & Pengadaan</h1>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
-                            {filter.companyGroupId === 'all' ? 'Konsolidasian' : 'Per Unit'}
+                            {data?.isCorporate ? (filter.companyGroupId === 'all' ? 'Konsolidasian' : 'Per Unit') : (data?.branchName ? `Cabang ${data.branchName}` : 'Cabang Lokal')}
                         </span>
                     </div>
                     <p className="text-slate-500 text-xs mt-0.5">
