@@ -113,7 +113,7 @@ export async function getUnbilledTransactions(filters: {
                 vehicle: true,
                 location: true,
             },
-            take: filters.limit ?? 500,
+            ...(filters.limit ? { take: filters.limit } : {}),
             orderBy: [{ date: "asc" }, { trip_sequence: "asc" }],
         }),
         prisma.sewaTransaction.findMany({
@@ -138,7 +138,7 @@ export async function getUnbilledTransactions(filters: {
                 operator: { include: { driverCategory: true } },
                 location: true,
             },
-            take: filters.limit ?? 500,
+            ...(filters.limit ? { take: filters.limit } : {}),
             orderBy: { date: "asc" },
         })
     ])
