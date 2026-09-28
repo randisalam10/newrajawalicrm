@@ -286,6 +286,8 @@ export async function addMaterialPrice(input: MaterialPriceInput) {
     }
 
     revalidatePath("/admin/master-material")
+    revalidatePath("/admin/reports/material")
+    revalidatePath("/admin/material-agregat")
     return { success: true }
 }
 
@@ -320,6 +322,8 @@ export async function editMaterialPriceHistory(data: {
     })
 
     revalidatePath("/admin/master-material")
+    revalidatePath("/admin/reports/material")
+    revalidatePath("/admin/material-agregat")
     return { success: true }
 }
 
@@ -347,6 +351,8 @@ export async function deleteMaterialPriceHistory(id: string) {
     })
 
     revalidatePath("/admin/master-material")
+    revalidatePath("/admin/reports/material")
+    revalidatePath("/admin/material-agregat")
     return { success: true }
 }
 

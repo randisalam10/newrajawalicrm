@@ -13,12 +13,13 @@ import {
     Layers, Truck, DollarSign, Building2, Search, RefreshCw,
     Printer, FileSpreadsheet, Calendar, ArrowUpRight, ArrowDownLeft,
     TrendingUp, TrendingDown, Filter, RotateCcw, CheckCircle2,
-    Clock, AlertTriangle, ShieldCheck, PieChart, BarChart3, ChevronRight
+    Clock, AlertTriangle, ShieldCheck, PieChart, BarChart3, ChevronRight, Wrench
 } from "lucide-react"
 import { format, subDays, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { toast } from "sonner"
-import { getMaterialReportData, MaterialReportFilters } from "./actions"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { getMaterialReportData, syncHistoricalAggregatePrices, MaterialReportFilters } from "./actions"
 
 const fmt = (n: number) => "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(Math.round(n || 0))
 const fmtNum = (n: number, decimals: number = 2) => new Intl.NumberFormat("id-ID", { maximumFractionDigits: decimals }).format(n || 0)
@@ -36,7 +37,13 @@ export function MaterialReportClient({
     userLocationId = null,
 }: MaterialReportClientProps) {
     const isSuperAdmin = userRole === "SuperAdminBP" || ["CEO", "FVP"].includes(userRole)
+    const canManagePrices = isSuperAdmin || ["AdminLogistik", "Admin"].includes(userRole)
     const [isPending, startTransition] = useTransition()
+
+    // Sync Modal State
+    const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+    const [syncMode, setSyncMode] = useState<"missing_only" | "force_all">("missing_only")
+    const [isSyncing, setIsSyncing] = useState(false)
 
     // Date Range Presets
     const now = new Date()
@@ -120,6 +127,30 @@ export function MaterialReportClient({
         setSelectedMaterialType("all")
         setSelectedSourceType("all")
         setSearchQuery("")
+    }
+
+    // Run Price Sync / Correction Action
+    const handleSyncPrices = async () => {
+        setIsSyncing(true)
+        try {
+            const res = await syncHistoricalAggregatePrices({
+                mode: syncMode,
+                startDate: startDate || undefined,
+                endDate: endDate || undefined,
+                locationId: selectedLocation !== "all" ? selectedLocation : undefined,
+            })
+            if (res.success) {
+                toast.success(res.message || "Koreksi harga material berhasil disimpan!")
+                setIsSyncModalOpen(false)
+                loadReportData()
+            } else {
+                toast.error(res.error || "Gagal melakukan sinkronisasi harga.")
+            }
+        } catch (err: any) {
+            toast.error(err.message || "Terjadi kesalahan sistem saat sinkronisasi.")
+        } finally {
+            setIsSyncing(false)
+        }
     }
 
     // Export to CSV Function
@@ -261,6 +292,19 @@ export function MaterialReportClient({
                         <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isPending ? "animate-spin" : ""}`} />
                         <span>{isPending ? "Memuat..." : "Segarkan"}</span>
                     </Button>
+
+                    {canManagePrices && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsSyncModalOpen(true)}
+                            className="h-8 text-xs bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100/80 font-medium cursor-pointer shadow-2xs"
+                            title="Koreksi dan sinkronkan data material dengan tarif Master Material"
+                        >
+                            <Wrench className="w-3.5 h-3.5 mr-1.5 text-amber-700" />
+                            <span>Koreksi / Sinkronkan Harga</span>
+                        </Button>
+                    )}
                 </div>
             </div>
 
@@ -892,7 +936,14 @@ export function MaterialReportClient({
                                                     {fmtNum(item.volume_cubic, 2)}
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono text-slate-700">
-                                                    {fmt(item.unit_price)}
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span>{fmt(item.unit_price)}</span>
+                                                        {item.is_from_master_price && (
+                                                            <Badge variant="outline" className="text-[8px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 font-semibold" title="Harga dihitung otomatis dari tarif Master Material">
+                                                                Master
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono font-semibold text-slate-900">
                                                     {fmt(item.material_cost)}
@@ -979,7 +1030,14 @@ export function MaterialReportClient({
                                                     {fmtNum(item.volume_cubic, 2)}
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono text-slate-700">
-                                                    {fmt(item.unit_price)}
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <span>{fmt(item.unit_price)}</span>
+                                                        {item.is_from_master_price && (
+                                                            <Badge variant="outline" className="text-[8px] px-1 py-0 bg-blue-50 text-blue-700 border-blue-200 font-semibold" title="Harga dihitung otomatis dari tarif Master Material">
+                                                                Master
+                                                            </Badge>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="text-right font-mono font-extrabold text-rose-950">
                                                     {fmt(item.total_price)}
@@ -996,6 +1054,118 @@ export function MaterialReportClient({
                     </Card>
                 </TabsContent>
             </Tabs>
+
+            {/* ═══ Dialog Modal: Koreksi & Sinkronisasi Harga Master ══════════════ */}
+            <Dialog open={isSyncModalOpen} onOpenChange={setIsSyncModalOpen}>
+                <DialogContent className="sm:max-w-[500px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-slate-900">
+                            <Wrench className="w-5 h-5 text-amber-600" />
+                            <span>Koreksi & Sinkronisasi Harga Material</span>
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-slate-600">
+                            Sesuaikan harga per m³ dan total nilai transaksi material (masuk & keluar) dengan tarif Master Material yang berlaku pada tanggal masing-masing transaksi.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-2 text-xs">
+                        {/* Context Info */}
+                        <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 space-y-1.5 font-mono text-[11px]">
+                            <div className="flex justify-between text-slate-600">
+                                <span>Periode Diproses:</span>
+                                <strong className="text-slate-900">{fmtDate(startDate)} s/d {fmtDate(endDate)}</strong>
+                            </div>
+                            <div className="flex justify-between text-slate-600">
+                                <span>Cabang / Lokasi:</span>
+                                <strong className="text-slate-900">
+                                    {selectedLocation === "all" ? "Semua Cabang (Global)" : (locations.find((l: any) => l.id === selectedLocation)?.name || selectedLocation)}
+                                </strong>
+                            </div>
+                        </div>
+
+                        {/* Sync Mode Selection */}
+                        <div className="space-y-2">
+                            <Label className="text-xs font-semibold text-slate-800">Pilih Metode Koreksi:</Label>
+                            <div className="space-y-2">
+                                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${syncMode === 'missing_only' ? 'border-blue-500 bg-blue-50/40 text-blue-950 ring-1 ring-blue-500' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}>
+                                    <input
+                                        type="radio"
+                                        name="syncMode"
+                                        checked={syncMode === 'missing_only'}
+                                        onChange={() => setSyncMode('missing_only')}
+                                        className="mt-0.5 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <div className="space-y-0.5">
+                                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                                            <span>Koreksi Transaksi Tanpa Harga (Rp 0)</span>
+                                            <Badge className="bg-emerald-600 text-white text-[9px] px-1 py-0 font-bold">Rekomendasi</Badge>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                                            Hanya mengisi transaksi yang harga satuannya masih Rp 0 atau kosong. Transaksi yang sengaja diisi harga manual dari invoice vendor tidak akan diubah.
+                                        </p>
+                                    </div>
+                                </label>
+
+                                <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${syncMode === 'force_all' ? 'border-amber-500 bg-amber-50/40 text-amber-950 ring-1 ring-amber-500' : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'}`}>
+                                    <input
+                                        type="radio"
+                                        name="syncMode"
+                                        checked={syncMode === 'force_all'}
+                                        onChange={() => setSyncMode('force_all')}
+                                        className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                                    />
+                                    <div className="space-y-0.5">
+                                        <div className="font-semibold text-xs text-amber-900">
+                                            Sinkronkan Ulang Semua Transaksi Sesuai Master
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 leading-relaxed">
+                                            Memperbarui seluruh transaksi material (masuk & keluar) dalam periode terpilih mengikuti tarif Master Material per tanggal transaksi.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="p-2.5 rounded-md bg-amber-50/70 border border-amber-200 text-amber-800 text-[11px] flex items-start gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <span>
+                                Operasi ini akan menyimpan pembaruan nilai kubikasi × harga satuan riil ke database secara permanen.
+                            </span>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsSyncModalOpen(false)}
+                            disabled={isSyncing}
+                            className="text-xs"
+                        >
+                            Batal
+                        </Button>
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleSyncPrices}
+                            disabled={isSyncing}
+                            className="text-xs bg-blue-600 hover:bg-blue-700 text-white font-medium"
+                        >
+                            {isSyncing ? (
+                                <>
+                                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                                    <span>Memproses Koreksi...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
+                                    <span>Jalankan Koreksi Sekarang</span>
+                                </>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }
