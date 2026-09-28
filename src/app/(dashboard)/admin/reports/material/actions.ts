@@ -53,7 +53,7 @@ function toDateString(d: Date | string): string {
  * Prioritizes branch-specific rate on or before txDate, then global rate,
  * and falls back to earliest rate if txDate is older than the first effective date.
  */
-export function resolveEffectivePrice(
+function resolveEffectivePrice(
     histories: any[],
     aggregateType: string,
     txDate: Date | string,
