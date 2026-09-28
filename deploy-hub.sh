@@ -13,10 +13,13 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 APP_NAME="rajawali-app"
-IMAGE_NAME="randisalam1007/rajawali-bp-erp:latest"
+IMAGE_REPO="randisalam1007/rajawali-bp-erp"
+IMAGE_TAG="${1:-latest}"
+IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} 🚀 Deploying via Docker Hub (Safe & Lightweight)${NC}"
+echo -e "${BLUE}    Target Image: $IMAGE_NAME${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 # 1. Update source code (jika repo git aktif)
@@ -39,6 +42,12 @@ else
 fi
 echo -e "${GREEN}   ✓ Menggunakan environment: $ENV_FILE${NC}"
 
+DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
+CLEAN_DB_URL=""
+if [ -n "$DB_URL" ]; then
+    CLEAN_DB_URL=$(echo "$DB_URL" | sed -E 's/[?&]schema=[^&]*//g')
+fi
+
 # 3. PENTING: Matikan container lama DULU agar RAM server lega!
 echo ""
 echo -e "${CYAN}[2/5] Membebaskan RAM server (Stop container lama)...${NC}"
@@ -46,15 +55,36 @@ docker stop $APP_NAME 2>/dev/null || true
 docker rm $APP_NAME 2>/dev/null || true
 echo -e "${GREEN}   ✓ RAM server berhasil dibebaskan.${NC}"
 
+# 3.5. Backup Snapshot Database Otomatis (Perlindungan Data Production)
+echo ""
+echo -e "${CYAN}[2.5/5] Membuat backup snapshot database sebelum migrasi...${NC}"
+mkdir -p ./backups
+BACKUP_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="./backups/backup_db_${BACKUP_TIMESTAMP}.sql"
+
+if sudo -u postgres pg_dump rajawali_prod > "$BACKUP_FILE" 2>/dev/null; then
+    echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}"
+elif [ -n "$CLEAN_DB_URL" ] && command -v pg_dump &> /dev/null; then
+    pg_dump "$CLEAN_DB_URL" > "$BACKUP_FILE" 2>/dev/null \
+        && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}" \
+        || echo -e "${YELLOW}   ℹ Catatan: pg_dump host dilewati.${NC}"
+elif [ -n "$DB_URL" ]; then
+    docker run --rm --network host postgres:16-alpine pg_dump "$DB_URL" > "$BACKUP_FILE" 2>/dev/null \
+        && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman via container: $BACKUP_FILE${NC}" \
+        || echo -e "${YELLOW}   ℹ Catatan: pg_dump docker dilewati.${NC}"
+else
+    echo -e "${YELLOW}   ℹ pg_dump dilewati, melanjutkan proses aman.${NC}"
+fi
+
 # 4. Pull latest image dari Docker Hub
 echo ""
-echo -e "${CYAN}[3/5] Menarik image terbaru dari Docker Hub...${NC}"
+echo -e "${CYAN}[3/5] Menarik image dari Docker Hub ($IMAGE_NAME)...${NC}"
 docker pull $IMAGE_NAME
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# 5. Database migration & Sync (Metode Cepat & Hemat RAM)
+# 5. Database migration & Sync (Metode Cepat & Hemat RAM - Non Destructive)
 echo ""
-echo -e "${CYAN}[4/5] Menerapkan migrasi database & backfill otomatis...${NC}"
+echo -e "${CYAN}[4/5] Menerapkan migrasi database & backfill otomatis (Aman & Non-Destructive)...${NC}"
 
 # A. Jalankan apply-indexes.sh (Tabel MasterItemPriceHistory + Indexes + Backfill Harga)
 if [ -f "apply-indexes.sh" ]; then
@@ -63,12 +93,6 @@ if [ -f "apply-indexes.sh" ]; then
 fi
 
 # B. Jalankan sinkronisasi via psql host untuk semua file migrasi yang ada
-DB_URL=$(grep -E "^DATABASE_URL=" "$ENV_FILE" | head -n 1 | cut -d '=' -f2- | tr -d '"' | tr -d "'")
-CLEAN_DB_URL=""
-if [ -n "$DB_URL" ]; then
-    CLEAN_DB_URL=$(echo "$DB_URL" | sed -E 's/[?&]schema=[^&]*//g')
-fi
-
 if command -v psql &> /dev/null; then
     for sql_file in $(ls -1 prisma/migrations/*/migration.sql 2>/dev/null | sort); do
         mig_name=$(basename $(dirname $sql_file))
@@ -111,8 +135,10 @@ docker run -d \
     $IMAGE_NAME
 
 # Sinkronkan permission RBAC terbaru ke database secara otomatis & aman
-echo -e "${CYAN}Menyinkronkan permission RBAC ke database...${NC}"
-docker exec $APP_NAME npx tsx prisma/seed-rbac.ts > /dev/null 2>&1 || true
+# CATATAN KEAMANAN: Script ini HANYA menyinkronkan daftar permission role sistem (seed-rbac.js),
+# dan TIDAK MENJALANKAN seed.ts (tidak ada mock/dummy data ataupun user overwrite).
+echo -e "${CYAN}Menyinkronkan permission RBAC ke database (Aman, Tanpa Dummy Data)...${NC}"
+docker exec $APP_NAME node /app/prisma/seed-rbac.js > /dev/null 2>&1 || true
 echo -e "${GREEN}   ✓ RBAC permissions tersinkronisasi.${NC}"
 
 # Bersihkan image yang tidak terpakai
@@ -122,6 +148,8 @@ echo ""
 echo -e "${GREEN}================================================${NC}"
 echo -e "${GREEN} ✅ Deployment via Docker Hub Berhasil!         ${NC}"
 echo -e "${GREEN}================================================${NC}"
-echo -e "   Status: $(docker inspect -f '{{.State.Status}}' $APP_NAME 2>/dev/null || echo 'Running')"
-echo -e "   URL   : https://portal.rajawalimix.com"
+echo -e "   Container Status : $(docker inspect -f '{{.State.Status}}' $APP_NAME 2>/dev/null || echo 'Running')"
+echo -e "   Image Version    : $IMAGE_NAME"
+echo -e "   Snapshot Backup  : $BACKUP_FILE"
+echo -e "   URL              : https://portal.rajawalimix.com"
 echo -e "${GREEN}================================================${NC}"

@@ -9,7 +9,7 @@
 set -e
 
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-TAG="${1:-v2.4.0}"
+TAG="${1:-v2.4.4}"
 
 echo "================================================"
 echo " 🔨 Building Rajawali BP ERP — $IMAGE_NAME:$TAG"
