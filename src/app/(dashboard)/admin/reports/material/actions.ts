@@ -14,7 +14,7 @@ export interface MaterialReportFilters {
     search?: string
 }
 
-export const MATERIAL_DISPLAY_NAMES: Record<string, string> = {
+const MATERIAL_DISPLAY_NAMES: Record<string, string> = {
     Pasir: "Pasir Cor",
     SplitHalfOne: "Batu Split 1/2",
     SplitTwoThree: "Batu Split 2/3",
@@ -27,7 +27,7 @@ export const MATERIAL_DISPLAY_NAMES: Record<string, string> = {
     OTHER: "Agregat Lainnya / Sirtu",
 }
 
-export const AGGREGATE_TYPE_TO_MATERIAL_CODE: Record<string, string> = {
+const AGGREGATE_TYPE_TO_MATERIAL_CODE: Record<string, string> = {
     Pasir: "PASIR",
     PASIR: "PASIR",
     SplitHalfOne: "SPLIT_1_2",
