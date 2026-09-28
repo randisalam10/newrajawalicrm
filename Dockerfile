@@ -38,13 +38,19 @@ ENV NEXT_PUBLIC_PUSHER_CLUSTER=$NEXT_PUBLIC_PUSHER_CLUSTER
 
 RUN npm run build
 
-# Compile seed.ts → seed.js (so runner doesn't need tsx or esbuild)
+# Compile seed.ts → seed.js and seed-rbac.ts → seed-rbac.js (so runner doesn't need tsx or esbuild)
 RUN ./node_modules/.bin/esbuild prisma/seed.ts \
     --bundle \
     --platform=node \
     --outfile=prisma/seed.js \
     --external:@prisma/client \
     --external:bcryptjs
+
+RUN ./node_modules/.bin/esbuild prisma/seed-rbac.ts \
+    --bundle \
+    --platform=node \
+    --outfile=prisma/seed-rbac.js \
+    --external:@prisma/client
 
 # ─────────────────────────────────────────────
 # Stage 3: Production runner (minimal image)
@@ -81,6 +87,7 @@ RUN mkdir -p node_modules/.bin && \
 
 # Copy compiled seed + bcryptjs runtime dependency
 COPY --from=builder /app/prisma/seed.js ./prisma/seed.js
+COPY --from=builder /app/prisma/seed-rbac.js ./prisma/seed-rbac.js
 COPY --from=builder /app/node_modules/bcryptjs ./node_modules/bcryptjs
 
 USER nextjs
