@@ -80,7 +80,7 @@ export async function getDashboardData() {
     // ============================================
     // Stok = Total Semen Masuk - Pemakaian dari transaksi confirmed
     const [semenMasukAgg, confirmedTransactionsForStock] = await Promise.all([
-        (prisma as any).materialIncoming.aggregate({
+        prisma.materialIncoming.aggregate({
             where: { ...locationFilter },
             _sum: { tonnage: true }
         }),
@@ -214,7 +214,7 @@ export async function getDashboardData() {
     // ============================================
     let totalRetaseBulanIni = 0
     if (isSuperAdmin) {
-        const retaseAgg = await (prisma as any).retase.aggregate({
+        const retaseAgg = await prisma.retase.aggregate({
             where: {
                 transaction: {
                     date: { gte: monthStart, lte: monthEnd }
