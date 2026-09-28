@@ -161,23 +161,29 @@ export async function getUnbilledTransactions(filters: {
             totalDays: tx.total_days,
             pricePerDay: tx.price_per_day,
             totalPrice: tx.total_price,
+            is_ppn: tx.is_ppn,
+            ppn_mode: tx.ppn_mode,
+            ppn_rate: tx.ppn_rate,
+            dpp_amount: tx.dpp_amount,
+            ppn_amount: tx.ppn_amount,
             volume_cubic: tx.total_days,
             qualityId: null,
             concreteQuality: { name: `Sewa: ${eqName}` },
-        equipment: tx.equipment,
-        operator: tx.operator,
-        customer: tx.customer,
-        project: tx.project || {
-            id: `SEWA_${tx.customerId}`,
-            name: tx.lokasi_proyek || "Penyewaan Alat & Kendaraan",
-            customerId: tx.customerId,
+            equipment: tx.equipment,
+            operator: tx.operator,
             customer: tx.customer,
-            prices: []
-        },
-        projectId: tx.projectId || `SEWA_${tx.customerId}`,
-        location: tx.location,
-        locationId: tx.locationId,
-        status: tx.status,
+            project: tx.project || {
+                id: `SEWA_${tx.customerId}`,
+                name: tx.lokasi_proyek || "Penyewaan Alat & Kendaraan",
+                customerId: tx.customerId,
+                customer: tx.customer,
+                tax_ppn: tx.is_ppn ? (tx.ppn_rate || 11) : 0,
+                prices: []
+            },
+            projectId: tx.projectId || `SEWA_${tx.customerId}`,
+            location: tx.location,
+            locationId: tx.locationId,
+            status: tx.status,
         }
     })
 

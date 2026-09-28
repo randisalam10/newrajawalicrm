@@ -284,7 +284,7 @@ export function BillingDashboard({
         return { paid, partial, issued, draft, paidVal, partialVal, issuedVal, draftVal }
     }, [allInvoices])
 
-    // ─── Unbilled Backlog / Pipeline (Cor & Sewa) ──────────────────────────────
+    // ─── Unbilled Backlog / Pipeline (Cor & Sewa & Pajak) ───────────────────────
     const unbilledBreakdown = useMemo(() => {
         let rmCount = 0
         let rmVolume = 0
@@ -294,32 +294,88 @@ export function BillingDashboard({
         let sewaDays = 0
         let sewaEstValue = 0
 
+        let pricedCount = 0
+        let pricedVolume = 0
+
         let missingPriceCount = 0
         let missingPriceVolume = 0
 
+        let ppnCount = 0
+        let ppnVolume = 0
+        let ppnEstValue = 0
+        let ppnTaxEstimate = 0
+
+        let nonPpnCount = 0
+        let nonPpnVolume = 0
+        let nonPpnEstValue = 0
+        let nonPpnEstimatedTaxTotal = 0
+
         for (const tx of unbilled) {
-            if (tx.itemType === "SEWA") {
+            const isSewa = tx.itemType === "SEWA"
+            const isPpn = isSewa
+                ? (tx.is_ppn === true || (tx.ppn_mode && tx.ppn_mode !== "NON_PPN"))
+                : Boolean(tx.project?.tax_ppn && tx.project.tax_ppn > 0)
+
+            if (isSewa) {
                 sewaCount += 1
                 const days = tx.totalDays || tx.volume_cubic || 0
                 sewaDays += days
                 const val = tx.totalPrice || (tx.pricePerDay * days) || 0
                 sewaEstValue += val
-                if (val <= 0) {
+
+                if (val > 0) {
+                    pricedCount += 1
+                    if (isPpn) {
+                        ppnCount += 1
+                        ppnEstValue += val
+                        const taxRate = (tx.ppn_rate || 11) / 100
+                        ppnTaxEstimate += val * taxRate
+                    } else {
+                        nonPpnCount += 1
+                        nonPpnEstValue += val
+                        nonPpnEstimatedTaxTotal += val * 0.11
+                    }
+                } else {
                     missingPriceCount += 1
+                    if (isPpn) ppnCount += 1
+                    else nonPpnCount += 1
                 }
             } else {
                 rmCount += 1
                 const vol = tx.volume_cubic || 0
                 rmVolume += vol
                 const price = tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price || 0
+
                 if (price > 0) {
-                    rmEstValue += vol * price
+                    const val = vol * price
+                    rmEstValue += val
+                    pricedCount += 1
+                    pricedVolume += vol
+
+                    if (isPpn) {
+                        ppnCount += 1
+                        ppnVolume += vol
+                        ppnEstValue += val
+                        const taxRate = (tx.project?.tax_ppn || 11) / 100
+                        ppnTaxEstimate += val * taxRate
+                    } else {
+                        nonPpnCount += 1
+                        nonPpnVolume += vol
+                        nonPpnEstValue += val
+                        nonPpnEstimatedTaxTotal += val * 0.11
+                    }
                 } else {
                     missingPriceCount += 1
                     missingPriceVolume += vol
+                    if (isPpn) ppnCount += 1
+                    else nonPpnCount += 1
                 }
             }
         }
+
+        const totalEstValue = rmEstValue + sewaEstValue
+        const ppnSharePct = totalEstValue > 0 ? (ppnEstValue / totalEstValue) * 100 : 0
+        const nonPpnSharePct = totalEstValue > 0 ? (nonPpnEstValue / totalEstValue) * 100 : 0
 
         return {
             rmCount,
@@ -328,10 +384,22 @@ export function BillingDashboard({
             sewaCount,
             sewaDays,
             sewaEstValue,
-            totalEstValue: rmEstValue + sewaEstValue,
-            totalCount: unbilled.length,
+            pricedCount,
+            pricedVolume,
             missingPriceCount,
             missingPriceVolume,
+            ppnCount,
+            ppnVolume,
+            ppnEstValue,
+            ppnTaxEstimate,
+            ppnSharePct,
+            nonPpnCount,
+            nonPpnVolume,
+            nonPpnEstValue,
+            nonPpnEstimatedTaxTotal,
+            nonPpnSharePct,
+            totalEstValue,
+            totalCount: unbilled.length,
         }
     }, [unbilled])
 
@@ -673,21 +741,52 @@ export function BillingDashboard({
                                 Proses <ArrowUpRight className="w-3 h-3" />
                             </button>
                         </div>
-                        {unbilledBreakdown.missingPriceCount > 0 && (
-                            <div className="text-[10px] text-amber-800 font-medium bg-amber-100/70 rounded px-1.5 py-0.5 border border-amber-200/80 flex items-center justify-between">
-                                <span>Belum Ada Harga:</span>
-                                <span className="font-bold">{unbilledBreakdown.missingPriceCount} tx ({fmtNum(unbilledBreakdown.missingPriceVolume, 1)} m³)</span>
+                        {unbilledBreakdown.missingPriceCount > 0 ? (
+                            <div
+                                onClick={() => onNavigateTab("unbilled", { noPriceOnly: true })}
+                                className="text-[10px] text-amber-800 font-medium bg-amber-100/70 hover:bg-amber-100 rounded px-1.5 py-0.5 border border-amber-200/80 flex items-center justify-between cursor-pointer transition-colors"
+                                title="Klik untuk filter transaksi yang belum ada harga kesepakatan"
+                            >
+                                <span className="flex items-center gap-1"><AlertTriangle className="w-3 h-3 text-amber-600" /> Belum Ada Harga:</span>
+                                <span className="font-bold underline">{unbilledBreakdown.missingPriceCount} tx ({fmtNum(unbilledBreakdown.missingPriceVolume, 1)} m³) ↗</span>
+                            </div>
+                        ) : (
+                            <div className="text-[10px] text-emerald-800 font-medium bg-emerald-50 rounded px-1.5 py-0.5 border border-emerald-200/60 flex items-center justify-between">
+                                <span className="flex items-center gap-1"><CheckCircle2 className="w-3 h-3 text-emerald-600" /> Semua Berharga:</span>
+                                <span className="font-bold">{unbilledBreakdown.pricedCount} tx Siap</span>
                             </div>
                         )}
                         <div className="pt-1.5 border-t border-slate-100 flex flex-col gap-0.5 text-[10px]">
                             <div className="flex items-center justify-between text-slate-600">
-                                <span>Cor: {fmtNum(unbilledBreakdown.rmVolume, 1)} m³</span>
-                                <span className="font-mono font-semibold text-orange-800">{fmt(unbilledBreakdown.rmEstValue)}</span>
+                                <span className="flex items-center gap-1"><Truck className="w-3 h-3 text-blue-500" /> Cor: {fmtNum(unbilledBreakdown.rmVolume, 1)} m³</span>
+                                <span className="font-mono font-semibold text-slate-700">{fmt(unbilledBreakdown.rmEstValue)}</span>
                             </div>
                             <div className="flex items-center justify-between text-slate-600">
-                                <span>Sewa: {unbilledBreakdown.sewaDays} Hari</span>
-                                <span className="font-mono font-semibold text-purple-800">{fmt(unbilledBreakdown.sewaEstValue)}</span>
+                                <span className="flex items-center gap-1"><Wrench className="w-3 h-3 text-purple-500" /> Sewa: {unbilledBreakdown.sewaDays} Hari</span>
+                                <span className="font-mono font-semibold text-slate-700">{fmt(unbilledBreakdown.sewaEstValue)}</span>
                             </div>
+                            <div
+                                onClick={() => onNavigateTab("unbilled", { unbilledPpnFilter: "PPN" })}
+                                className="flex items-center justify-between text-slate-500 pt-0.5 border-t border-slate-100/60 hover:text-emerald-700 cursor-pointer group"
+                                title="Klik untuk filter antrean unbilled Pakai PPN (11%)"
+                            >
+                                <span className="flex items-center gap-1 text-emerald-600 font-medium group-hover:underline">✓ Pakai PPN (11%)</span>
+                                <span className="font-mono font-medium text-emerald-700">{fmt(unbilledBreakdown.ppnEstValue)}</span>
+                            </div>
+                            <div
+                                onClick={() => onNavigateTab("unbilled", { unbilledPpnFilter: "NON_PPN" })}
+                                className="flex items-center justify-between text-slate-500 hover:text-amber-700 cursor-pointer group"
+                                title="Klik untuk filter antrean unbilled Non-PPN (0%)"
+                            >
+                                <span className="flex items-center gap-1 text-amber-600 font-medium group-hover:underline">⚠ Non-PPN (0%)</span>
+                                <span className="font-mono font-medium text-amber-700">{fmt(unbilledBreakdown.nonPpnEstValue)}</span>
+                            </div>
+                            {unbilledBreakdown.nonPpnEstimatedTaxTotal > 0 && (
+                                <div className="flex items-center justify-between text-[9px] text-amber-800/80 bg-amber-50/70 px-1.5 py-0.5 rounded mt-0.5 border border-amber-200/50">
+                                    <span>Beban PPN 11%:</span>
+                                    <span className="font-mono font-bold text-amber-900">{fmt(unbilledBreakdown.nonPpnEstimatedTaxTotal)}</span>
+                                </div>
+                            )}
                         </div>
                     </CardContent>
                 </Card>
@@ -988,6 +1087,17 @@ export function BillingDashboard({
                                 </div>
                             </div>
 
+                            <div className="flex items-center justify-between text-[11px] text-emerald-900 bg-emerald-50/80 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                                <span className="font-medium">Antrean Belum Ditagih (Pakai PPN):</span>
+                                <button
+                                    onClick={() => onNavigateTab("unbilled", { unbilledPpnFilter: "PPN" })}
+                                    className="font-mono font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                                    title="Klik untuk lihat transaksi unbilled PPN"
+                                >
+                                    {unbilledBreakdown.ppnCount} tx ({fmt(unbilledBreakdown.ppnEstValue)}) <ArrowUpRight className="w-3 h-3" />
+                                </button>
+                            </div>
+
                             <div className="p-2.5 rounded-lg bg-emerald-100/40 border border-emerald-200 flex items-center justify-between text-xs">
                                 <div>
                                     <span className="text-[10px] font-semibold text-emerald-900 uppercase block">Kepatuhan Pajak PPN Masuk</span>
@@ -1067,6 +1177,20 @@ export function BillingDashboard({
                                         Filter Non-PPN →
                                     </Button>
                                 </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-amber-900 bg-amber-50/80 px-2.5 py-1.5 rounded-lg border border-amber-200">
+                                <div>
+                                    <span className="font-medium block">Antrean Belum Ditagih (Non-PPN):</span>
+                                    <span className="text-[10px] text-amber-700">Potensi beban PPN 11%: {fmt(unbilledBreakdown.nonPpnEstimatedTaxTotal)}</span>
+                                </div>
+                                <button
+                                    onClick={() => onNavigateTab("unbilled", { unbilledPpnFilter: "NON_PPN" })}
+                                    className="font-mono font-bold text-amber-800 hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+                                    title="Klik untuk lihat transaksi unbilled Non-PPN"
+                                >
+                                    {unbilledBreakdown.nonPpnCount} tx ({fmt(unbilledBreakdown.nonPpnEstValue)}) <ArrowUpRight className="w-3 h-3" />
+                                </button>
                             </div>
                         </div>
                     </div>

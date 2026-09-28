@@ -76,6 +76,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
     const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
     const [unbilledSearch, setUnbilledSearch] = useState("")
     const [unbilledTypeFilter, setUnbilledTypeFilter] = useState<"ALL" | "READYMIX" | "SEWA">("ALL")
+    const [unbilledPpnFilter, setUnbilledPpnFilter] = useState<"all" | "PPN" | "NON_PPN">("all")
     const [filterNoPriceOnly, setFilterNoPriceOnly] = useState(false)
     const [groupBy, setGroupBy] = useState<"flat" | "date" | "mutu" | "customer">("date")
     // Groups are collapsed / minimized by default (empty set).
@@ -165,11 +166,35 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
         }).length
     }, [unbilled])
 
+    const unbilledPpnCount = useMemo(() => {
+        return unbilled.filter((tx: any) => {
+            return tx.itemType === "SEWA"
+                ? (tx.is_ppn === true || (tx.ppn_mode && tx.ppn_mode !== "NON_PPN"))
+                : Boolean(tx.project?.tax_ppn && tx.project.tax_ppn > 0)
+        }).length
+    }, [unbilled])
+
+    const unbilledNonPpnCount = useMemo(() => {
+        return unbilled.filter((tx: any) => {
+            const isPpn = tx.itemType === "SEWA"
+                ? (tx.is_ppn === true || (tx.ppn_mode && tx.ppn_mode !== "NON_PPN"))
+                : Boolean(tx.project?.tax_ppn && tx.project.tax_ppn > 0)
+            return !isPpn
+        }).length
+    }, [unbilled])
+
     const filteredUnbilled = useMemo(() => {
         const q = unbilledSearch.toLowerCase().trim()
         return unbilled.filter(tx => {
             if (unbilledTypeFilter === "READYMIX" && tx.itemType === "SEWA") return false
             if (unbilledTypeFilter === "SEWA" && tx.itemType !== "SEWA") return false
+
+            const isPpn = tx.itemType === "SEWA"
+                ? (tx.is_ppn === true || (tx.ppn_mode && tx.ppn_mode !== "NON_PPN"))
+                : Boolean(tx.project?.tax_ppn && tx.project.tax_ppn > 0)
+
+            if (unbilledPpnFilter === "PPN" && !isPpn) return false
+            if (unbilledPpnFilter === "NON_PPN" && isPpn) return false
 
             if (filterNoPriceOnly) {
                 if (tx.itemType === "SEWA") {
@@ -190,7 +215,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
             const doNum = (tx.sewaNumber || "").toLowerCase()
             return custName.includes(q) || projName.includes(q) || mutuName.includes(q) || equipName.includes(q) || operName.includes(q) || doNum.includes(q)
         })
-    }, [unbilled, unbilledSearch, unbilledTypeFilter, filterNoPriceOnly])
+    }, [unbilled, unbilledSearch, unbilledTypeFilter, unbilledPpnFilter, filterNoPriceOnly])
 
     const groupedUnbilled = useMemo(() => {
         if (groupBy === "flat") return [{ key: "all", label: "Semua", items: filteredUnbilled }]
@@ -664,10 +689,16 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                             if (filter?.ppnFilter) {
                                 setPpnFilter(filter.ppnFilter)
                             }
+                            if (filter?.unbilledPpnFilter) {
+                                setUnbilledPpnFilter(filter.unbilledPpnFilter)
+                                setFilterNoPriceOnly(false)
+                                setUnbilledPage(1)
+                            }
                             if (filter?.noPriceOnly !== undefined) {
                                 setFilterNoPriceOnly(filter.noPriceOnly)
                                 if (filter.noPriceOnly) {
                                     setUnbilledTypeFilter("ALL")
+                                    setUnbilledPpnFilter("all")
                                 }
                                 setUnbilledPage(1)
                             }
@@ -684,12 +715,13 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                 <div className="flex items-center gap-3 flex-wrap">
                                     <CardTitle className="text-base">Transaksi Belum Ditagih (Unbilled)</CardTitle>
                                     {/* Type filter toggles */}
-                                    <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-100 text-xs gap-0.5 shadow-2xs">
+                                    <div className="flex items-center border border-slate-200 rounded-lg p-0.5 bg-slate-100 text-xs gap-0.5 shadow-2xs flex-wrap">
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "ALL" && !filterNoPriceOnly ? "bg-white font-bold text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-600 hover:text-slate-900"}`}
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${unbilledTypeFilter === "ALL" && unbilledPpnFilter === "all" && !filterNoPriceOnly ? "bg-white font-bold text-slate-900 shadow-xs border border-slate-200/60" : "text-slate-600 hover:text-slate-900"}`}
                                             onClick={() => {
                                                 setUnbilledTypeFilter("ALL")
+                                                setUnbilledPpnFilter("all")
                                                 setFilterNoPriceOnly(false)
                                                 setUnbilledPage(1)
                                             }}
@@ -699,7 +731,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                         </button>
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "READYMIX" && !filterNoPriceOnly ? "bg-blue-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-blue-700"}`}
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${unbilledTypeFilter === "READYMIX" && !filterNoPriceOnly ? "bg-blue-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-blue-700"}`}
                                             onClick={() => {
                                                 setUnbilledTypeFilter("READYMIX")
                                                 setFilterNoPriceOnly(false)
@@ -707,14 +739,14 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             }}
                                         >
                                             <Truck className="w-3.5 h-3.5" />
-                                            <span>Cor ReadyMix</span>
+                                            <span>Cor</span>
                                             <span className={`${unbilledTypeFilter === "READYMIX" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-blue-100 text-blue-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
                                                 {unbilled.filter(t => t.itemType !== "SEWA").length}
                                             </span>
                                         </button>
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${unbilledTypeFilter === "SEWA" && !filterNoPriceOnly ? "bg-purple-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-purple-700"}`}
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${unbilledTypeFilter === "SEWA" && !filterNoPriceOnly ? "bg-purple-600 font-bold text-white shadow-xs" : "text-slate-600 hover:text-purple-700"}`}
                                             onClick={() => {
                                                 setUnbilledTypeFilter("SEWA")
                                                 setFilterNoPriceOnly(false)
@@ -722,18 +754,53 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             }}
                                         >
                                             <Wrench className="w-3.5 h-3.5" />
-                                            <span>Sewa Alat & CP</span>
+                                            <span>Sewa</span>
                                             <span className={`${unbilledTypeFilter === "SEWA" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-purple-100 text-purple-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
                                                 {unbilled.filter(t => t.itemType === "SEWA").length}
                                             </span>
                                         </button>
                                         <button
                                             type="button"
-                                            className={`px-3 py-1 rounded-md text-xs transition-all flex items-center gap-1.5 cursor-pointer ${filterNoPriceOnly ? "bg-amber-600 font-bold text-white shadow-xs" : "text-amber-800 hover:text-amber-950"}`}
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${unbilledPpnFilter === "PPN" && !filterNoPriceOnly ? "bg-emerald-600 font-bold text-white shadow-xs" : "text-emerald-700 hover:text-emerald-900"}`}
+                                            onClick={() => {
+                                                const next = unbilledPpnFilter === "PPN" ? "all" : "PPN"
+                                                setUnbilledPpnFilter(next)
+                                                setFilterNoPriceOnly(false)
+                                                setUnbilledPage(1)
+                                            }}
+                                            title="Filter transaksi unbilled yang dikenakan PPN (11%)"
+                                        >
+                                            <span>✓ PPN (11%)</span>
+                                            <span className={`${unbilledPpnFilter === "PPN" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                                {unbilledPpnCount}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${unbilledPpnFilter === "NON_PPN" && !filterNoPriceOnly ? "bg-amber-600 font-bold text-white shadow-xs" : "text-amber-800 hover:text-amber-950"}`}
+                                            onClick={() => {
+                                                const next = unbilledPpnFilter === "NON_PPN" ? "all" : "NON_PPN"
+                                                setUnbilledPpnFilter(next)
+                                                setFilterNoPriceOnly(false)
+                                                setUnbilledPage(1)
+                                            }}
+                                            title="Filter transaksi unbilled Non-PPN (Bebas PPN Pelanggan)"
+                                        >
+                                            <span>⚠ Non-PPN (0%)</span>
+                                            <span className={`${unbilledPpnFilter === "NON_PPN" && !filterNoPriceOnly ? "bg-white/20 text-white" : "bg-amber-100 text-amber-900"} px-1.5 py-0.2 rounded-full text-[10px] font-mono`}>
+                                                {unbilledNonPpnCount}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`px-2.5 py-1 rounded-md text-xs transition-all flex items-center gap-1 cursor-pointer ${filterNoPriceOnly ? "bg-rose-600 font-bold text-white shadow-xs" : "text-rose-700 hover:text-rose-900"}`}
                                             onClick={() => {
                                                 const next = !filterNoPriceOnly
                                                 setFilterNoPriceOnly(next)
-                                                if (next) setUnbilledTypeFilter("ALL")
+                                                if (next) {
+                                                    setUnbilledTypeFilter("ALL")
+                                                    setUnbilledPpnFilter("all")
+                                                }
                                                 setUnbilledPage(1)
                                             }}
                                             title="Filter transaksi yang belum diset harganya di Master Proyek"
@@ -741,7 +808,7 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
                                             <span>Belum Ada Harga</span>
                                             {noPriceTxCount > 0 && (
-                                                <span className={`${filterNoPriceOnly ? "bg-white/20 text-white" : "bg-amber-200 text-amber-900"} px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold`}>
+                                                <span className={`${filterNoPriceOnly ? "bg-white/20 text-white" : "bg-rose-100 text-rose-900"} px-1.5 py-0.2 rounded-full text-[10px] font-mono font-semibold`}>
                                                     {noPriceTxCount}
                                                 </span>
                                             )}
@@ -897,6 +964,9 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                         )}
                                                         {isExpanded && group.items.map((tx: any) => {
                                                             const isSewa = tx.itemType === "SEWA"
+                                                            const isPpn = isSewa
+                                                                ? (tx.is_ppn === true || (tx.ppn_mode && tx.ppn_mode !== "NON_PPN"))
+                                                                : Boolean(tx.project?.tax_ppn && tx.project.tax_ppn > 0)
                                                             const price = isSewa
                                                                 ? tx.pricePerDay
                                                                 : tx.project?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price
@@ -923,8 +993,19 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                                                         <div className="font-medium text-slate-800">
                                                                             {tx.customer?.customer_name || tx.project?.customer?.customer_name}
                                                                         </div>
-                                                                        <div className="text-slate-400">
-                                                                            {tx.project?.name || tx.lokasi_proyek || (isSewa ? "Sewa Alat" : "-")}
+                                                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                                                            <span className="text-slate-400">
+                                                                                {tx.project?.name || tx.lokasi_proyek || (isSewa ? "Sewa Alat" : "-")}
+                                                                            </span>
+                                                                            {isPpn ? (
+                                                                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Dikenakan PPN (11%)">
+                                                                                    PPN 11%
+                                                                                </span>
+                                                                            ) : (
+                                                                                <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title="Non-PPN (Bebas Pajak Pelanggan)">
+                                                                                    Non-PPN
+                                                                                </span>
+                                                                            )}
                                                                         </div>
                                                                     </TableCell>
                                                                     <TableCell>
