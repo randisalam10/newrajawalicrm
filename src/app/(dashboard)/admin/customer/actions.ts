@@ -319,7 +319,7 @@ export async function deleteProject(id: string) {
     }
 }
 
-export async function upsertProjectPrice(projectId: string, qualityId: string, price: number) {
+export async function upsertProjectPrice(projectId: string, qualityId: string, price: number, ppn_mode: string = "NON_PPN", ppn_rate: number = 11) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
     if (!canManageCustomer(session)) return { success: false, error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
@@ -327,8 +327,8 @@ export async function upsertProjectPrice(projectId: string, qualityId: string, p
     try {
         await prisma.projectPrice.upsert({
             where: { projectId_qualityId: { projectId, qualityId } },
-            create: { projectId, qualityId, price },
-            update: { price },
+            create: { projectId, qualityId, price, ppn_mode, ppn_rate },
+            update: { price, ppn_mode, ppn_rate },
         })
         revalidatePath("/admin/customer")
         return { success: true }

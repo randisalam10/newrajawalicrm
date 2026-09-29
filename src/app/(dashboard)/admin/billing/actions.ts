@@ -394,12 +394,22 @@ export async function createInvoice(params: {
         }
 
         const itemsData: any[] = []
-        let subtotal = 0
+        let sewaDppSubtotal = 0   // DPP sewa (basis PPN)
+        let rmDppSubtotal = 0     // DPP ReadyMix (basis PPN)
 
         // 1. Process Sewa items
+        // Gunakan DPP (sebelum PPN) sebagai subtotal basis agar PPN tidak double-count
         for (const tx of sewaTransactions) {
-            const lineTotal = tx.total_price || (tx.price_per_day * tx.total_days)
-            subtotal += lineTotal
+            // Ambil DPP yang sudah tersimpan di transaksi, atau hitung dari total_price
+            let dpp: number
+            if (tx.ppn_mode === "INCLUDE") {
+                // total_price sudah include PPN → ambil dpp_amount tersimpan, atau hitung ulang
+                dpp = tx.dpp_amount ?? (tx.total_price / (1 + (tx.ppn_rate ?? 11) / 100))
+            } else {
+                // EXCLUDE atau NON_PPN → total_price = DPP
+                dpp = tx.total_price || (tx.price_per_day * tx.total_days)
+            }
+            sewaDppSubtotal += dpp
             const eqName = tx.vehicle ? `${tx.vehicle.category?.name || "Unit"} ${tx.vehicle.code}` : (tx.equipment?.nama_alat || "Alat Sewa")
             const eqCode = tx.vehicle?.code || tx.equipment?.kode_alat || "-"
             itemsData.push({
@@ -408,7 +418,7 @@ export async function createInvoice(params: {
                 description: `Sewa ${eqName} (${eqCode}) - ${tx.total_days} Hari [${tx.operator?.name ?? "-"}]`,
                 quantity: tx.total_days,
                 unit_price: tx.price_per_day,
-                subtotal: lineTotal,
+                subtotal: dpp,
             })
         }
 
@@ -422,23 +432,45 @@ export async function createInvoice(params: {
             }
 
             for (const tx of prodTransactions) {
-                const price = projPrices.find((p: any) => p.qualityId === tx.qualityId)!.price
-                const lineTotal = tx.volume_cubic * price
-                subtotal += lineTotal
+                const priceEntry = projPrices.find((p: any) => p.qualityId === tx.qualityId)!
+                const rawPrice = priceEntry.price
+                const rmPpnMode = priceEntry.ppn_mode || "NON_PPN"
+                const rmPpnRate = priceEntry.ppn_rate ?? 11
+                // Konversi harga ke DPP agar PPN tidak double-count
+                let dppPrice: number
+                if (rmPpnMode === "INCLUDE") {
+                    dppPrice = rawPrice / (1 + rmPpnRate / 100)
+                } else {
+                    // EXCLUDE atau NON_PPN → price sudah = DPP
+                    dppPrice = rawPrice
+                }
+                const lineTotal = tx.volume_cubic * dppPrice
+                rmDppSubtotal += lineTotal
                 itemsData.push({
                     item_type: "READYMIX",
                     transactionId: tx.id,
                     quantity: tx.volume_cubic,
-                    unit_price: price,
+                    unit_price: dppPrice,
                     subtotal: lineTotal,
                 })
             }
         }
 
-        // Tax rate: use project tax or 11%
-        const ppnPercent = project?.tax_ppn ?? 11
-        const taxRate = params.includePpn ? ppnPercent / 100 : 0
-        const taxAmount = subtotal * taxRate
+        const subtotal = sewaDppSubtotal + rmDppSubtotal
+
+        // Tax: untuk sewa ambil ppn_rate dari transaksi sewa (default 11%), untuk RM dari proyek
+        // Jika ada mix, hitung PPN per komponen
+        let taxAmount = 0
+        if (params.includePpn) {
+            if (sewaTransactions.length > 0) {
+                const sewaRate = (sewaTransactions[0]?.ppn_rate ?? 11) / 100
+                taxAmount += sewaDppSubtotal * sewaRate
+            }
+            if (rmDppSubtotal > 0) {
+                const rmTaxRate = (project?.tax_ppn ?? 11) / 100
+                taxAmount += rmDppSubtotal * rmTaxRate
+            }
+        }
         const totalAmount = subtotal + taxAmount
 
         // Location ID

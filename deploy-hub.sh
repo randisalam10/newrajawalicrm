@@ -2,8 +2,8 @@
 # ============================================================
 # deploy-hub.sh — Deployment via Docker Hub (Safe & Low Memory)
 # Penggunaan: bash deploy-hub.sh [tag]
-# Contoh:     bash deploy-hub.sh v2.4.5
-# Default tag: v2.4.5 (diupdate tiap release)
+# Contoh:     bash deploy-hub.sh v2.4.6
+# Default tag: v2.4.6 (diupdate tiap release)
 # ============================================================
 
 set -e
@@ -17,7 +17,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 IMAGE_REPO="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="${1:-v2.4.5}"
+IMAGE_TAG="${1:-v2.4.6}"
 IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
 
 echo -e "${BLUE}================================================${NC}"

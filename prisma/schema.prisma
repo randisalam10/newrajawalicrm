@@ -317,7 +317,9 @@ model ProjectPrice {
   projectId       String
   concreteQuality ConcreteQuality @relation(fields: [qualityId], references: [id])
   qualityId       String
-  price           Float // Harga kesepakatan
+  price           Float           // Harga kesepakatan (interpretasi tergantung ppn_mode)
+  ppn_mode        String          @default("NON_PPN") // "NON_PPN" | "INCLUDE" | "EXCLUDE"
+  ppn_rate        Float           @default(11) // Tarif PPN dalam persen (default 11%)
 
   @@unique([projectId, qualityId]) // 1 Proyek hanya punya 1 harga untuk 1 mutu tertentu
 }

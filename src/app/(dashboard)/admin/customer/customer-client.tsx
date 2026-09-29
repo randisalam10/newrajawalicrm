@@ -65,7 +65,9 @@ export function CustomerClient({
     const [editData, setEditData] = useState<any>(null)
     const [parentCustomer, setParentCustomer] = useState<any>(null)
     // Price form state
-    const [priceForm, setPriceForm] = useState<{ qualityId: string; price: string }>({ qualityId: "", price: "" })
+    const [priceForm, setPriceForm] = useState<{ qualityId: string; price: string; ppnMode: string; ppnRate: string }>({
+        qualityId: "", price: "", ppnMode: "NON_PPN", ppnRate: "11"
+    })
     const [priceLoading, setPriceLoading] = useState(false)
 
     // Shared Locations state
@@ -437,23 +439,53 @@ export function CustomerClient({
                                                                                     {/* Existing prices */}
                                                                                     {proj.prices && proj.prices.length > 0 ? (
                                                                                         <div className="flex flex-wrap gap-2">
-                                                                                            {proj.prices.map((p: any) => (
-                                                                                                <div key={p.qualityId} className="flex items-center gap-1.5 bg-slate-50 border rounded-md px-2.5 py-1.5 text-xs">
-                                                                                                    <span className="font-semibold text-slate-700">{p.concreteQuality?.name}</span>
-                                                                                                    <span className="text-slate-500">Rp {Number(p.price).toLocaleString('id-ID')}</span>
-                                                                                                    {canDelete && (
-                                                                                                        <button
-                                                                                                            className="text-red-400 hover:text-red-600 ml-1"
-                                                                                                            onClick={async () => {
-                                                                                                                await deleteProjectPrice(proj.id, p.qualityId)
-                                                                                                            }}
-                                                                                                            title="Hapus harga ini"
-                                                                                                        >
-                                                                                                            ×
-                                                                                                        </button>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            ))}
+                                                                                            {proj.prices.map((p: any) => {
+                                                                                                const ppnMode = p.ppn_mode || "NON_PPN"
+                                                                                                const ppnRate = p.ppn_rate ?? 11
+                                                                                                const priceNum = Number(p.price)
+                                                                                                let dpp = priceNum
+                                                                                                let ppnAmt = 0
+                                                                                                let totalDisp = priceNum
+                                                                                                if (ppnMode === "INCLUDE") {
+                                                                                                    dpp = priceNum / (1 + ppnRate / 100)
+                                                                                                    ppnAmt = priceNum - dpp
+                                                                                                    totalDisp = priceNum
+                                                                                                } else if (ppnMode === "EXCLUDE") {
+                                                                                                    ppnAmt = priceNum * (ppnRate / 100)
+                                                                                                    totalDisp = priceNum + ppnAmt
+                                                                                                }
+                                                                                                return (
+                                                                                                    <div key={p.qualityId} className="flex items-start gap-1.5 bg-slate-50 border rounded-md px-2.5 py-1.5 text-xs">
+                                                                                                        <div>
+                                                                                                            <div className="font-semibold text-slate-700">{p.concreteQuality?.name}</div>
+                                                                                                            <div className="text-slate-500">
+                                                                                                                Rp {priceNum.toLocaleString('id-ID')}
+                                                                                                                {ppnMode !== "NON_PPN" && (
+                                                                                                                    <span className="ml-1 text-[10px] px-1 rounded" style={{ background: ppnMode === "INCLUDE" ? "#dcfce7" : "#fef9c3", color: ppnMode === "INCLUDE" ? "#166534" : "#854d0e" }}>
+                                                                                                                        {ppnMode === "INCLUDE" ? `Inc. PPN ${ppnRate}%` : `Exc. PPN ${ppnRate}%`}
+                                                                                                                    </span>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                            {ppnMode !== "NON_PPN" && (
+                                                                                                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                                                                                                    DPP: Rp {Math.round(dpp).toLocaleString('id-ID')} · Total: Rp {Math.round(totalDisp).toLocaleString('id-ID')}
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                        </div>
+                                                                                                        {canDelete && (
+                                                                                                            <button
+                                                                                                                className="text-red-400 hover:text-red-600 ml-1 mt-0.5"
+                                                                                                                onClick={async () => {
+                                                                                                                    await deleteProjectPrice(proj.id, p.qualityId)
+                                                                                                                }}
+                                                                                                                title="Hapus harga ini"
+                                                                                                            >
+                                                                                                                ×
+                                                                                                            </button>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                )
+                                                                                            })}
                                                                                         </div>
                                                                                     ) : (
                                                                                         <p className="text-xs text-slate-400 italic">Belum ada harga. Tambahkan di bawah.</p>
@@ -463,38 +495,75 @@ export function CustomerClient({
                                                                                         const existingQualityIds = (proj.prices || []).map((p: any) => p.qualityId)
                                                                                         const availableQualities = qualities.filter((q: any) => !existingQualityIds.includes(q.id))
                                                                                         if (availableQualities.length === 0) return null
+                                                                                        // Preview kalkulasi DPP/PPN
+                                                                                        const inputNum = Number(priceForm.price) || 0
+                                                                                        const rate = Number(priceForm.ppnRate) || 11
+                                                                                        let previewDpp = inputNum
+                                                                                        let previewPpn = 0
+                                                                                        let previewTotal = inputNum
+                                                                                        if (priceForm.ppnMode === "INCLUDE") {
+                                                                                            previewDpp = inputNum / (1 + rate / 100)
+                                                                                            previewPpn = inputNum - previewDpp
+                                                                                            previewTotal = inputNum
+                                                                                        } else if (priceForm.ppnMode === "EXCLUDE") {
+                                                                                            previewPpn = inputNum * (rate / 100)
+                                                                                            previewTotal = inputNum + previewPpn
+                                                                                        }
                                                                                         return (
-                                                                                            <div className="flex items-center gap-2 pt-1 border-t border-slate-100 mt-1">
-                                                                                                <select
-                                                                                                    className="flex-1 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                                                                                    value={priceForm.qualityId}
-                                                                                                    onChange={e => setPriceForm(f => ({ ...f, qualityId: e.target.value }))}
-                                                                                                >
-                                                                                                    <option value="">Pilih Mutu...</option>
-                                                                                                    {availableQualities.map((q: any) => (
-                                                                                                        <option key={q.id} value={q.id}>{q.name}</option>
-                                                                                                    ))}
-                                                                                                </select>
-                                                                                                <input
-                                                                                                    type="number"
-                                                                                                    placeholder="Harga/m³"
-                                                                                                    className="w-28 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                                                                                                    value={priceForm.price}
-                                                                                                    onChange={e => setPriceForm(f => ({ ...f, price: e.target.value }))}
-                                                                                                />
-                                                                                                <Button
-                                                                                                    size="sm" className="h-8 text-xs"
-                                                                                                    disabled={priceLoading || !priceForm.qualityId || !priceForm.price}
-                                                                                                    onClick={async () => {
-                                                                                                        if (!priceForm.qualityId || !priceForm.price) return
-                                                                                                        setPriceLoading(true)
-                                                                                                        await upsertProjectPrice(proj.id, priceForm.qualityId, Number(priceForm.price))
-                                                                                                        setPriceForm({ qualityId: "", price: "" })
-                                                                                                        setPriceLoading(false)
-                                                                                                    }}
-                                                                                                >
-                                                                                                    {priceLoading ? "..." : "Simpan"}
-                                                                                                </Button>
+                                                                                            <div className="space-y-2 pt-2 border-t border-slate-100 mt-1">
+                                                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                                                    {/* Mutu selector */}
+                                                                                                    <select
+                                                                                                        className="flex-1 min-w-[100px] text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                                                        value={priceForm.qualityId}
+                                                                                                        onChange={e => setPriceForm(f => ({ ...f, qualityId: e.target.value }))}
+                                                                                                    >
+                                                                                                        <option value="">Pilih Mutu...</option>
+                                                                                                        {availableQualities.map((q: any) => (
+                                                                                                            <option key={q.id} value={q.id}>{q.name}</option>
+                                                                                                        ))}
+                                                                                                    </select>
+                                                                                                    {/* Mode PPN selector */}
+                                                                                                    <select
+                                                                                                        className="w-36 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                                                        value={priceForm.ppnMode}
+                                                                                                        onChange={e => setPriceForm(f => ({ ...f, ppnMode: e.target.value }))}
+                                                                                                    >
+                                                                                                        <option value="NON_PPN">Non PPN</option>
+                                                                                                        <option value="INCLUDE">Include PPN</option>
+                                                                                                        <option value="EXCLUDE">Exclude PPN</option>
+                                                                                                    </select>
+                                                                                                    {/* Harga input */}
+                                                                                                    <input
+                                                                                                        type="number"
+                                                                                                        placeholder={priceForm.ppnMode === "INCLUDE" ? "Harga incl. PPN/m³" : priceForm.ppnMode === "EXCLUDE" ? "Harga DPP/m³" : "Harga/m³"}
+                                                                                                        className="w-36 text-xs h-8 rounded-md border border-slate-200 bg-white px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                                                                                        value={priceForm.price}
+                                                                                                        onChange={e => setPriceForm(f => ({ ...f, price: e.target.value }))}
+                                                                                                    />
+                                                                                                    {/* Tombol Simpan */}
+                                                                                                    <Button
+                                                                                                        size="sm" className="h-8 text-xs"
+                                                                                                        disabled={priceLoading || !priceForm.qualityId || !priceForm.price}
+                                                                                                        onClick={async () => {
+                                                                                                            if (!priceForm.qualityId || !priceForm.price) return
+                                                                                                            setPriceLoading(true)
+                                                                                                            await upsertProjectPrice(proj.id, priceForm.qualityId, Number(priceForm.price), priceForm.ppnMode, Number(priceForm.ppnRate))
+                                                                                                            setPriceForm({ qualityId: "", price: "", ppnMode: "NON_PPN", ppnRate: "11" })
+                                                                                                            setPriceLoading(false)
+                                                                                                        }}
+                                                                                                    >
+                                                                                                        {priceLoading ? "..." : "Simpan"}
+                                                                                                    </Button>
+                                                                                                </div>
+                                                                                                {/* Preview DPP / PPN */}
+                                                                                                {inputNum > 0 && priceForm.ppnMode !== "NON_PPN" && (
+                                                                                                    <div className="text-[10px] text-slate-500 bg-slate-50 rounded px-2 py-1 flex gap-3">
+                                                                                                        <span>DPP: <strong>Rp {Math.round(previewDpp).toLocaleString('id-ID')}</strong></span>
+                                                                                                        <span>PPN {rate}%: <strong>Rp {Math.round(previewPpn).toLocaleString('id-ID')}</strong></span>
+                                                                                                        <span>Total: <strong>Rp {Math.round(previewTotal).toLocaleString('id-ID')}</strong></span>
+                                                                                                    </div>
+                                                                                                )}
                                                                                             </div>
                                                                                         )
                                                                                     })()}

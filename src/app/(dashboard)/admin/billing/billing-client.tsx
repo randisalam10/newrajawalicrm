@@ -1470,15 +1470,26 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                         const year = now.getFullYear()
 
                         const rmSubtotal = selectedTxList.filter((t: any) => t.itemType !== "SEWA").reduce((s: number, tx: any) => {
-                            const price = proj?.prices?.find((p: any) => p.qualityId === tx.qualityId)?.price ?? 0
-                            return s + tx.volume_cubic * price
+                            const priceEntry = proj?.prices?.find((p: any) => p.qualityId === tx.qualityId)
+                            const rawPrice = priceEntry?.price ?? 0
+                            const rmPpnMode = priceEntry?.ppn_mode || "NON_PPN"
+                            const rmPpnRate = priceEntry?.ppn_rate ?? 11
+                            // Konversi ke DPP agar tidak double-count PPN
+                            const dppPrice = rmPpnMode === "INCLUDE"
+                                ? rawPrice / (1 + rmPpnRate / 100)
+                                : rawPrice // EXCLUDE atau NON_PPN → sudah DPP
+                            return s + tx.volume_cubic * dppPrice
                         }, 0)
                         const sewaSubtotal = selectedTxList.filter((t: any) => t.itemType === "SEWA").reduce((s: number, tx: any) => {
+                            // Gunakan DPP (bukan total_price yang bisa include PPN)
+                            if (tx.ppn_mode === "INCLUDE") {
+                                return s + (tx.dpp_amount ?? ((tx.totalPrice || (tx.pricePerDay * tx.totalDays)) / (1 + (tx.ppn_rate ?? 11) / 100)))
+                            }
                             return s + (tx.totalPrice || (tx.pricePerDay * tx.totalDays) || 0)
                         }, 0)
                         const subtotal = rmSubtotal + sewaSubtotal
                         const rmTaxRate = (proj?.tax_ppn ?? 0) / 100
-                        const sewaTaxRate = 0.11
+                        const sewaTaxRate = (selectedTxList.find((t: any) => t.itemType === "SEWA")?.ppn_rate ?? 11) / 100
                         const rmPpn = invoiceForm.includePpn ? rmSubtotal * rmTaxRate : 0
                         const sewaPpn = invoiceForm.includePpn ? sewaSubtotal * sewaTaxRate : 0
                         const ppnTotal = rmPpn + sewaPpn
@@ -1588,8 +1599,13 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                             onChange={e => setInvoiceForm(f => ({ ...f, includePpn: e.target.checked }))}
                                             className="rounded cursor-pointer"
                                         />
-                                        PPN {isCombined ? `Campuran (Cor: ${proj?.tax_ppn ?? 0}%, Sewa: 11%)` : isSewa ? "11%" : `${proj?.tax_ppn ?? 0}%`}
+                                        PPN {isCombined ? `Campuran (Cor: ${proj?.tax_ppn ?? 0}%, Sewa: 11%)` : isSewa ? `${selectedTxList.find((t: any) => t.itemType === "SEWA")?.ppn_rate ?? 11}%` : `${proj?.tax_ppn ?? 0}%`}
                                     </label>
+                                    {isSewa && selectedTxList.some((t: any) => t.ppn_mode === "INCLUDE") && (
+                                        <span className="text-[10px] text-emerald-600 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                                            Harga sewa sudah inc. PPN — DPP dipakai sebagai basis
+                                        </span>
+                                    )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-3">
                                     <div>
@@ -1611,17 +1627,17 @@ export function BillingClient({ initialData, locations, userRole, userLocationId
                                     {isCombined && (
                                         <>
                                             <div className="flex justify-between text-xs text-slate-600">
-                                                <span>Subtotal ReadyMix ({selectedVolume.toFixed(2)} m³)</span>
+                                                <span>DPP ReadyMix ({selectedVolume.toFixed(2)} m³)</span>
                                                 <span className="font-mono">{fmt(rmSubtotal)}</span>
                                             </div>
                                             <div className="flex justify-between text-xs text-slate-600">
-                                                <span>Subtotal Sewa Alat ({selectedDays} Hari)</span>
+                                                <span>DPP Sewa Alat ({selectedDays} Hari)</span>
                                                 <span className="font-mono">{fmt(sewaSubtotal)}</span>
                                             </div>
                                         </>
                                     )}
-                                    <div className="flex justify-between"><span className="text-slate-600">Subtotal Tagihan</span><span className="font-mono font-medium">{fmt(subtotal)}</span></div>
-                                    {invoiceForm.includePpn && <div className="flex justify-between text-slate-500"><span>PPN {isCombined ? "Campuran" : (isSewa ? "11%" : `${proj?.tax_ppn}%`)}</span><span className="font-mono">{fmt(ppnTotal)}</span></div>}
+                                    <div className="flex justify-between"><span className="text-slate-600">DPP (Dasar Pengenaan Pajak)</span><span className="font-mono font-medium">{fmt(subtotal)}</span></div>
+                                    {invoiceForm.includePpn && <div className="flex justify-between text-slate-500"><span>PPN {isCombined ? "Campuran" : (isSewa ? `${selectedTxList.find((t: any) => t.itemType === "SEWA")?.ppn_rate ?? 11}%` : `${proj?.tax_ppn}%`)}</span><span className="font-mono">{fmt(ppnTotal)}</span></div>}
                                     <div className="flex justify-between font-bold border-t border-blue-200 pt-1 mt-1"><span>Total</span><span className="text-blue-700 font-mono">{fmt(total)}</span></div>
                                 </div>
                                 {createError && (
