@@ -33,7 +33,7 @@ const DEFAULT_MATERIALS = [
         unit: "m³",
         defaultDensity: 1400,
         description: "Pasir beton cor alam berkualitas standar batching plant",
-        initialPrice: 150000,
+        initialPrice: 80000,
         effectiveDate: "2026-01-01",
     },
     {
@@ -43,7 +43,7 @@ const DEFAULT_MATERIALS = [
         unit: "m³",
         defaultDensity: 1450,
         description: "Batu pecah ukuran 10-20mm untuk mutu K-225 ke atas",
-        initialPrice: 185000,
+        initialPrice: 600000,
         effectiveDate: "2026-01-01",
     },
     {
@@ -53,7 +53,7 @@ const DEFAULT_MATERIALS = [
         unit: "m³",
         defaultDensity: 1450,
         description: "Batu pecah ukuran 20-30mm untuk struktur beton berat",
-        initialPrice: 185000,
+        initialPrice: 550000,
         effectiveDate: "2026-01-01",
     },
     {
@@ -73,41 +73,74 @@ const DEFAULT_MATERIALS = [
         unit: "m³",
         defaultDensity: 1400,
         description: "Material agregat pengisi atau sirtu quarry",
-        initialPrice: 130000,
+        initialPrice: 800000,
         effectiveDate: "2026-01-01",
     },
 ]
 
 /**
  * Seed initial default materials (explicitly non-cement) if empty.
+ * Also seeds MaterialPriceHistory for any MasterMaterial that has no history yet,
+ * so that a partial data loss (histories deleted but materials intact) is auto-recovered.
  */
 export async function seedInitialMaterialsIfEmpty() {
     try {
         const count = await prisma.masterMaterial.count()
-        if (count > 0) return
 
+        // Case 1: No materials at all → full seed
+        if (count === 0) {
+            for (const m of DEFAULT_MATERIALS) {
+                const mat = await prisma.masterMaterial.create({
+                    data: {
+                        code: m.code,
+                        name: m.name,
+                        category: m.category,
+                        unit: m.unit,
+                        defaultDensity: m.defaultDensity,
+                        description: m.description,
+                        isActive: true,
+                    }
+                })
+
+                await prisma.materialPriceHistory.create({
+                    data: {
+                        materialId: mat.id,
+                        material_code: mat.code,
+                        material_name: mat.name,
+                        price_per_m3: m.initialPrice,
+                        effective_date: new Date(m.effectiveDate),
+                        old_price: 0,
+                        notes: "Harga dasar default inisialisasi master data",
+                    }
+                })
+            }
+            return
+        }
+
+        // Case 2: Materials exist but some have NO price history at all
+        // (recovery from partial data loss — e.g. migration patch deleted histories)
+        const defaultPriceMap: Record<string, number> = {}
         for (const m of DEFAULT_MATERIALS) {
-            const mat = await prisma.masterMaterial.create({
-                data: {
-                    code: m.code,
-                    name: m.name,
-                    category: m.category,
-                    unit: m.unit,
-                    defaultDensity: m.defaultDensity,
-                    description: m.description,
-                    isActive: true,
-                }
-            })
+            defaultPriceMap[m.code] = m.initialPrice
+        }
 
+        const materialsWithoutHistory = await prisma.masterMaterial.findMany({
+            where: {
+                priceHistories: { none: {} }
+            }
+        })
+
+        for (const mat of materialsWithoutHistory) {
+            const fallbackPrice = defaultPriceMap[mat.code] ?? 80000
             await prisma.materialPriceHistory.create({
                 data: {
                     materialId: mat.id,
                     material_code: mat.code,
                     material_name: mat.name,
-                    price_per_m3: m.initialPrice,
-                    effective_date: new Date(m.effectiveDate),
+                    price_per_m3: fallbackPrice,
+                    effective_date: new Date("2026-01-01"),
                     old_price: 0,
-                    notes: "Harga dasar default inisialisasi master data",
+                    notes: "Harga dasar awal — dipulihkan otomatis",
                 }
             })
         }

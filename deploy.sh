@@ -114,13 +114,13 @@ fi
 
 # ── 4. Eksekusi Migrasi Database Prisma ───────────────────────
 echo ""
-echo -e "${CYAN}[4/6] Menjalankan migrasi database Prisma & optimasi...${NC}"
+echo -e "${CYAN}[4/6] Menjalankan migrasi schema database Prisma...${NC}"
 
-# 0. Jalankan apply-indexes.sh langsung (Tabel MasterItemPriceHistory + Indexes + Backfill Harga)
-if [ -f "apply-indexes.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi tabel baru, indexes, dan backfill harga via apply-indexes.sh...${NC}"
-    bash apply-indexes.sh || true
-fi
+# ⛔ apply-indexes.sh TIDAK dijalankan otomatis di sini.
+# Script ini mengandung INSERT data (backfill MasterItemPriceHistory & RblCategory)
+# yang BERBAHAYA jika diulang di production — bisa duplikat atau override data user.
+# Jalankan MANUAL sekali saja saat setup server baru:
+#   bash apply-indexes.sh
 
 # 1. Resolve rollback jika ada migrasi lama yang tertahan
 docker run --rm \
@@ -139,24 +139,23 @@ docker run --rm \
 
 echo -e "${GREEN}   ✓ Seluruh migrasi database berhasil diterapkan.${NC}"
 
-# ── 5. Seed Akun SuperAdmin & Role Permissions ────────────────
+# ── 5. Seed Akun SuperAdmin (AMAN — ada guard skip jika sudah ada) ──
 echo ""
-echo -e "${CYAN}[5/6] Memeriksa data master & seed bawaan sistem...${NC}"
+echo -e "${CYAN}[5/6] Memeriksa akun SuperAdmin...${NC}"
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
     sh -c "node /app/prisma/seed.js" \
-    || echo -e "${YELLOW}   ⚠ Seed akun admin dilewati (mungkin sudah terdaftar).${NC}"
+    || echo -e "${YELLOW}   ⚠ Seed akun admin dilewati (sudah terdaftar).${NC}"
 
-docker run --rm \
-    --network host \
-    --env-file $ENV_FILE \
-    $IMAGE_TO_USE \
-    sh -c "node /app/prisma/seed-rbac.js 2>/dev/null || true" \
-    || echo -e "${YELLOW}   ⚠ Seed RBAC dilewati.${NC}"
+# ⛔ seed-rbac.js TIDAK dijalankan otomatis di sini.
+# Script ini melakukan deleteMany(RolePermission) lalu recreate setiap dijalankan,
+# yang MENGHAPUS semua permission custom yang dikonfigurasi admin via UI.
+# Jalankan MANUAL hanya saat pertama setup atau ada penambahan permission baru:
+#   docker exec rajawali-app node /app/prisma/seed-rbac.js
 
-echo -e "${GREEN}   ✓ Data seed siap.${NC}"
+echo -e "${GREEN}   ✓ Pemeriksaan data sistem selesai.${NC}"
 
 # ── 6. Restart Container Aplikasi ─────────────────────────────
 echo ""

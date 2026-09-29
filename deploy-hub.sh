@@ -77,17 +77,16 @@ echo -e "${CYAN}[3/5] Menarik image dari Docker Hub ($IMAGE_NAME)...${NC}"
 docker pull "$IMAGE_NAME"
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# ── 4. Database migration — AMAN & IDEMPOTENT ─────────────────
+# ── 4. Database migration — AMAN & IDEMPOTENT ──────────────────
 echo ""
-echo -e "${CYAN}[4/5] Menerapkan migrasi database (Aman, idempotent via Prisma)...${NC}"
+echo -e "${CYAN}[4/5] Menerapkan migrasi schema database (Prisma migrate deploy)...${NC}"
 
-# A. apply-indexes.sh — Index & backfill helpers (pakai IF NOT EXISTS, aman)
-if [ -f "apply-indexes.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi index dan backfill via apply-indexes.sh...${NC}"
-    bash apply-indexes.sh || true
-fi
+# ⛔ apply-indexes.sh TIDAK dijalankan otomatis.
+# Mengandung INSERT data (backfill MasterItemPriceHistory & RblCategory defaults)
+# yang berbahaya jika diulang — bisa duplikat atau timpa data production.
+# Jalankan MANUAL sekali saat setup server baru: bash apply-indexes.sh
 
-# B. prisma migrate deploy — HANYA JALANKAN MIGRASI BARU
+# Prisma migrate deploy — HANYA jalankan migrasi schema baru.
 # Melacak status via tabel _prisma_migrations. Tidak pernah re-run migrasi lama.
 # Tidak DROP tabel, tidak DROP kolom, tidak menghapus data production.
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
@@ -99,12 +98,10 @@ docker run --rm \
     && echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}" \
     || echo -e "${YELLOW}   ℹ Migrasi sudah up-to-date atau dilewati.${NC}"
 
-# C. fix-db.sh — DDL helpers (aman karena pakai IF NOT EXISTS / idempotent)
-if [ -f "fix-db.sh" ]; then
-    echo -e "${YELLOW}   Mengeksekusi fix-db.sh (schema helpers)...${NC}"
-    bash fix-db.sh 2>/dev/null || true
-    echo -e "${GREEN}   ✓ fix-db.sh selesai.${NC}"
-fi
+# ⛔ fix-db.sh TIDAK dijalankan otomatis.
+# Mengandung UPDATE data (backfill PurchaseOrder.isBypassed) dan INSERT RblCategory.
+# Sudah idempotent, tapi cukup dijalankan MANUAL sekali saat butuh patch:
+#   bash fix-db.sh
 
 # ── 5. Jalankan container baru ─────────────────────────────────
 echo ""
@@ -128,11 +125,12 @@ docker run -d \
     -v /home/secrets:/app/secrets \
     "$IMAGE_NAME"
 
-# Sinkronkan RBAC permissions (HANYA daftar permission, tanpa dummy data / user overwrite)
-echo -e "${CYAN}Menyinkronkan permission RBAC ke database...${NC}"
-sleep 3  # Beri waktu container startup
-docker exec $APP_NAME node /app/prisma/seed-rbac.js > /dev/null 2>&1 || true
-echo -e "${GREEN}   ✓ RBAC permissions tersinkronisasi.${NC}"
+# ⛔ seed-rbac.js TIDAK dijalankan otomatis.
+# Script ini melakukan deleteMany(RolePermission) lalu recreate setiap dijalankan,
+# yang MENGHAPUS semua permission custom yang dikonfigurasi admin via UI.
+# Jalankan MANUAL hanya saat pertama setup atau ada penambahan permission baru:
+#   docker exec rajawali-app node /app/prisma/seed-rbac.js
+echo -e "${GREEN}   ✓ Deployment selesai, RBAC permissions tidak diubah.${NC}"
 
 # Bersihkan image yang tidak terpakai
 docker image prune -f > /dev/null 2>&1 || true
