@@ -8,6 +8,7 @@ export interface MaterialPriceInput {
     materialId: string
     price_per_m3: number
     effective_date: string // YYYY-MM-DD
+    locationIds?: string[] // ["all"] or array of location IDs: ["loc1", "loc2"]
     locationId?: string | null
     notes?: string
 }
@@ -183,21 +184,53 @@ export async function getMasterMaterialsData(filters?: { locationId?: string }) 
     const formattedMaterials = materials.map((mat: any) => {
         const histories = mat.priceHistories || []
 
-        // Find active price currently in effect (effective_date <= now)
-        // If location filter specified, prioritize that location
+        // Find active entries currently in effect (effective_date <= now)
         const activeEntries = histories.filter((h: any) => new Date(h.effective_date) <= now)
+        
+        // 1. Global price entry (locationId is null)
+        const globalActiveEntry = activeEntries.find((h: any) => !h.locationId) || null
+
+        // 2. Active branch overrides (all unique active branch prices for this material)
+        const branchOverridesMap = new Map<string, any>()
+        activeEntries.forEach((h: any) => {
+            if (h.locationId && !branchOverridesMap.has(h.locationId)) {
+                branchOverridesMap.set(h.locationId, {
+                    id: h.id,
+                    locationId: h.locationId,
+                    locationName: h.location?.name || "Cabang",
+                    price: h.price_per_m3,
+                    effectiveDate: h.effective_date,
+                })
+            }
+        })
+        const branchOverrides = Array.from(branchOverridesMap.values())
+
+        // 3. Determine currentPriceEntry based on filter:
         let currentPriceEntry: any = null
+        let isBranchSpecific = false
 
         if (filters?.locationId && filters.locationId !== "all") {
             currentPriceEntry = activeEntries.find((h: any) => h.locationId === filters.locationId)
-        }
-        if (!currentPriceEntry) {
-            currentPriceEntry = activeEntries[0] || null
+            if (currentPriceEntry) {
+                isBranchSpecific = true
+            } else {
+                currentPriceEntry = globalActiveEntry || activeEntries[0] || null
+                isBranchSpecific = false
+            }
+        } else {
+            // Global view: MUST show Global price as main, never let a single branch hijack the global view!
+            currentPriceEntry = globalActiveEntry || activeEntries[0] || null
+            isBranchSpecific = currentPriceEntry?.locationId ? true : false
         }
 
         // Future scheduled price if any
         const futureEntries = histories.filter((h: any) => new Date(h.effective_date) > now).reverse()
-        const nextPriceEntry = futureEntries[0] || null
+        let nextPriceEntry: any = null
+        if (filters?.locationId && filters.locationId !== "all") {
+            nextPriceEntry = futureEntries.find((h: any) => h.locationId === filters.locationId) || futureEntries.find((h: any) => !h.locationId) || null
+        } else {
+            nextPriceEntry = futureEntries.find((h: any) => !h.locationId) || futureEntries[0] || null
+        }
 
         return {
             id: mat.id,
@@ -215,6 +248,9 @@ export async function getMasterMaterialsData(filters?: { locationId?: string }) 
             currentLocationId: currentPriceEntry?.locationId || null,
             currentHistoryId: currentPriceEntry?.id || null,
             currentNotes: currentPriceEntry?.notes || "",
+            isBranchSpecific,
+            globalPrice: globalActiveEntry ? globalActiveEntry.price_per_m3 : null,
+            branchOverrides,
             nextPrice: nextPriceEntry ? nextPriceEntry.price_per_m3 : null,
             nextEffectiveDate: nextPriceEntry ? nextPriceEntry.effective_date : null,
             nextHistoryId: nextPriceEntry?.id || null,
@@ -257,7 +293,7 @@ export async function addMaterialPrice(input: MaterialPriceInput) {
     const session = await auth()
     if (!session?.user) throw new Error("Unauthorized")
 
-    const { materialId, price_per_m3, effective_date, locationId, notes } = input
+    const { materialId, price_per_m3, effective_date, locationIds, locationId, notes } = input
 
     if (!materialId) throw new Error("Material ID wajib diisi.")
     if (!price_per_m3 || price_per_m3 <= 0) throw new Error("Harga per kubik harus lebih besar dari 0.")
@@ -270,52 +306,69 @@ export async function addMaterialPrice(input: MaterialPriceInput) {
 
     const effDate = new Date(effective_date)
 
-    // Find the latest active price prior to this effective date for old_price
-    const prevPrice = await prisma.materialPriceHistory.findFirst({
-        where: {
-            materialId,
-            effective_date: { lt: effDate },
-            ...(locationId ? { OR: [{ locationId }, { locationId: null }] } : { locationId: null })
-        },
-        orderBy: { effective_date: "desc" }
-    })
-
-    const cleanLocationId = locationId && locationId !== "all" ? locationId : null
-
-    // Check if an entry with exact same effective date & location exists
-    const existingExact = await prisma.materialPriceHistory.findFirst({
-        where: {
-            materialId,
-            effective_date: effDate,
-            locationId: cleanLocationId
+    // Determine target location IDs (multi-branch support)
+    let targets: (string | null)[] = []
+    if (locationIds && locationIds.length > 0) {
+        if (locationIds.includes("all")) {
+            targets = [null]
+        } else {
+            targets = locationIds.map(id => (id && id !== "all" ? id : null))
         }
-    })
-
-    if (existingExact) {
-        // Update existing exact entry
-        await prisma.materialPriceHistory.update({
-            where: { id: existingExact.id },
-            data: {
-                price_per_m3,
-                notes,
-                createdById: session.user.id,
-            }
-        })
+    } else if (locationId !== undefined) {
+        targets = [locationId && locationId !== "all" ? locationId : null]
     } else {
-        // Create new history entry
-        await prisma.materialPriceHistory.create({
-            data: {
-                materialId: material.id,
-                material_code: material.code,
-                material_name: material.name,
-                price_per_m3,
+        targets = [null]
+    }
+
+    // De-duplicate targets
+    targets = Array.from(new Set(targets))
+
+    for (const cleanLocationId of targets) {
+        // Find the latest active price prior to this effective date for old_price
+        const prevPrice = await prisma.materialPriceHistory.findFirst({
+            where: {
+                materialId,
+                effective_date: { lt: effDate },
+                ...(cleanLocationId ? { OR: [{ locationId: cleanLocationId }, { locationId: null }] } : { locationId: null })
+            },
+            orderBy: { effective_date: "desc" }
+        })
+
+        // Check if an entry with exact same effective date & location exists
+        const existingExact = await prisma.materialPriceHistory.findFirst({
+            where: {
+                materialId,
                 effective_date: effDate,
-                old_price: prevPrice?.price_per_m3 || 0,
-                locationId: cleanLocationId,
-                notes,
-                createdById: session.user.id,
+                locationId: cleanLocationId
             }
         })
+
+        if (existingExact) {
+            // Update existing exact entry
+            await prisma.materialPriceHistory.update({
+                where: { id: existingExact.id },
+                data: {
+                    price_per_m3,
+                    notes,
+                    createdById: session.user.id,
+                }
+            })
+        } else {
+            // Create new history entry
+            await prisma.materialPriceHistory.create({
+                data: {
+                    materialId: material.id,
+                    material_code: material.code,
+                    material_name: material.name,
+                    price_per_m3,
+                    effective_date: effDate,
+                    old_price: prevPrice?.price_per_m3 || 0,
+                    locationId: cleanLocationId,
+                    notes,
+                    createdById: session.user.id,
+                }
+            })
+        }
     }
 
     revalidatePath("/admin/master-material")
@@ -510,53 +563,83 @@ export async function simulatePriceAtDate(data: {
     const d = new Date(targetDate)
     const cleanLocationId = locationId && locationId !== "all" ? locationId : null
 
-    // Exact active entry
-    let activeEntry = await prisma.materialPriceHistory.findFirst({
-        where: {
-            material_code: materialCode,
-            effective_date: { lte: d },
-            OR: [
-                ...(cleanLocationId ? [{ locationId: cleanLocationId }] : []),
-                { locationId: null }
-            ]
-        },
-        include: { location: { select: { name: true } } },
-        orderBy: [
-            { locationId: cleanLocationId ? "desc" : "asc" },
-            { effective_date: "desc" }
-        ]
-    })
+    // 1. Try branch-specific active entry first
+    let activeEntry: any = null
+    if (cleanLocationId) {
+        activeEntry = await prisma.materialPriceHistory.findFirst({
+            where: {
+                material_code: materialCode,
+                effective_date: { lte: d },
+                locationId: cleanLocationId,
+            },
+            include: { location: { select: { name: true } } },
+            orderBy: { effective_date: "desc" }
+        })
+    }
+
+    // 2. Fallback to global active entry (locationId is null)
+    if (!activeEntry) {
+        activeEntry = await prisma.materialPriceHistory.findFirst({
+            where: {
+                material_code: materialCode,
+                effective_date: { lte: d },
+                locationId: null,
+            },
+            include: { location: { select: { name: true } } },
+            orderBy: { effective_date: "desc" }
+        })
+    }
 
     let isFallbackToEarliest = false
     if (!activeEntry) {
         // Fallback to earliest recorded price if date precedes first effective date
-        activeEntry = await prisma.materialPriceHistory.findFirst({
-            where: {
-                material_code: materialCode,
-                OR: [
-                    ...(cleanLocationId ? [{ locationId: cleanLocationId }] : []),
-                    { locationId: null }
-                ]
-            },
-            include: { location: { select: { name: true } } },
-            orderBy: { effective_date: "asc" }
-        })
+        if (cleanLocationId) {
+            activeEntry = await prisma.materialPriceHistory.findFirst({
+                where: {
+                    material_code: materialCode,
+                    locationId: cleanLocationId,
+                },
+                include: { location: { select: { name: true } } },
+                orderBy: { effective_date: "asc" }
+            })
+        }
+        if (!activeEntry) {
+            activeEntry = await prisma.materialPriceHistory.findFirst({
+                where: {
+                    material_code: materialCode,
+                    locationId: null,
+                },
+                include: { location: { select: { name: true } } },
+                orderBy: { effective_date: "asc" }
+            })
+        }
         if (activeEntry) isFallbackToEarliest = true
     }
 
     // Next scheduled entry after this date (if any)
-    const nextEntry = await prisma.materialPriceHistory.findFirst({
-        where: {
-            material_code: materialCode,
-            effective_date: { gt: d },
-            OR: [
-                ...(cleanLocationId ? [{ locationId: cleanLocationId }] : []),
-                { locationId: null }
-            ]
-        },
-        include: { location: { select: { name: true } } },
-        orderBy: { effective_date: "asc" }
-    })
+    let nextEntry: any = null
+    if (cleanLocationId) {
+        nextEntry = await prisma.materialPriceHistory.findFirst({
+            where: {
+                material_code: materialCode,
+                effective_date: { gt: d },
+                locationId: cleanLocationId,
+            },
+            include: { location: { select: { name: true } } },
+            orderBy: { effective_date: "asc" }
+        })
+    }
+    if (!nextEntry) {
+        nextEntry = await prisma.materialPriceHistory.findFirst({
+            where: {
+                material_code: materialCode,
+                effective_date: { gt: d },
+                locationId: null,
+            },
+            include: { location: { select: { name: true } } },
+            orderBy: { effective_date: "asc" }
+        })
+    }
 
     return {
         matchedPrice: activeEntry?.price_per_m3 ?? 0,
@@ -566,4 +649,21 @@ export async function simulatePriceAtDate(data: {
         nextPrice: nextEntry?.price_per_m3 ?? null,
         nextEffectiveDate: nextEntry?.effective_date ?? null,
     }
+}
+
+/**
+ * Fetch all active MasterMaterial list (for custom material auto-suggestions)
+ */
+export async function getCustomMasterMaterials() {
+    return await prisma.masterMaterial.findMany({
+        where: { isActive: true },
+        select: {
+            id: true,
+            code: true,
+            name: true,
+            category: true,
+            unit: true,
+        },
+        orderBy: { name: "asc" }
+    })
 }

@@ -17,7 +17,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 IMAGE_REPO="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="${1:-v2.4.7}"
+IMAGE_TAG="${1:-v2.4.8}"
 IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
 
 echo -e "${BLUE}================================================${NC}"
@@ -97,6 +97,26 @@ docker run --rm \
     sh -c "npx prisma migrate deploy" \
     && echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}" \
     || echo -e "${YELLOW}   ℹ Migrasi sudah up-to-date atau dilewati.${NC}"
+
+# Ensure DDL patch aman (Idempotent) agar kolom custom_material_name selalu terpasang
+echo -e "${YELLOW}   Memastikan kolom custom_material_name pada AggregateIncoming & Outgoing...${NC}"
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    "$IMAGE_NAME" \
+    node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+async function main() {
+    await prisma.\$executeRawUnsafe(\`
+        ALTER TABLE \"AggregateIncoming\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
+        ALTER TABLE \"AggregateOutgoing\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
+    \`);
+    console.log('   ✓ Patch DDL custom_material_name verified.');
+    await prisma.\$disconnect();
+}
+main().catch(e => { console.warn('   ℹ DDL notice:', e.message); process.exit(0); });
+" 2>/dev/null || true
 
 # ⛔ fix-db.sh TIDAK dijalankan otomatis.
 # Mengandung UPDATE data (backfill PurchaseOrder.isBypassed) dan INSERT RblCategory.

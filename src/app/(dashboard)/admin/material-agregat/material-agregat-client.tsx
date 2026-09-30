@@ -195,7 +195,10 @@ export function MaterialAgregatClient({
             plate_number: t.plate_number,
             volume_cubic: t.volume_cubic,
             aggregate_type: t.aggregate_type,
-            aggregateLabel: AGGREGATE_TYPE_LABELS[t.aggregate_type] || t.aggregate_type,
+            custom_material_name: t.custom_material_name,
+            aggregateLabel: (t.aggregate_type === "Other" && t.custom_material_name)
+                ? t.custom_material_name
+                : (AGGREGATE_TYPE_LABELS[t.aggregate_type] || t.aggregate_type),
             source_type: t.source_type,
             supplier: t.supplier,
             notes: t.notes,
@@ -276,7 +279,10 @@ export function MaterialAgregatClient({
             date: new Date(t.date).toISOString().split("T")[0],
             no_bon: t.no_bon,
             aggregate_type: t.aggregate_type,
-            aggregateLabel: AGGREGATE_TYPE_LABELS[t.aggregate_type] || t.aggregate_type,
+            custom_material_name: t.custom_material_name,
+            aggregateLabel: (t.aggregate_type === "Other" && t.custom_material_name)
+                ? t.custom_material_name
+                : (AGGREGATE_TYPE_LABELS[t.aggregate_type] || t.aggregate_type),
             volume_cubic: t.volume_cubic,
             unit: t.unit || "m³",
             unit_price: t.unit_price,
@@ -353,6 +359,7 @@ export function MaterialAgregatClient({
                 direction: "IN",
                 no_bon: r.no_bon,
                 aggregate_type: r.aggregate_type,
+                custom_material_name: r.custom_material_name,
                 aggregateLabel: r.aggregateLabel,
                 volume: r.volume_cubic,
                 unit: "m³",
@@ -373,6 +380,7 @@ export function MaterialAgregatClient({
             direction: "OUT",
             no_bon: r.no_bon || "-",
             aggregate_type: r.aggregate_type,
+            custom_material_name: r.custom_material_name,
             aggregateLabel: r.aggregateLabel,
             volume: r.volume_cubic,
             unit: r.unit || "m³",

@@ -19,6 +19,7 @@ const MATERIAL_DISPLAY_NAMES: Record<string, string> = {
     SplitHalfOne: "Batu Split 1/2",
     SplitTwoThree: "Batu Split 2/3",
     Other: "Agregat Lainnya / Sirtu",
+    AbuBatu: "Abu Batu / Screening",
     Semen: "Semen",
     PASIR: "Pasir Cor",
     SPLIT_1_2: "Batu Split 1/2",
@@ -57,9 +58,10 @@ function resolveEffectivePrice(
     histories: any[],
     aggregateType: string,
     txDate: Date | string,
-    locationId?: string | null
+    locationId?: string | null,
+    customMaterialCode?: string | null
 ): number {
-    const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[aggregateType] || aggregateType
+    const matCode = customMaterialCode || AGGREGATE_TYPE_TO_MATERIAL_CODE[aggregateType] || aggregateType
     const cleanLocationId = locationId && locationId !== "all" ? locationId : null
     const txDateStr = toDateString(txDate)
 
@@ -176,7 +178,7 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
             incomingWhere.source_type = filters.sourceType
         }
 
-        const [incomings, outgoings, locations, priceHistories] = await Promise.all([
+        const [incomings, outgoings, locations, priceHistories, masterMaterials] = await Promise.all([
             prisma.aggregateIncoming.findMany({
                 where: incomingWhere,
                 include: {
@@ -201,8 +203,15 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
             }),
             prisma.materialPriceHistory.findMany({
                 orderBy: { effective_date: "asc" }
+            }),
+            prisma.masterMaterial.findMany({
+                where: { isActive: true },
+                select: { code: true, name: true }
             })
         ])
+
+        const matNameToCode = new Map<string, string>()
+        masterMaterials.forEach(m => matNameToCode.set(m.name.toLowerCase().trim(), m.code))
 
         // Filter search client-side if given
         const searchLower = filters.search?.toLowerCase().trim() || ""
@@ -212,7 +221,10 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
             
             // Check stored unit price; if 0 or null, dynamically resolve from Master Material
             const storedUnitPrice = Number(item.unit_price) || 0
-            const masterUnitPrice = resolveEffectivePrice(priceHistories, item.aggregate_type, item.date, item.locationId)
+            const customCode = (item.aggregate_type === "Other" && item.custom_material_name)
+                ? matNameToCode.get(item.custom_material_name.toLowerCase().trim())
+                : null
+            const masterUnitPrice = resolveEffectivePrice(priceHistories, item.aggregate_type, item.date, item.locationId, customCode)
             const unitPrice = storedUnitPrice > 0 ? storedUnitPrice : masterUnitPrice
 
             const storedTotalPrice = Number(item.total_price) || 0
@@ -234,7 +246,10 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
                 distance_km: item.distance_km || 0,
                 rate_price: item.rate_price || 0,
                 aggregate_type: item.aggregate_type,
-                material_name: MATERIAL_DISPLAY_NAMES[item.aggregate_type] || item.aggregate_type,
+                custom_material_name: item.custom_material_name,
+                material_name: (item.aggregate_type === "Other" && item.custom_material_name)
+                    ? item.custom_material_name
+                    : (MATERIAL_DISPLAY_NAMES[item.aggregate_type] || item.aggregate_type),
                 source_type: item.source_type, // "Internal" | "External"
                 supplier: item.supplier || (item.source_type === "Internal" ? "Quarry Sendiri" : "Vendor Luar"),
                 locationId: item.locationId,
@@ -265,7 +280,10 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
             const vol = Number(item.volume_cubic) || 0
             
             const storedUnitPrice = Number(item.unit_price) || 0
-            const masterUnitPrice = resolveEffectivePrice(priceHistories, item.aggregate_type, item.date, item.locationId)
+            const customCode = (item.aggregate_type === "Other" && item.custom_material_name)
+                ? matNameToCode.get(item.custom_material_name.toLowerCase().trim())
+                : null
+            const masterUnitPrice = resolveEffectivePrice(priceHistories, item.aggregate_type, item.date, item.locationId, customCode)
             const unitPrice = storedUnitPrice > 0 ? storedUnitPrice : masterUnitPrice
 
             const storedTotalPrice = Number(item.total_price) || 0
@@ -280,7 +298,10 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
                 date: item.date,
                 no_bon: item.no_bon || "-",
                 aggregate_type: item.aggregate_type,
-                material_name: MATERIAL_DISPLAY_NAMES[item.aggregate_type] || item.aggregate_type,
+                custom_material_name: item.custom_material_name,
+                material_name: (item.aggregate_type === "Other" && item.custom_material_name)
+                    ? item.custom_material_name
+                    : (MATERIAL_DISPLAY_NAMES[item.aggregate_type] || item.aggregate_type),
                 category: item.category || "PENJUALAN",
                 recipient: item.recipient || "-",
                 volume_cubic: vol,
@@ -333,7 +354,7 @@ export async function getMaterialReportData(filters: MaterialReportFilters) {
         }
 
         // Breakdown by Material Type
-        const standardTypes = ["Pasir", "SplitHalfOne", "SplitTwoThree", "Other"]
+        const standardTypes = ["Pasir", "SplitHalfOne", "SplitTwoThree", "AbuBatu", "Other"]
         const presentIncomingTypes = processedIncoming.map((i: any) => i.aggregate_type)
         const presentOutgoingTypes = processedOutgoing.map((i: any) => i.aggregate_type)
         const materialTypes = Array.from(new Set([...standardTypes, ...presentIncomingTypes, ...presentOutgoingTypes]))

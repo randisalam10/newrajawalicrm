@@ -20,8 +20,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Loader2, Mountain, ShoppingCart, Truck, Calendar, MapPin, Layers, Coins } from "lucide-react"
-import { createAggregateIncoming, updateAggregateIncoming, getEffectiveAggregatePrice } from "./actions"
+import { Loader2, Mountain, ShoppingCart, Truck, Calendar, MapPin, Layers, Coins, Tag } from "lucide-react"
+import { createAggregateIncoming, updateAggregateIncoming, getEffectiveAggregatePrice, getCustomMaterialsList } from "./actions"
 import { AggregateInRow, AGGREGATE_TYPE_OPTIONS } from "./columns"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +68,8 @@ export function MaterialAgregatForm({
 
     // Controlled Material Type & Transaction Date (triggers dynamic master price lookup)
     const [aggregateType, setAggregateType] = useState<string>(initialData?.aggregate_type ?? "SplitHalfOne")
+    const [customMaterialName, setCustomMaterialName] = useState<string>(initialData?.custom_material_name || "")
+    const [customMaterialList, setCustomMaterialList] = useState<{ id: string; name: string; code: string }[]>([])
     const [transactionDate, setTransactionDate] = useState<string>(
         initialData?.date 
             ? (initialData.date.includes("T") ? initialData.date.split("T")[0] : initialData.date)
@@ -119,6 +121,12 @@ export function MaterialAgregatForm({
 
             const curType = initialData?.aggregate_type ?? "SplitHalfOne"
             setAggregateType(curType)
+            setCustomMaterialName(initialData?.custom_material_name || "")
+
+            // Fetch custom materials for autocomplete
+            getCustomMaterialsList().then(list => {
+                setCustomMaterialList(list as any)
+            }).catch(console.error)
 
             const curDate = initialData?.date 
                 ? (initialData.date.includes("T") ? initialData.date.split("T")[0] : initialData.date)
@@ -153,7 +161,7 @@ export function MaterialAgregatForm({
         }
     }, [isOpen, initialData, locations, retaseSettings, userLocationId, vehicles])
 
-    // Dynamic Master Material Price Lookup whenever material, date, or branch changes
+    // Dynamic Master Material Price Lookup whenever material, custom name, date, or branch changes
     useEffect(() => {
         let isMounted = true
         async function fetchPrice() {
@@ -164,7 +172,12 @@ export function MaterialAgregatForm({
             }
             setIsFetchingPrice(true)
             try {
-                const res = await getEffectiveAggregatePrice(aggregateType, transactionDate, selectedLocationId)
+                const res = await getEffectiveAggregatePrice(
+                    aggregateType,
+                    transactionDate,
+                    selectedLocationId,
+                    aggregateType === "Other" ? customMaterialName : undefined
+                )
                 if (isMounted) {
                     setMasterPriceInfo(res)
                     // If user has not manually overridden the price or price was empty, auto-fill with master price
@@ -185,7 +198,7 @@ export function MaterialAgregatForm({
         return () => {
             isMounted = false
         }
-    }, [isOpen, aggregateType, transactionDate, selectedLocationId])
+    }, [isOpen, aggregateType, customMaterialName, transactionDate, selectedLocationId])
 
     // When location changes, update default distance if distance is currently empty or matching old default
     const handleLocationChange = (locId: string) => {
@@ -252,11 +265,19 @@ export function MaterialAgregatForm({
         const form = e.currentTarget
         const formData = new FormData(form)
 
+        if (aggregateType === "Other" && !customMaterialName.trim()) {
+            setError("Silakan isi nama material khusus terlebih dahulu")
+            return
+        }
+
         formData.set("locationId", selectedLocationId)
         formData.set("source_type", sourceType)
         formData.set("volume_cubic", volumeCubic)
         formData.set("date", transactionDate)
         formData.set("aggregate_type", aggregateType)
+        if (customMaterialName.trim()) {
+            formData.set("custom_material_name", customMaterialName.trim())
+        }
         formData.set("unit_price", String(matUnitPriceNum))
         formData.set("total_price", String(calculatedMaterialTotal))
 
@@ -411,6 +432,44 @@ export function MaterialAgregatForm({
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            {/* Free text custom material input when Other is selected */}
+                            {aggregateType === "Other" && (
+                                <div className="space-y-1.5 p-3 rounded-xl bg-amber-50/70 border border-amber-200 col-span-full">
+                                    <Label htmlFor="custom_material_name" className="text-xs font-semibold text-amber-900 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <Tag className="w-3.5 h-3.5 text-amber-600" />
+                                            <span>Nama Material Khusus / Bebas *</span>
+                                        </span>
+                                        <span className="text-[10px] text-amber-700 font-normal">
+                                            Ketik nama baru atau pilih material yang sudah ada
+                                        </span>
+                                    </Label>
+                                    <Input
+                                        id="custom_material_name"
+                                        name="custom_material_name"
+                                        list="custom-materials-datalist"
+                                        placeholder="Contoh: Sirtu Ayak, Base Course A, Batu Belah..."
+                                        value={customMaterialName}
+                                        onChange={(e) => {
+                                            setCustomMaterialName(e.target.value)
+                                            setIsManualPrice(false)
+                                        }}
+                                        required
+                                        className="h-9 text-xs bg-white border-amber-300 font-medium"
+                                    />
+                                    <datalist id="custom-materials-datalist">
+                                        {customMaterialList.map((m) => (
+                                            <option key={m.id} value={m.name}>
+                                                {m.name} ({m.code})
+                                            </option>
+                                        ))}
+                                    </datalist>
+                                    <p className="text-[11px] text-amber-700/90">
+                                        💡 Material ini otomatis tersimpan ke Master Material & harga satuan cabang ini.
+                                    </p>
+                                </div>
+                            )}
                         </div>
 
                         {/* ── ROW 2: Sumber Pengambilan Material ── */}
@@ -568,11 +627,16 @@ export function MaterialAgregatForm({
                                         <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">/ m³</span>
                                     </div>
                                     {masterPriceInfo && masterPriceInfo.unitPrice > 0 ? (
-                                        <div className="flex items-center gap-1.5 text-[11px] text-sky-800">
+                                        <div className="flex items-center gap-1.5 text-[11px] text-sky-800 flex-wrap">
                                             <span>Acuan Master: <strong className="font-mono">Rp {masterPriceInfo.unitPrice.toLocaleString("id-ID")}/m³</strong></span>
+                                            {masterPriceInfo.matchedLocationName && (
+                                                <Badge variant="outline" className="text-[10px] border-sky-300 text-sky-700 bg-sky-100/50 py-0">
+                                                    📍 {masterPriceInfo.matchedLocationName}
+                                                </Badge>
+                                            )}
                                             {masterPriceInfo.effectiveDate && (
                                                 <span className="text-slate-500">
-                                                    (berlaku sejak {new Date(masterPriceInfo.effectiveDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})
+                                                    (sejak {new Date(masterPriceInfo.effectiveDate).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })})
                                                 </span>
                                             )}
                                             {isManualPrice && (

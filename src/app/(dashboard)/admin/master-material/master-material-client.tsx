@@ -69,7 +69,7 @@ export function MasterMaterialClient({
     const [priceFormMaterialId, setPriceFormMaterialId] = useState("")
     const [priceFormValue, setPriceFormValue] = useState<number | string>("")
     const [priceFormEffectiveDate, setPriceFormEffectiveDate] = useState(new Date().toISOString().split("T")[0])
-    const [priceFormLocationId, setPriceFormLocationId] = useState("all")
+    const [priceFormLocationIds, setPriceFormLocationIds] = useState<string[]>(["all"])
     const [priceFormNotes, setPriceFormNotes] = useState("")
     const [priceError, setPriceError] = useState("")
 
@@ -106,7 +106,7 @@ export function MasterMaterialClient({
     const [simResult, setSimResult] = useState<any>(null)
     const [simLoading, setSimLoading] = useState(false)
 
-    // Filtered materials
+    // Filtered materials: dynamically adapts to selectedLocation
     const filteredMaterials = useMemo(() => {
         return materials.filter(m => {
             const matchesSearch = !searchQuery ||
@@ -114,8 +114,38 @@ export function MasterMaterialClient({
                 m.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 m.category.toLowerCase().includes(searchQuery.toLowerCase())
             return matchesSearch
+        }).map(m => {
+            if (selectedLocation !== "all") {
+                const override = m.branchOverrides?.find((b: any) => b.locationId === selectedLocation)
+                const locObj = locations.find(l => l.id === selectedLocation)
+                if (override) {
+                    return {
+                        ...m,
+                        displayPrice: override.price,
+                        displayEffectiveDate: override.effectiveDate,
+                        displayLocationName: override.locationName || locObj?.name || "Cabang",
+                        isBranchOverride: true,
+                    }
+                } else {
+                    return {
+                        ...m,
+                        displayPrice: m.globalPrice ?? m.currentPrice,
+                        displayEffectiveDate: m.currentEffectiveDate,
+                        displayLocationName: `${locObj?.name || "Cabang"} (Mengikuti Global)`,
+                        isBranchOverride: false,
+                    }
+                }
+            } else {
+                return {
+                    ...m,
+                    displayPrice: m.globalPrice ?? m.currentPrice,
+                    displayEffectiveDate: m.currentEffectiveDate,
+                    displayLocationName: "Semua Cabang (Global)",
+                    isBranchOverride: false,
+                }
+            }
         })
-    }, [materials, searchQuery])
+    }, [materials, searchQuery, selectedLocation, locations])
 
     // Filtered histories
     const filteredHistories = useMemo(() => {
@@ -132,9 +162,9 @@ export function MasterMaterialClient({
     // Open set price modal for specific material
     const handleOpenSetPrice = (mat: any) => {
         setPriceFormMaterialId(mat.id)
-        setPriceFormValue(mat.currentPrice || "")
+        setPriceFormValue(mat.displayPrice || mat.currentPrice || "")
         setPriceFormEffectiveDate(new Date().toISOString().split("T")[0])
-        setPriceFormLocationId(selectedLocation === "all" ? "all" : selectedLocation)
+        setPriceFormLocationIds(selectedLocation === "all" ? ["all"] : [selectedLocation])
         setPriceFormNotes("")
         setPriceError("")
         setShowPriceDialog(true)
@@ -152,6 +182,10 @@ export function MasterMaterialClient({
             setPriceError("Tanggal mulai berlaku wajib dipilih.")
             return
         }
+        if (!priceFormLocationIds || priceFormLocationIds.length === 0) {
+            setPriceError("Pilih minimal satu cabang atau Semua Cabang.")
+            return
+        }
 
         startTransition(async () => {
             try {
@@ -159,7 +193,7 @@ export function MasterMaterialClient({
                     materialId: priceFormMaterialId,
                     price_per_m3: numPrice,
                     effective_date: priceFormEffectiveDate,
-                    locationId: priceFormLocationId === "all" ? null : priceFormLocationId,
+                    locationIds: priceFormLocationIds,
                     notes: priceFormNotes,
                 })
                 setShowPriceDialog(false)
@@ -485,12 +519,12 @@ export function MasterMaterialClient({
 
                                 <div className="pt-1 border-t border-slate-100">
                                     <div className="text-lg font-bold font-mono text-slate-900">
-                                        {fmt(mat.currentPrice)}
+                                        {fmt(mat.displayPrice ?? mat.currentPrice)}
                                     </div>
                                     <div className="text-[10px] text-emerald-700 flex items-center justify-between font-medium mt-0.5">
                                         <div className="flex items-center gap-1">
                                             <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
-                                            <span>Aktif: {fmtDate(mat.currentEffectiveDate)}</span>
+                                            <span>Aktif: {fmtDate(mat.displayEffectiveDate ?? mat.currentEffectiveDate)}</span>
                                         </div>
                                         {canManage && (
                                             <button
@@ -504,6 +538,15 @@ export function MasterMaterialClient({
                                             </button>
                                         )}
                                     </div>
+                                    {selectedLocation === "all" && mat.branchOverrides && mat.branchOverrides.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1.5 pt-1 border-t border-slate-100">
+                                            {mat.branchOverrides.map((b: any) => (
+                                                <span key={b.locationId} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                                    {b.locationName}: {fmt(b.price)}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
                                     {mat.nextPrice && (
                                         <div className="text-[10px] text-amber-800 bg-amber-50 rounded px-1.5 py-0.5 mt-1 border border-amber-200">
                                             Akan naik jadi {fmt(mat.nextPrice)} ({fmtDate(mat.nextEffectiveDate)})
@@ -644,7 +687,7 @@ export function MasterMaterialClient({
                                                 {mat.defaultDensity ? `${mat.defaultDensity} kg/m³` : "-"}
                                             </TableCell>
                                             <TableCell className="text-right font-mono font-bold text-slate-900">
-                                                {fmt(mat.currentPrice)}
+                                                {fmt(mat.displayPrice)}
                                             </TableCell>
                                             <TableCell className="font-medium text-slate-700">
                                                 {canManage ? (
@@ -655,15 +698,36 @@ export function MasterMaterialClient({
                                                         title="Klik untuk koreksi tanggal mulai berlaku ini"
                                                     >
                                                         <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 shrink-0" />
-                                                        <span className="font-mono text-xs">{fmtDate(mat.currentEffectiveDate)}</span>
+                                                        <span className="font-mono text-xs">{fmtDate(mat.displayEffectiveDate)}</span>
                                                         <Edit3 className="w-2.5 h-2.5 text-slate-400 group-hover:text-blue-600 opacity-60 group-hover:opacity-100 shrink-0" />
                                                     </button>
                                                 ) : (
-                                                    <span>{fmtDate(mat.currentEffectiveDate)}</span>
+                                                    <span>{fmtDate(mat.displayEffectiveDate)}</span>
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-slate-600">
-                                                {mat.currentLocationName}
+                                                {selectedLocation !== "all" ? (
+                                                    <div>
+                                                        <Badge variant={mat.isBranchOverride ? "default" : "outline"} className={`text-[10px] px-1.5 py-0 ${
+                                                            mat.isBranchOverride ? "bg-blue-600 text-white" : "text-slate-600 border-slate-300"
+                                                        }`}>
+                                                            {mat.displayLocationName}
+                                                        </Badge>
+                                                    </div>
+                                                ) : (
+                                                    <div>
+                                                        <span className="text-xs font-medium text-slate-800">Semua Cabang (Global)</span>
+                                                        {mat.branchOverrides && mat.branchOverrides.length > 0 && (
+                                                            <div className="flex flex-wrap gap-1 mt-1">
+                                                                {mat.branchOverrides.map((b: any) => (
+                                                                    <span key={b.locationId} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
+                                                                        {b.locationName}: {fmt(b.price)}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-center">
                                                 <Badge variant="secondary" className="font-mono text-[10px]">
@@ -1002,20 +1066,77 @@ export function MasterMaterialClient({
                             </p>
                         </div>
 
-                        {locations.length > 1 && (
-                            <div>
-                                <Label className="text-xs font-semibold text-slate-700">Lingkup Cabang</Label>
-                                <Select value={priceFormLocationId} onValueChange={setPriceFormLocationId}>
-                                    <SelectTrigger className="h-9 text-xs mt-1 bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Semua Cabang (Global Default)</SelectItem>
-                                        {locations.map(loc => (
-                                            <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                        {locations.length > 0 && (
+                            <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs font-semibold text-slate-700">Lingkup Cabang Berlaku</Label>
+                                    <div className="flex items-center gap-2 text-[10px]">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPriceFormLocationIds(["all"])}
+                                            className="text-blue-600 hover:underline cursor-pointer"
+                                        >
+                                            Pilih Global
+                                        </button>
+                                        <span>•</span>
+                                        <button
+                                            type="button"
+                                            onClick={() => setPriceFormLocationIds(locations.map(l => l.id))}
+                                            className="text-blue-600 hover:underline cursor-pointer"
+                                        >
+                                            Pilih Semua Cabang
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 space-y-2">
+                                    <label className="flex items-center gap-2 text-xs font-medium text-slate-800 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                                            checked={priceFormLocationIds.includes("all")}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setPriceFormLocationIds(["all"])
+                                                } else {
+                                                    setPriceFormLocationIds([])
+                                                }
+                                            }}
+                                        />
+                                        <span>Semua Cabang (Global Default)</span>
+                                    </label>
+                                    <div className="border-t border-slate-200/60 pt-2 grid grid-cols-2 gap-1.5">
+                                        {locations.map((loc) => {
+                                            const isChecked = priceFormLocationIds.includes(loc.id)
+                                            return (
+                                                <label key={loc.id} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer hover:text-blue-700">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            let next = priceFormLocationIds.filter(id => id !== "all")
+                                                            if (e.target.checked) {
+                                                                next.push(loc.id)
+                                                            } else {
+                                                                next = next.filter(id => id !== loc.id)
+                                                            }
+                                                            if (next.length === 0) {
+                                                                next = ["all"]
+                                                            }
+                                                            setPriceFormLocationIds(next)
+                                                        }}
+                                                    />
+                                                    <span className="truncate" title={loc.name}>{loc.name}</span>
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
+                                <p className="text-[10px] text-slate-500">
+                                    {priceFormLocationIds.includes("all")
+                                        ? "Harga berlaku serentak sebagai acuan umum semua cabang."
+                                        : `Harga berlaku khusus untuk ${priceFormLocationIds.length} cabang terpilih.`}
+                                </p>
                             </div>
                         )}
 

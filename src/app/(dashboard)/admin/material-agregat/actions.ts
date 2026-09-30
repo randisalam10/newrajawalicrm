@@ -14,7 +14,8 @@ const aggregateSchema = z.object({
     driver_name: z.string().min(1, "Nama Sopir wajib diisi"),
     plate_number: z.string().min(1, "Plat Kendaraan wajib diisi"),
     volume_cubic: z.coerce.number().min(0.01, "Volume harus lebih dari 0"),
-    aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Other"]),
+    aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Other", "AbuBatu"]),
+    custom_material_name: z.string().optional().nullable(),
     source_type: z.enum(["Internal", "External"]),
     supplier: z.string().optional().nullable(),
     notes: z.string().optional().nullable(),
@@ -28,6 +29,88 @@ const aggregateSchema = z.object({
     unit_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
     total_price: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
 })
+
+/**
+ * Ensures a custom material is registered in MasterMaterial and its price recorded for the given branch.
+ */
+export async function ensureCustomMasterMaterial(
+    customName: string,
+    unitPrice: number,
+    date: Date | string,
+    locationId: string,
+    userId?: string
+) {
+    const trimmed = customName.trim()
+    if (!trimmed) return null
+
+    let material = await prisma.masterMaterial.findFirst({
+        where: {
+            name: { equals: trimmed, mode: "insensitive" }
+        }
+    })
+
+    if (!material) {
+        const baseSlug = "MAT_" + trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 15)
+        let slug = baseSlug
+        let counter = 1
+        while (await prisma.masterMaterial.findUnique({ where: { code: slug } })) {
+            slug = `${baseSlug}_${counter}`
+            counter++
+        }
+
+        material = await prisma.masterMaterial.create({
+            data: {
+                code: slug,
+                name: trimmed,
+                category: "Aggregate",
+                unit: "m³",
+                isActive: true,
+            }
+        })
+    }
+
+    if (unitPrice > 0 && material) {
+        const targetDate = new Date(date)
+        const existingPrice = await prisma.materialPriceHistory.findFirst({
+            where: {
+                material_code: material.code,
+                locationId: locationId,
+                effective_date: { lte: targetDate }
+            },
+            orderBy: { effective_date: "desc" }
+        })
+
+        if (!existingPrice || existingPrice.price_per_m3 !== unitPrice) {
+            await prisma.materialPriceHistory.create({
+                data: {
+                    materialId: material.id,
+                    material_code: material.code,
+                    material_name: material.name,
+                    price_per_m3: unitPrice,
+                    effective_date: targetDate,
+                    locationId: locationId,
+                    createdById: userId || null,
+                    notes: `Auto-registered dari transaksi cabang`,
+                }
+            })
+        }
+    }
+
+    return material
+}
+
+export async function getCustomMaterialsList() {
+    try {
+        return await prisma.masterMaterial.findMany({
+            where: { isActive: true },
+            select: { id: true, code: true, name: true, unit: true },
+            orderBy: { name: "asc" }
+        })
+    } catch (err) {
+        console.error("Error getCustomMaterialsList:", err)
+        return []
+    }
+}
 
 export async function getAggregateIncomings(limit: number = 250) {
     const session = await auth()
@@ -68,6 +151,7 @@ export async function createAggregateIncoming(formData: FormData) {
             plate_number: formData.get("plate_number"),
             volume_cubic: formData.get("volume_cubic"),
             aggregate_type: formData.get("aggregate_type"),
+            custom_material_name: formData.get("custom_material_name") || undefined,
             source_type: formData.get("source_type"),
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
@@ -83,6 +167,16 @@ export async function createAggregateIncoming(formData: FormData) {
         }
 
         const data = aggregateSchema.parse(rawData)
+
+        // Normalize AbuBatu or custom material name
+        let finalAggregateType = data.aggregate_type as any
+        let finalCustomName = data.custom_material_name?.trim() || null
+        if (data.aggregate_type === "AbuBatu") {
+            finalAggregateType = "Other"
+            if (!finalCustomName) {
+                finalCustomName = "Abu Batu / Screening"
+            }
+        }
 
         // Internal Quarry Transport Commission (Retase) Calculation
         let resolvedDistance = data.distance_km ?? null
@@ -118,8 +212,20 @@ export async function createAggregateIncoming(formData: FormData) {
 
         // Material Expenditure Pricing (Integrated with Master Material Price)
         let resolvedUnitPrice = data.unit_price ?? null
-        if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
-            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[data.aggregate_type]
+        if (finalAggregateType === "Other" && finalCustomName) {
+            if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+                const sim = await getEffectiveAggregatePrice("Other", data.date, data.locationId, finalCustomName)
+                if (sim.unitPrice > 0) resolvedUnitPrice = sim.unitPrice
+            }
+            await ensureCustomMasterMaterial(
+                finalCustomName,
+                resolvedUnitPrice ?? 0,
+                data.date,
+                data.locationId,
+                session.user.employeeId || session.user.id
+            )
+        } else if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[finalAggregateType]
             if (matCode) {
                 resolvedUnitPrice = await getMaterialPriceAtDate(matCode, new Date(data.date), data.locationId)
             }
@@ -135,7 +241,8 @@ export async function createAggregateIncoming(formData: FormData) {
                 driver_name: data.driver_name,
                 plate_number: data.plate_number,
                 volume_cubic: data.volume_cubic,
-                aggregate_type: data.aggregate_type,
+                aggregate_type: finalAggregateType,
+                custom_material_name: finalCustomName,
                 source_type: data.source_type,
                 supplier: data.supplier || null,
                 notes: data.notes || null,
@@ -183,6 +290,7 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
             plate_number: formData.get("plate_number"),
             volume_cubic: formData.get("volume_cubic"),
             aggregate_type: formData.get("aggregate_type"),
+            custom_material_name: formData.get("custom_material_name") || undefined,
             source_type: formData.get("source_type"),
             supplier: formData.get("supplier") || undefined,
             notes: formData.get("notes") || undefined,
@@ -198,6 +306,15 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
         }
 
         const data = aggregateSchema.parse(rawData)
+
+        let finalAggregateType = data.aggregate_type as any
+        let finalCustomName = data.custom_material_name?.trim() || null
+        if (data.aggregate_type === "AbuBatu") {
+            finalAggregateType = "Other"
+            if (!finalCustomName) {
+                finalCustomName = "Abu Batu / Screening"
+            }
+        }
 
         let resolvedDistance = data.distance_km ?? null
         let resolvedRate = data.rate_price ?? null
@@ -231,8 +348,20 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
 
         // Material Expenditure Pricing (Integrated with Master Material Price)
         let resolvedUnitPrice = data.unit_price ?? null
-        if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
-            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[data.aggregate_type]
+        if (finalAggregateType === "Other" && finalCustomName) {
+            if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+                const sim = await getEffectiveAggregatePrice("Other", data.date, data.locationId, finalCustomName)
+                if (sim.unitPrice > 0) resolvedUnitPrice = sim.unitPrice
+            }
+            await ensureCustomMasterMaterial(
+                finalCustomName,
+                resolvedUnitPrice ?? 0,
+                data.date,
+                data.locationId,
+                session.user.employeeId || session.user.id
+            )
+        } else if (resolvedUnitPrice == null || resolvedUnitPrice === 0) {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[finalAggregateType]
             if (matCode) {
                 resolvedUnitPrice = await getMaterialPriceAtDate(matCode, new Date(data.date), data.locationId)
             }
@@ -249,7 +378,8 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
                 driver_name: data.driver_name,
                 plate_number: data.plate_number,
                 volume_cubic: data.volume_cubic,
-                aggregate_type: data.aggregate_type,
+                aggregate_type: finalAggregateType,
+                custom_material_name: finalCustomName,
                 source_type: data.source_type,
                 supplier: data.supplier || null,
                 notes: data.notes || null,
@@ -278,21 +408,38 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
 
 /**
  * Get effective unit price per m³ from MasterMaterial for a given aggregate type, date, and location.
- * Fully supports backdating logic (tgl 1 Sept berlaku rate baru, sebelum 1 Sept berlaku rate lama).
+ * Fully supports backdating logic (tgl 1 Sept berlaku rate baru, sebelum 1 Sept berlaku rate lama)
+ * and custom material lookup.
  */
 export async function getEffectiveAggregatePrice(
     aggregateType: string,
     date: string,
-    locationId?: string | null
+    locationId?: string | null,
+    customMaterialName?: string | null
 ) {
     try {
-        const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[aggregateType]
+        let matCode: string | null = null
+
+        if (aggregateType === "Other" && customMaterialName?.trim()) {
+            const trimmed = customMaterialName.trim()
+            const found = await prisma.masterMaterial.findFirst({
+                where: { name: { equals: trimmed, mode: "insensitive" } }
+            })
+            if (found) {
+                matCode = found.code
+            }
+        } else if (aggregateType === "AbuBatu") {
+            matCode = "ABU_BATU"
+        } else {
+            matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[aggregateType] || null
+        }
+
         if (!matCode) {
             return {
                 unitPrice: 0,
                 effectiveDate: null as string | null,
                 materialCode: null as string | null,
-                matchedLocationName: "Non-Agregat / Manual",
+                matchedLocationName: customMaterialName ? "Material Baru (Belum ada tarif)" : "Non-Agregat / Manual",
                 notes: null as string | null,
                 isHistorical: false
             }
@@ -348,7 +495,8 @@ const aggregateOutSchema = z.object({
     id: z.string().optional(),
     date: z.string().refine((val) => !isNaN(Date.parse(val)), { message: "Tanggal tidak valid" }),
     no_bon: z.string().optional().nullable(),
-    aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Semen", "Other"]),
+    aggregate_type: z.enum(["SplitHalfOne", "SplitTwoThree", "Pasir", "Semen", "Other", "AbuBatu"]),
+    custom_material_name: z.string().optional().nullable(),
     volume_cubic: z.coerce.number().min(0.001, "Volume / kuantitas harus lebih dari 0"),
     unit: z.string().default("m³"),
     unit_price: z.coerce.number().min(0).default(0),
@@ -387,6 +535,7 @@ export async function createAggregateOutgoing(formData: FormData) {
             date: formData.get("date") as string,
             no_bon: (formData.get("no_bon") as string) || null,
             aggregate_type: formData.get("aggregate_type") as string,
+            custom_material_name: (formData.get("custom_material_name") as string) || null,
             volume_cubic: formData.get("volume_cubic"),
             unit: (formData.get("unit") as string) || "m³",
             unit_price: formData.get("unit_price") || 0,
@@ -407,6 +556,15 @@ export async function createAggregateOutgoing(formData: FormData) {
         }
 
         const parsed = aggregateOutSchema.parse(rawData)
+
+        let finalAggregateType = parsed.aggregate_type as any
+        let finalCustomName = parsed.custom_material_name?.trim() || null
+        if (parsed.aggregate_type === "AbuBatu") {
+            finalAggregateType = "Other"
+            if (!finalCustomName) {
+                finalCustomName = "Abu Batu / Screening"
+            }
+        }
 
         let resolvedDistance = parsed.distance_km ?? null
         let resolvedRate = parsed.rate_price ?? null
@@ -448,8 +606,20 @@ export async function createAggregateOutgoing(formData: FormData) {
         }
 
         let resolvedUnitPrice = parsed.unit_price ?? 0
-        if (resolvedUnitPrice === 0 && parsed.aggregate_type !== "Semen") {
-            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[parsed.aggregate_type]
+        if (finalAggregateType === "Other" && finalCustomName) {
+            if (resolvedUnitPrice === 0) {
+                const sim = await getEffectiveAggregatePrice("Other", parsed.date, parsed.locationId, finalCustomName)
+                if (sim.unitPrice > 0) resolvedUnitPrice = sim.unitPrice
+            }
+            await ensureCustomMasterMaterial(
+                finalCustomName,
+                resolvedUnitPrice,
+                parsed.date,
+                parsed.locationId,
+                session.user.employeeId || session.user.id
+            )
+        } else if (resolvedUnitPrice === 0 && finalAggregateType !== "Semen") {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[finalAggregateType]
             if (matCode) {
                 resolvedUnitPrice = (await getMaterialPriceAtDate(matCode, new Date(parsed.date), parsed.locationId)) ?? 0
             }
@@ -463,7 +633,8 @@ export async function createAggregateOutgoing(formData: FormData) {
             data: {
                 date: new Date(parsed.date),
                 no_bon: parsed.no_bon,
-                aggregate_type: parsed.aggregate_type,
+                aggregate_type: finalAggregateType,
+                custom_material_name: finalCustomName,
                 volume_cubic: parsed.volume_cubic,
                 unit: parsed.unit,
                 unit_price: resolvedUnitPrice,
@@ -512,6 +683,7 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
             date: formData.get("date") as string,
             no_bon: (formData.get("no_bon") as string) || null,
             aggregate_type: formData.get("aggregate_type") as string,
+            custom_material_name: (formData.get("custom_material_name") as string) || null,
             volume_cubic: formData.get("volume_cubic"),
             unit: (formData.get("unit") as string) || "m³",
             unit_price: formData.get("unit_price") || 0,
@@ -532,6 +704,15 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
         }
 
         const parsed = aggregateOutSchema.parse(rawData)
+
+        let finalAggregateType = parsed.aggregate_type as any
+        let finalCustomName = parsed.custom_material_name?.trim() || null
+        if (parsed.aggregate_type === "AbuBatu") {
+            finalAggregateType = "Other"
+            if (!finalCustomName) {
+                finalCustomName = "Abu Batu / Screening"
+            }
+        }
 
         let resolvedDistance = parsed.distance_km ?? null
         let resolvedRate = parsed.rate_price ?? null
@@ -573,8 +754,20 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
         }
 
         let resolvedUnitPrice = parsed.unit_price ?? 0
-        if (resolvedUnitPrice === 0 && parsed.aggregate_type !== "Semen") {
-            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[parsed.aggregate_type]
+        if (finalAggregateType === "Other" && finalCustomName) {
+            if (resolvedUnitPrice === 0) {
+                const sim = await getEffectiveAggregatePrice("Other", parsed.date, parsed.locationId, finalCustomName)
+                if (sim.unitPrice > 0) resolvedUnitPrice = sim.unitPrice
+            }
+            await ensureCustomMasterMaterial(
+                finalCustomName,
+                resolvedUnitPrice,
+                parsed.date,
+                parsed.locationId,
+                session.user.employeeId || session.user.id
+            )
+        } else if (resolvedUnitPrice === 0 && finalAggregateType !== "Semen") {
+            const matCode = AGGREGATE_TYPE_TO_MATERIAL_CODE[finalAggregateType]
             if (matCode) {
                 resolvedUnitPrice = (await getMaterialPriceAtDate(matCode, new Date(parsed.date), parsed.locationId)) ?? 0
             }
@@ -589,7 +782,8 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
             data: {
                 date: new Date(parsed.date),
                 no_bon: parsed.no_bon,
-                aggregate_type: parsed.aggregate_type,
+                aggregate_type: finalAggregateType,
+                custom_material_name: finalCustomName,
                 volume_cubic: parsed.volume_cubic,
                 unit: parsed.unit,
                 unit_price: resolvedUnitPrice,
@@ -669,6 +863,10 @@ const AGGREGATE_COMPOSITION_MAP: Record<string, { label: string; compositions: A
         compositions: [
             { key: "composition_cement", densityKey: "density_cement", defaultDensity: 1400 },
         ],
+    },
+    AbuBatu: {
+        label: "Abu Batu / Screening",
+        compositions: [],
     },
     Other: { label: "Lainnya", compositions: [] },
 }

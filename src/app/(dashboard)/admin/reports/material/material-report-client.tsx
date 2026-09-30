@@ -417,6 +417,7 @@ export function MaterialReportClient({
                                     <SelectItem value="Pasir">Pasir Cor</SelectItem>
                                     <SelectItem value="SplitHalfOne">Batu Split 1/2</SelectItem>
                                     <SelectItem value="SplitTwoThree">Batu Split 2/3</SelectItem>
+                                    <SelectItem value="AbuBatu">Abu Batu / Screening</SelectItem>
                                     <SelectItem value="Other">Agregat Lainnya / Sirtu</SelectItem>
                                 </SelectContent>
                             </Select>

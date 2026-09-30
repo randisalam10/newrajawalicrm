@@ -426,6 +426,7 @@ model AggregateIncoming {
   plate_number    String // Plat Nomor Kendaraan (snapshot teks)
   volume_cubic    Float // Jumlah kubikasi riil dalam m³ (diinput manual)
   aggregate_type  AggregateType
+  custom_material_name String? // Nama material spesifik jika aggregate_type == Other
   source_type     AggregateSourceType
   supplier        String? // Nama supplier (jika External)
   notes           String?
@@ -461,6 +462,7 @@ model AggregateOutgoing {
   date            DateTime            @default(now())
   no_bon          String?             // No Bon / Surat Jalan Keluar
   aggregate_type  AggregateType
+  custom_material_name String? // Nama material spesifik jika aggregate_type == Other
   volume_cubic    Float               // Jumlah kubikasi keluar / kuantitas barang
   unit            String?             @default("m³") // "m³" | "zak" | "ton" | "kg"
 

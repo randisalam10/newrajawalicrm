@@ -6,6 +6,7 @@ export type AggregateInRow = {
     plate_number: string
     volume_cubic: number
     aggregate_type: string
+    custom_material_name?: string | null
     aggregateLabel: string
     source_type: string
     supplier: string | null
@@ -30,6 +31,7 @@ export type AggregateOutRow = {
     date: string
     no_bon: string | null
     aggregate_type: string
+    custom_material_name?: string | null
     aggregateLabel: string
     volume_cubic: number
     unit?: string | null
@@ -77,6 +79,7 @@ export type AggregateCombinedRow = {
     direction: "IN" | "OUT"
     no_bon: string
     aggregate_type: string
+    custom_material_name?: string | null
     aggregateLabel: string
     volume: number
     unit: string
@@ -95,22 +98,25 @@ export const AGGREGATE_TYPE_LABELS: Record<string, string> = {
     SplitHalfOne: "Batu Split 1/2",
     SplitTwoThree: "Batu Split 2/3",
     Pasir: "Pasir Cor",
+    AbuBatu: "Abu Batu / Screening",
     Semen: "Semen (Zak / Curah)",
-    Other: "Lainnya",
+    Other: "Lainnya / Material Khusus",
 }
 
 export const AGGREGATE_TYPE_OPTIONS = [
     { value: "SplitHalfOne", label: "Batu Split 1/2" },
     { value: "SplitTwoThree", label: "Batu Split 2/3" },
     { value: "Pasir", label: "Pasir Cor" },
+    { value: "AbuBatu", label: "Abu Batu / Screening" },
     { value: "Semen", label: "Semen (Zak / Curah)" },
-    { value: "Other", label: "Lainnya" },
+    { value: "Other", label: "Lainnya / Material Khusus..." },
 ]
 
 export const AGGREGATE_TYPE_TO_MATERIAL_CODE: Record<string, string> = {
     SplitHalfOne: "SPLIT_1_2",
     SplitTwoThree: "SPLIT_2_3",
     Pasir: "PASIR",
+    AbuBatu: "ABU_BATU",
     Other: "OTHER",
 }
 

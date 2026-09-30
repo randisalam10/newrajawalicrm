@@ -21,7 +21,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 DEFAULT_IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-DEFAULT_IMAGE_TAG="v2.4.7"
+DEFAULT_IMAGE_TAG="v2.4.8"
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} 🚀 Memulai Deployment Otomatis Rajawali BP ERP  ${NC}"
@@ -136,6 +136,25 @@ docker run --rm \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
     npx prisma migrate deploy || true
+
+# Ensure DDL patch aman (Idempotent) agar kolom custom_material_name selalu terpasang
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    $IMAGE_TO_USE \
+    node -e "
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+async function main() {
+    await prisma.\$executeRawUnsafe(\`
+        ALTER TABLE \"AggregateIncoming\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
+        ALTER TABLE \"AggregateOutgoing\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
+    \`);
+    console.log('   ✓ Patch DDL custom_material_name verified.');
+    await prisma.\$disconnect();
+}
+main().catch(e => { console.warn('   ℹ DDL notice:', e.message); process.exit(0); });
+" 2>/dev/null || true
 
 echo -e "${GREEN}   ✓ Seluruh migrasi database berhasil diterapkan.${NC}"
 

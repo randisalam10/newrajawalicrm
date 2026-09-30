@@ -32,8 +32,9 @@ import {
     Building2,
     Calendar,
     FileText,
+    Tag,
 } from "lucide-react"
-import { createAggregateOutgoing, updateAggregateOutgoing, getEffectiveAggregatePrice } from "./actions"
+import { createAggregateOutgoing, updateAggregateOutgoing, getEffectiveAggregatePrice, getCustomMaterialsList } from "./actions"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import {
@@ -81,6 +82,8 @@ export function MaterialAgregatOutForm({
     const [date, setDate] = useState<string>(new Date().toISOString().split("T")[0])
     const [noBon, setNoBon] = useState<string>("")
     const [aggregateType, setAggregateType] = useState<string>("SplitHalfOne")
+    const [customMaterialName, setCustomMaterialName] = useState<string>(initialData?.custom_material_name || "")
+    const [customMaterialList, setCustomMaterialList] = useState<{ id: string; name: string; code: string }[]>([])
     const [volumeCubic, setVolumeCubic] = useState<string>("")
     const [unit, setUnit] = useState<string>("m³")
     const [unitPrice, setUnitPrice] = useState<string>("")
@@ -120,6 +123,7 @@ export function MaterialAgregatOutForm({
                 setDate(initialData.date)
                 setNoBon(initialData.no_bon || "")
                 setAggregateType(initialData.aggregate_type)
+                setCustomMaterialName(initialData.custom_material_name || "")
                 setVolumeCubic(String(initialData.volume_cubic))
                 setUnit(initialData.unit || "m³")
                 setUnitPrice(initialData.unit_price ? String(initialData.unit_price) : "")
@@ -143,6 +147,7 @@ export function MaterialAgregatOutForm({
                 setDate(new Date().toISOString().split("T")[0])
                 setNoBon("")
                 setAggregateType("SplitHalfOne")
+                setCustomMaterialName("")
                 setVolumeCubic("")
                 setUnit("m³")
                 setUnitPrice("")
@@ -161,6 +166,10 @@ export function MaterialAgregatOutForm({
                 const branchSetting = retaseSettings.find((s: any) => s.locationId === locId)
                 setDistanceKm(branchSetting?.default_distance_km ? String(branchSetting.default_distance_km) : "")
             }
+
+            getCustomMaterialsList().then(list => {
+                setCustomMaterialList(list as any)
+            }).catch(console.error)
         }
     }, [isOpen, initialData, locations, retaseSettings, userLocationId])
 
@@ -174,7 +183,12 @@ export function MaterialAgregatOutForm({
 
         let isMounted = true
         setIsLoadingPrice(true)
-        getEffectiveAggregatePrice(aggregateType, date, selectedLocationId)
+        getEffectiveAggregatePrice(
+            aggregateType,
+            date,
+            selectedLocationId,
+            aggregateType === "Other" ? customMaterialName : undefined
+        )
             .then((res) => {
                 if (!isMounted) return
                 setMasterPriceInfo(res)
@@ -196,7 +210,7 @@ export function MaterialAgregatOutForm({
         return () => {
             isMounted = false
         }
-    }, [aggregateType, date, selectedLocationId, isOpen, isPriceManual])
+    }, [aggregateType, customMaterialName, date, selectedLocationId, isOpen, isPriceManual])
 
     const handleApplyMasterPrice = () => {
         if (!masterPriceInfo || !masterPriceInfo.unitPrice) return
@@ -299,10 +313,18 @@ export function MaterialAgregatOutForm({
             }
         }
 
+        if (aggregateType === "Other" && !customMaterialName.trim()) {
+            setError("Silakan isi nama material khusus terlebih dahulu")
+            return
+        }
+
         const formData = new FormData()
         formData.append("date", date)
         if (noBon.trim()) formData.append("no_bon", noBon.trim())
         formData.append("aggregate_type", aggregateType)
+        if (customMaterialName.trim()) {
+            formData.append("custom_material_name", customMaterialName.trim())
+        }
         formData.append("volume_cubic", String(v))
         formData.append("unit", unit)
 
@@ -430,7 +452,10 @@ export function MaterialAgregatOutForm({
                             <div className="grid grid-cols-3 gap-2.5">
                                 <div className="space-y-1 col-span-1">
                                     <Label className="text-xs font-semibold text-slate-700">Material *</Label>
-                                    <Select value={aggregateType} onValueChange={setAggregateType}>
+                                    <Select value={aggregateType} onValueChange={(val) => {
+                                        setAggregateType(val)
+                                        setIsPriceManual(false)
+                                    }}>
                                         <SelectTrigger className="h-9 text-xs bg-white font-medium">
                                             <SelectValue />
                                         </SelectTrigger>
@@ -473,6 +498,44 @@ export function MaterialAgregatOutForm({
                                     </Select>
                                 </div>
                             </div>
+
+                            {/* Free text custom material input when Other is selected */}
+                            {aggregateType === "Other" && (
+                                <div className="space-y-1.5 p-3 rounded-xl bg-amber-50/70 border border-amber-200">
+                                    <Label htmlFor="custom_material_name_out" className="text-xs font-semibold text-amber-900 flex items-center justify-between">
+                                        <span className="flex items-center gap-1.5">
+                                            <Tag className="w-3.5 h-3.5 text-amber-600" />
+                                            <span>Nama Material Khusus / Bebas *</span>
+                                        </span>
+                                        <span className="text-[10px] text-amber-700 font-normal">
+                                            Pilih atau ketik nama material
+                                        </span>
+                                    </Label>
+                                    <Input
+                                        id="custom_material_name_out"
+                                        name="custom_material_name"
+                                        list="custom-materials-datalist-out"
+                                        placeholder="Contoh: Sirtu Ayak, Base Course A, Batu Belah..."
+                                        value={customMaterialName}
+                                        onChange={(e) => {
+                                            setCustomMaterialName(e.target.value)
+                                            setIsPriceManual(false)
+                                        }}
+                                        required
+                                        className="h-9 text-xs bg-white border-amber-300 font-medium"
+                                    />
+                                    <datalist id="custom-materials-datalist-out">
+                                        {customMaterialList.map((m) => (
+                                            <option key={m.id} value={m.name}>
+                                                {m.name} ({m.code})
+                                            </option>
+                                        ))}
+                                    </datalist>
+                                    <p className="text-[10px] text-amber-700/80">
+                                        💡 Menggunakan acuan tarif Master Material cabang ini jika telah tersimpan.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Kategori Pengeluaran & Penerima */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
