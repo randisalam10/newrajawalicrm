@@ -101,6 +101,7 @@ docker run --rm \
         npx prisma migrate resolve --applied 20260906040000_add_web_push_subscription 2>/dev/null || true
         npx prisma migrate resolve --applied 20260929000000_add_ppn_mode_to_project_price 2>/dev/null || true
         npx prisma migrate resolve --applied 20260930000000_add_custom_material_name 2>/dev/null || true
+        npx prisma migrate resolve --applied 20261003000000_add_missing_models_and_columns 2>/dev/null || true
     " || true
 
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
