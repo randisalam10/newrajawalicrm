@@ -96,12 +96,15 @@ fi
 echo ""
 echo -e "${CYAN}[4/6] Menjalankan migrasi database Prisma...${NC}"
 
-# 1. Resolve rollback jika ada migrasi lama yang tertahan
+# 1. Resolve rollback/applied jika ada migrasi lama yang tertahan
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
-    sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
+    sh -c "
+        npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true
+        npx prisma migrate resolve --applied 20260906020000_add_master_item_price_history 2>/dev/null || true
+    " || true
 
 # 2. Jalankan migrasi deploy resmi
 echo -e "${YELLOW}   Mengeksekusi npx prisma migrate deploy...${NC}"

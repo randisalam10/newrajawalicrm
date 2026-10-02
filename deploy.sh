@@ -125,12 +125,15 @@ echo -e "${CYAN}[4/6] Menjalankan migrasi schema database Prisma...${NC}"
 # Jalankan MANUAL sekali saja saat setup server baru:
 #   bash apply-indexes.sh
 
-# 1. Resolve rollback jika ada migrasi lama yang tertahan
+# 1. Resolve rollback/applied jika ada migrasi lama yang tertahan
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
-    sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
+    sh -c "
+        npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true
+        npx prisma migrate resolve --applied 20260906020000_add_master_item_price_history 2>/dev/null || true
+    " || true
 
 # 2. Jalankan migrasi deploy resmi (Fail-fast: wajib sukses sebelum lanjut)
 echo -e "${YELLOW}   Mengeksekusi npx prisma migrate deploy...${NC}"

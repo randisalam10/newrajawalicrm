@@ -89,6 +89,17 @@ echo -e "${CYAN}[4/5] Menerapkan migrasi schema database (Prisma migrate deploy)
 # yang berbahaya jika diulang — bisa duplikat atau timpa data production.
 # Jalankan MANUAL sekali saat setup server baru: bash apply-indexes.sh
 
+# Auto-resolve migrasi lama yang sempat tertahan/failed di _prisma_migrations
+echo -e "${YELLOW}   Mengecek dan me-resolve status migrasi lama yang tertahan...${NC}"
+docker run --rm \
+    --network host \
+    --env-file $ENV_FILE \
+    "$IMAGE_NAME" \
+    sh -c "
+        npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true
+        npx prisma migrate resolve --applied 20260906020000_add_master_item_price_history 2>/dev/null || true
+    " || true
+
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
 if ! docker run --rm \
     --network host \
