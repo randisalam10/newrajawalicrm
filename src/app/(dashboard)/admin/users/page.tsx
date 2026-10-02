@@ -68,7 +68,7 @@ export default async function UsersPage() {
                         Daftar User Sistem
                     </CardTitle>
                     <CardDescription>
-                        Total {formattedUsers.length} user terdaftar (tidak termasuk SuperAdmin).
+                        Total {formattedUsers.length} user terdaftar (termasuk Super Admin HQ).
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">

@@ -21,6 +21,12 @@ const kendaraanSchema = z.object({
     default_day_rate: z.preprocess(val => (val === "" || val === undefined || val === null ? 0 : Number(val)), z.number().nullable().optional()).default(0),
     rental_status: z.string().default("Tersedia"),
     rental_notes: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
+    // Pajak STNK & Uji KIR
+    annual_tax_cost: z.preprocess(val => (val === "" || val === undefined || val === null ? 0 : Number(val)), z.number().nullable().optional()).default(0),
+    tax_expiry_date: z.preprocess(val => (val === "" || val === undefined || val === null ? null : new Date(val as string)), z.date().nullable().optional()),
+    kir_cost: z.preprocess(val => (val === "" || val === undefined || val === null ? 0 : Number(val)), z.number().nullable().optional()).default(0),
+    kir_expiry_date: z.preprocess(val => (val === "" || val === undefined || val === null ? null : new Date(val as string)), z.date().nullable().optional()),
+    kir_period_months: z.preprocess(val => (val === "" || val === undefined || val === null ? 6 : Number(val)), z.number().nullable().optional()).default(6),
 })
 
 export async function canManageKendaraan(user: any): Promise<boolean> {
@@ -211,14 +217,39 @@ export async function getKendaraan() {
     const isCorp = isCorporateUser(session.user)
     const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
-    return await prisma.vehicle.findMany({
-        where: filter,
-        include: { 
-            location: true,
-            category: true
-        },
-        orderBy: { code: 'asc' }
-    })
+    try {
+        return await prisma.vehicle.findMany({
+            where: filter,
+            include: { 
+                location: true,
+                category: true,
+                complianceRecords: {
+                    orderBy: { valid_until: 'desc' }
+                }
+            },
+            orderBy: { code: 'asc' }
+        })
+    } catch {
+        const vehicles = await prisma.vehicle.findMany({
+            where: filter,
+            include: { 
+                location: true,
+                category: true
+            },
+            orderBy: { code: 'asc' }
+        })
+        try {
+            const allRecords: any[] = await prisma.$queryRawUnsafe(`
+                SELECT * FROM "VehicleComplianceRecord" ORDER BY "valid_until" DESC
+            `)
+            return vehicles.map((v: any) => ({
+                ...v,
+                complianceRecords: allRecords.filter((r: any) => r.vehicleId === v.id)
+            }))
+        } catch {
+            return vehicles.map((v: any) => ({ ...v, complianceRecords: [] }))
+        }
+    }
 }
 
 export async function createKendaraan(formData: FormData) {
@@ -415,5 +446,300 @@ export async function deleteKendaraan(id: string) {
         return { success: true }
     } catch (e: any) {
         return { success: false, error: "Failed to delete kendaraan" }
+    }
+}
+
+// ─── Vehicle Compliance & Pajak/KIR History Actions ─────────────────────────
+
+const complianceRecordSchema = z.object({
+    id: z.string().optional(),
+    vehicleId: z.string().min(1, "Kendaraan wajib dipilih"),
+    type: z.enum(["PAJAK_STNK", "UJI_KIR", "IZIN_TRAYEK", "LAINNYA"]).default("PAJAK_STNK"),
+    cost: z.preprocess(val => (val === "" || val === undefined || val === null ? 0 : Number(val)), z.number().min(0, "Biaya minimal Rp 0")),
+    payment_date: z.preprocess(val => (val === "" || val === undefined || val === null ? null : new Date(val as string)), z.date().nullable().optional()),
+    valid_from: z.preprocess(val => new Date(val as string), z.date()),
+    valid_until: z.preprocess(val => new Date(val as string), z.date()),
+    period_months: z.preprocess(val => (val === "" || val === undefined || val === null ? 12 : Number(val)), z.number().min(1, "Periode minimal 1 bulan")).default(12),
+    receipt_number: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
+    notes: z.preprocess(val => (val === "" || val === undefined ? null : val), z.string().nullable().optional()),
+})
+
+export async function getVehicleComplianceRecords(vehicleId?: string) {
+    const session = await auth()
+    if (!session?.user) return []
+
+    const isCorp = isCorporateUser(session.user)
+    const filter: any = {}
+
+    if (vehicleId) {
+        filter.vehicleId = vehicleId
+    }
+
+    if (!isCorp && session.user.locationId) {
+        filter.vehicle = { locationId: session.user.locationId }
+    }
+
+    if ((prisma as any).vehicleComplianceRecord?.findMany) {
+        return await (prisma as any).vehicleComplianceRecord.findMany({
+            where: filter,
+            include: {
+                vehicle: {
+                    include: { location: true, category: true }
+                }
+            },
+            orderBy: { valid_until: "desc" }
+        })
+    }
+
+    // Raw SQL fallback
+    try {
+        let rows: any[] = []
+        if (vehicleId) {
+            rows = await prisma.$queryRawUnsafe(`
+                SELECT r.*, v.code as "vehicle_code", v.plate_number, v."vehicle_type"
+                FROM "VehicleComplianceRecord" r
+                LEFT JOIN "Vehicle" v ON r."vehicleId" = v.id
+                WHERE r."vehicleId" = $1
+                ORDER BY r."valid_until" DESC
+            `, vehicleId)
+        } else {
+            rows = await prisma.$queryRawUnsafe(`
+                SELECT r.*, v.code as "vehicle_code", v.plate_number, v."vehicle_type"
+                FROM "VehicleComplianceRecord" r
+                LEFT JOIN "Vehicle" v ON r."vehicleId" = v.id
+                ORDER BY r."valid_until" DESC
+            `)
+        }
+        return rows.map((r: any) => ({
+            ...r,
+            vehicle: {
+                id: r.vehicleId,
+                code: r.vehicle_code,
+                plate_number: r.plate_number,
+                vehicle_type: r.vehicle_type
+            }
+        }))
+    } catch (e: any) {
+        console.error("Error in getVehicleComplianceRecords fallback:", e)
+        return []
+    }
+}
+
+export async function createVehicleComplianceRecord(formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mencatat riwayat kepatuhan armada" }
+    }
+
+    const data = Object.fromEntries(formData.entries())
+    const parsed = complianceRecordSchema.safeParse(data)
+
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.format() }
+    }
+
+    try {
+        const { vehicleId, type, cost, payment_date, valid_from, valid_until, period_months, receipt_number, notes } = parsed.data
+        const monthly_amount = Math.round(cost / (period_months || (type === "UJI_KIR" ? 6 : 12)))
+
+        let record: any
+        if ((prisma as any).vehicleComplianceRecord?.create) {
+            record = await (prisma as any).vehicleComplianceRecord.create({
+                data: {
+                    vehicleId,
+                    type,
+                    cost,
+                    payment_date: payment_date || new Date(),
+                    valid_from,
+                    valid_until,
+                    period_months,
+                    monthly_amount,
+                    receipt_number,
+                    notes,
+                    created_by: session.user.username || (session.user as any)?.name || "System"
+                }
+            })
+        } else {
+            const id = require("crypto").randomUUID()
+            await prisma.$executeRawUnsafe(`
+                INSERT INTO "VehicleComplianceRecord" (
+                    "id", "vehicleId", "type", "cost", "payment_date", "valid_from", "valid_until",
+                    "period_months", "monthly_amount", "receipt_number", "notes", "created_by",
+                    "createdAt", "updatedAt"
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+            `, id, vehicleId, type, cost, payment_date || new Date(), valid_from, valid_until,
+               period_months, monthly_amount, receipt_number || null, notes || null,
+               session.user.username || (session.user as any)?.name || "System")
+            record = { id, vehicleId, type, cost, valid_from, valid_until, period_months, monthly_amount }
+        }
+
+        // 2. Synchronize Vehicle master table with the latest active values
+        const updateData: any = {}
+        if (type === "PAJAK_STNK") {
+            updateData.annual_tax_cost = cost
+            updateData.tax_expiry_date = valid_until
+        } else if (type === "UJI_KIR") {
+            updateData.kir_cost = cost
+            updateData.kir_period_months = period_months
+            updateData.kir_expiry_date = valid_until
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            await prisma.vehicle.update({
+                where: { id: vehicleId },
+                data: updateData
+            })
+        }
+
+        revalidatePath("/admin/kendaraan")
+        revalidatePath("/admin/reports/monthly-management")
+        return { success: true, data: record }
+    } catch (e: any) {
+        console.error("Error creating compliance record:", e)
+        return { success: false, error: e.message }
+    }
+}
+
+export async function updateVehicleComplianceRecord(id: string, formData: FormData) {
+    const session = await auth()
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengubah riwayat kepatuhan armada" }
+    }
+
+    const data = Object.fromEntries(formData.entries())
+    const parsed = complianceRecordSchema.safeParse(data)
+
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.format() }
+    }
+
+    try {
+        const { vehicleId, type, cost, payment_date, valid_from, valid_until, period_months, receipt_number, notes } = parsed.data
+        const monthly_amount = Math.round(cost / (period_months || (type === "UJI_KIR" ? 6 : 12)))
+
+        let record: any
+        if ((prisma as any).vehicleComplianceRecord?.update) {
+            record = await (prisma as any).vehicleComplianceRecord.update({
+                where: { id },
+                data: {
+                    type,
+                    cost,
+                    payment_date: payment_date || new Date(),
+                    valid_from,
+                    valid_until,
+                    period_months,
+                    monthly_amount,
+                    receipt_number,
+                    notes
+                }
+            })
+        } else {
+            await prisma.$executeRawUnsafe(`
+                UPDATE "VehicleComplianceRecord" SET
+                    "type" = $1, "cost" = $2, "payment_date" = $3, "valid_from" = $4,
+                    "valid_until" = $5, "period_months" = $6, "monthly_amount" = $7,
+                    "receipt_number" = $8, "notes" = $9, "updatedAt" = CURRENT_TIMESTAMP
+                WHERE "id" = $10
+            `, type, cost, payment_date || new Date(), valid_from, valid_until,
+               period_months, monthly_amount, receipt_number || null, notes || null, id)
+            record = { id, vehicleId, type, cost, valid_from, valid_until, period_months, monthly_amount }
+        }
+
+        // Re-sync Vehicle master with latest record
+        try {
+            const records: any[] = await prisma.$queryRawUnsafe(`
+                SELECT * FROM "VehicleComplianceRecord"
+                WHERE "vehicleId" = $1 AND "type" = $2
+                ORDER BY "valid_until" DESC LIMIT 1
+            `, vehicleId, type)
+
+            if (records.length > 0) {
+                const latestRecord = records[0]
+                const updateData: any = {}
+                if (type === "PAJAK_STNK") {
+                    updateData.annual_tax_cost = latestRecord.cost
+                    updateData.tax_expiry_date = latestRecord.valid_until
+                } else if (type === "UJI_KIR") {
+                    updateData.kir_cost = latestRecord.cost
+                    updateData.kir_period_months = latestRecord.period_months
+                    updateData.kir_expiry_date = latestRecord.valid_until
+                }
+                await prisma.vehicle.update({
+                    where: { id: vehicleId },
+                    data: updateData
+                })
+            }
+        } catch {}
+
+        revalidatePath("/admin/kendaraan")
+        revalidatePath("/admin/reports/monthly-management")
+        return { success: true, data: record }
+    } catch (e: any) {
+        console.error("Error updating compliance record:", e)
+        return { success: false, error: e.message }
+    }
+}
+
+export async function deleteVehicleComplianceRecord(id: string) {
+    const session = await auth()
+    if (!session?.user || !(await canManageKendaraan(session.user))) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin menghapus riwayat kepatuhan armada" }
+    }
+
+    try {
+        let vehicleId = ""
+        let type = ""
+
+        try {
+            const record = await prisma.$queryRawUnsafe<any[]>(`
+                SELECT "vehicleId", "type" FROM "VehicleComplianceRecord" WHERE "id" = $1
+            `, id)
+            if (record && record.length > 0) {
+                vehicleId = record[0].vehicleId
+                type = record[0].type
+            }
+        } catch {}
+
+        if ((prisma as any).vehicleComplianceRecord?.delete) {
+            await (prisma as any).vehicleComplianceRecord.delete({ where: { id } })
+        } else {
+            await prisma.$executeRawUnsafe(`DELETE FROM "VehicleComplianceRecord" WHERE "id" = $1`, id)
+        }
+
+        // Check if another record exists to restore Vehicle master
+        if (vehicleId && type) {
+            try {
+                const records: any[] = await prisma.$queryRawUnsafe(`
+                    SELECT * FROM "VehicleComplianceRecord"
+                    WHERE "vehicleId" = $1 AND "type" = $2
+                    ORDER BY "valid_until" DESC LIMIT 1
+                `, vehicleId, type)
+
+                const nextRecord = records[0]
+                const updateData: any = {}
+                if (type === "PAJAK_STNK") {
+                    updateData.annual_tax_cost = nextRecord ? nextRecord.cost : 0
+                    updateData.tax_expiry_date = nextRecord ? nextRecord.valid_until : null
+                } else if (type === "UJI_KIR") {
+                    updateData.kir_cost = nextRecord ? nextRecord.cost : 0
+                    updateData.kir_period_months = nextRecord ? nextRecord.period_months : 6
+                    updateData.kir_expiry_date = nextRecord ? nextRecord.valid_until : null
+                }
+
+                await prisma.vehicle.update({
+                    where: { id: vehicleId },
+                    data: updateData
+                })
+            } catch {}
+        }
+
+        revalidatePath("/admin/kendaraan")
+        revalidatePath("/admin/reports/monthly-management")
+        return { success: true }
+    } catch (e: any) {
+        console.error("Error deleting compliance record:", e)
+        return { success: false, error: e.message }
     }
 }

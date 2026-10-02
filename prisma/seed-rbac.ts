@@ -121,6 +121,13 @@ export const PERMISSIONS = [
     { code: 'SEWA_EDIT', module: 'SEWA', action: 'edit', name: 'Ubah Data Sewa & Master Alat' },
     { code: 'SEWA_DELETE', module: 'SEWA', action: 'delete', name: 'Hapus / Batalkan Sewa' },
     { code: 'SEWA_PRINT', module: 'SEWA', action: 'print', name: 'Cetak DO / Surat Jalan Sewa' },
+
+    // Finance & Kredit
+    { code: 'FINANCE_VIEW', module: 'FINANCE', action: 'view', name: 'Lihat Modul Finance' },
+    { code: 'FINANCE_CREDIT_VIEW', module: 'FINANCE', action: 'view', name: 'Lihat Data Kredit & Beban' },
+    { code: 'FINANCE_CREDIT_CREATE', module: 'FINANCE', action: 'create', name: 'Tambah Kewajiban Kredit' },
+    { code: 'FINANCE_CREDIT_PAY', module: 'FINANCE', action: 'approve', name: 'Catat Pembayaran Pelunasan Kredit' },
+    { code: 'FINANCE_CREDIT_MANAGE', module: 'FINANCE', action: 'edit', name: 'Kelola / Batalkan Pembayaran Kredit' },
 ]
 
 export const ROLES = [
@@ -158,6 +165,7 @@ export const ROLES = [
             'REPORTS_VIEW', 'REPORTS_EXPORT',
             'RBL_VIEW', 'RBL_CREATE', 'RBL_EDIT', 'RBL_DELETE', 'RBL_CLOSE', 'RBL_EXPORT',
             'SEWA_VIEW', 'SEWA_CREATE', 'SEWA_EDIT', 'SEWA_DELETE', 'SEWA_PRINT',
+            'FINANCE_VIEW', 'FINANCE_CREDIT_VIEW', 'FINANCE_CREDIT_PAY',
         ],
     },
     {
@@ -272,8 +280,7 @@ async function main() {
             .filter(p => targetPermCodes.includes(p.code))
             .map(p => p.id)
 
-        // Reset and re-assign
-        await prisma.rolePermission.deleteMany({ where: { roleId: role.id } })
+        // Additive-only permission assignment (AMAN: tidak menghapus custom permissions yang sudah diset admin)
         if (targetPermIds.length > 0) {
             await prisma.rolePermission.createMany({
                 data: targetPermIds.map(permissionId => ({
@@ -283,7 +290,7 @@ async function main() {
                 skipDuplicates: true,
             })
         }
-        console.log(`✓ Role ${role.name} (${role.label}) configured with ${targetPermIds.length} permissions.`)
+        console.log(`✓ Role ${role.name} (${role.label}) verified with target permissions (non-destructive).`)
     }
 
     // Connect existing users to their roleId

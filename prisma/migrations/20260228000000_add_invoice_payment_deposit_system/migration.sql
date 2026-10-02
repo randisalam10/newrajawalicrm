@@ -59,17 +59,20 @@ ALTER TABLE "ProjectPrice" ADD CONSTRAINT "ProjectPrice_qualityId_fkey"
 
 -- ── 5. Migrate existing Customer data → Project ────────────────────────────────
 -- For each existing customer, create a default Project named "Default Project"
--- with the customer's address
+-- with the customer's address if they don't already have one
 
 INSERT INTO "Project" ("id", "name", "address", "default_distance", "tax_ppn", "customerId")
 SELECT
     gen_random_uuid()::TEXT,
     'Default Project',
-    "address",
+    c."address",
     0,
     0,
-    "id"
-FROM "Customer";
+    c."id"
+FROM "Customer" c
+WHERE NOT EXISTS (
+    SELECT 1 FROM "Project" p WHERE p."customerId" = c."id"
+);
 
 -- ── 6. Add projectId to ProductionTransaction ──────────────────────────────────
 

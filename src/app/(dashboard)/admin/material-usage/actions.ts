@@ -18,11 +18,9 @@ export async function getMaterialUsageData(startDate?: Date | string, endDate?: 
         dateFilter.lte = new Date(endDate)
     }
 
-    // Default to last 90 days if no date filter is passed, preventing unbounded memory spikes
-    // while comfortably covering current month, recent weeks, and quarterly analysis
+    // Default to the start of current operational year so all months (including previous months) are accessible
     if (!startDate && !endDate) {
-        const defaultStart = new Date()
-        defaultStart.setDate(defaultStart.getDate() - 90)
+        const defaultStart = new Date(new Date().getFullYear(), 0, 1)
         dateFilter.gte = defaultStart
     }
 

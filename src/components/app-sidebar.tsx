@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Crown, Landmark } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -91,42 +91,58 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("DASHBOARD_VIEW") ? [{
                     title: "Dashboard",
                     url: user?.role === "OperatorBP" ? "/operator" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin"),
-                    icon: LayoutDashboard
+                    icon: LayoutDashboard,
+                    isSuperAdminOnly: false,
                 }] : []),
-                ...(hasPerm("PLANNING_VIEW") ? [{ title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock }] : []),
+                ...(hasPerm("PLANNING_VIEW") ? [{ title: "Planning Pengecoran", url: "/admin/planning", icon: CalendarClock, isSuperAdminOnly: false }] : []),
             ]
         },
         {
             title: "Operasional & Transaksi",
             defaultOpen: true,
             items: [
-                ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory }] : []),
-                ...(hasPerm("SEWA_VIEW") ? [{ title: "Sewa Alat / Kendaraan", url: "/admin/sewa", icon: KeyRound }] : []),
-                ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck }] : []),
+                ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("SEWA_VIEW") ? [{ title: "Sewa Alat / Kendaraan", url: "/admin/sewa", icon: KeyRound, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("INSENTIF_VIEW") ? [
-                    { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator }
+                    { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false }
                 ] : []),
-                ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat }] : []),
-                ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText }] : []),
-                ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers }] : []),
+                ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers, isSuperAdminOnly: false }] : []),
             ]
         },
         {
             title: "Laporan & Tagihan",
             defaultOpen: false,
             items: [
-                ...(hasPerm("BILLING_VIEW") ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt }] : []),
+                ...(isSuperAdmin ? [{
+                    title: "Laporan Bulanan Manajemen",
+                    url: "/admin/reports/monthly-management",
+                    icon: BarChart3,
+                    isSuperAdminOnly: true,
+                }] : []),
+                ...(hasPerm("BILLING_VIEW") ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("RBL_VIEW") ? [
-                    { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards },
+                    { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards, isSuperAdminOnly: false },
                 ] : []),
-                ...(hasPerm("MATERIAL_USAGE_VIEW") ? [{ title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory }] : []),
+                ...(hasPerm("MATERIAL_USAGE_VIEW") ? [{ title: "Penggunaan Material", url: "/admin/material-usage", icon: Factory, isSuperAdminOnly: false }] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "MATERIAL_AGREGAT_VIEW", "MATERIAL_VIEW") ? [
-                    { title: "Laporan Biaya Material", url: "/admin/reports/material", icon: Layers },
+                    { title: "Laporan Biaya Material", url: "/admin/reports/material", icon: Layers, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "VEHICLE_VIEW") ? [
-                    { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck },
+                    { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck, isSuperAdminOnly: false },
                 ] : []),
-                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Retase Batchingplant", url: "/admin/reports/retase", icon: BarChart3 }] : []),
+                ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Retase Batchingplant", url: "/admin/reports/retase", icon: BarChart3, isSuperAdminOnly: false }] : []),
+            ]
+        },
+        {
+            title: "Finance & Keuangan",
+            defaultOpen: true,
+            items: [
+                ...(hasAnyPerm("FINANCE_VIEW", "FINANCE_CREDIT_VIEW") ? [
+                    { title: "Kredit & Kewajiban", url: "/admin/finance/kredit", icon: Landmark, isSuperAdminOnly: false }
+                ] : []),
             ]
         },
         {
@@ -134,27 +150,30 @@ export function AppSidebar({ user }: AppSidebarProps) {
             defaultOpen: false,
             items: [
                 ...(hasPerm("KARYAWAN_VIEW") ? [
-                    { title: "Data Karyawan", url: "/admin/karyawan", icon: Users },
+                    { title: "Data Karyawan", url: "/admin/karyawan", icon: Users, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("VEHICLE_VIEW") ? [
-                    { title: "Data Kendaraan & Alat", url: "/admin/kendaraan", icon: Truck },
+                    { title: "Data Kendaraan & Alat", url: "/admin/kendaraan", icon: Truck, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("SEWA_VIEW") ? [
-                    { title: "Master Sewa Alat", url: "/admin/master-sewa", icon: Box },
+                    { title: "Master Sewa Alat", url: "/admin/master-sewa", icon: Box, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("MUTU_VIEW") ? [
-                    { title: "Mutu Beton", url: "/admin/mutu", icon: Settings },
+                    { title: "Mutu Beton", url: "/admin/mutu", icon: Settings, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("ITEM_PEKERJAAN_VIEW") ? [
-                    { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings },
+                    { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("INSENTIF_VIEW") ? [
-                    { title: "Master Insentif", url: "/admin/master-insentif", icon: Calculator },
+                    { title: "Master Insentif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasAnyPerm("MATERIAL_AGREGAT_VIEW", "PRODUKSI_VIEW", "MUTU_VIEW") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP'].includes(user?.role || '') ? [
-                    { title: "Master Harga Material", url: "/admin/master-material", icon: Tag }
+                    { title: "Master Harga Material", url: "/admin/master-material", icon: Tag, isSuperAdminOnly: false }
                 ] : []),
-                ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory }] : [])
+                ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory, isSuperAdminOnly: false }] : []),
+                ...(isSuperAdmin || hasPerm("MASTER_DATA_VIEW") || hasPerm("RBL_VIEW") || ['SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(user?.role || '') ? [
+                    { title: "Master Biaya & Target", url: "/admin/fixed-costs", icon: Landmark, isSuperAdminOnly: false }
+                ] : [])
             ]
         },
         {
@@ -162,7 +181,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             defaultOpen: true,
             items: [
                 ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
-                    { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare }
+                    { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare, isSuperAdminOnly: false }
                 ] : []),
             ]
         },
@@ -170,14 +189,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Logistik & Peralatan",
             defaultOpen: false,
             items: [
-                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard }] : []),
-                ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart }] : []),
+                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("LOGISTIK_VIEW") ? [
-                    { title: "Daftar PO", url: "/logistik/po", icon: FileText },
-                    { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory },
-                    { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound },
-                    { title: "Master Supplier", url: "/logistik/supplier", icon: Store },
-                    { title: "Master Barang", url: "/logistik/master-barang", icon: Box },
+                    { title: "Daftar PO", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
+                    { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory, isSuperAdminOnly: false },
+                    { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound, isSuperAdminOnly: false },
+                    { title: "Master Supplier", url: "/logistik/supplier", icon: Store, isSuperAdminOnly: false },
+                    { title: "Master Barang", url: "/logistik/master-barang", icon: Box, isSuperAdminOnly: false },
                 ] : [])
             ]
         },
@@ -185,8 +204,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Administrator & Akses",
             defaultOpen: false,
             items: [
-                ...(hasAnyPerm("USER_MGMT_VIEW", "USER_VIEW") ? [{ title: "Manajemen User", url: "/admin/users", icon: Users }] : []),
-                ...(hasAnyPerm("RBAC_MGMT_VIEW", "ROLE_VIEW") ? [{ title: "Role & Hak Akses", url: "/admin/roles", icon: ShieldCheck }] : [])
+                ...(hasAnyPerm("USER_MGMT_VIEW", "USER_VIEW") ? [{ title: "Manajemen User", url: "/admin/users", icon: Users, isSuperAdminOnly: false }] : []),
+                ...(hasAnyPerm("RBAC_MGMT_VIEW", "ROLE_VIEW") ? [{ title: "Role & Hak Akses", url: "/admin/roles", icon: ShieldCheck, isSuperAdminOnly: false }] : [])
             ]
         }
     ]
@@ -265,7 +284,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                                 <CollapsibleContent>
                                     <SidebarGroupContent>
                                         <SidebarMenu>
-                                            {group.items.map((item) => {
+                                            {group.items.map((item: any) => {
                                                 const isActive = item.url === bestMatchUrl
                                                 return (
                                                     <SidebarMenuItem key={item.title}>
@@ -273,11 +292,22 @@ export function AppSidebar({ user }: AppSidebarProps) {
                                                             asChild
                                                             isActive={isActive}
                                                             tooltip={item.title}
-                                                            className="rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100/50 data-[active=true]:shadow-sm transition-all"
+                                                            className={`rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100/50 data-[active=true]:shadow-sm transition-all ${
+                                                                item.isSuperAdminOnly
+                                                                    ? "bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-950 font-semibold border-amber-300/40 hover:bg-amber-100/60"
+                                                                    : ""
+                                                            }`}
                                                         >
-                                                            <Link href={item.url}>
-                                                                <item.icon className="!h-4 !w-4 opacity-70" />
-                                                                <span>{item.title}</span>
+                                                            <Link href={item.url} className="flex items-center justify-between w-full">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <item.icon className={`!h-4 !w-4 ${item.isSuperAdminOnly ? "!text-amber-600 opacity-100" : "opacity-70"}`} />
+                                                                    <span className="truncate">{item.title}</span>
+                                                                </div>
+                                                                {item.isSuperAdminOnly && (
+                                                                    <span className="ml-auto text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 shadow-xs flex items-center gap-0.5 shrink-0">
+                                                                        <Crown className="w-2.5 h-2.5 fill-slate-950" /> HQ
+                                                                    </span>
+                                                                )}
                                                             </Link>
                                                         </SidebarMenuButton>
                                                     </SidebarMenuItem>
@@ -295,20 +325,50 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarSeparator className="mx-4" />
 
             <SidebarFooter className="p-4 pb-6">
-                <div className="flex items-center gap-3 bg-slate-100 rounded-xl px-3 py-2">
-                    <Avatar className="h-9 w-9 border-2 border-white shadow-sm ring-1 ring-slate-200">
-                        <AvatarFallback className="bg-primary/10 text-primary font-bold">{user?.username?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
-                    </Avatar>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold capitalize text-slate-800">{user?.username || "Guest"}</span>
-                        <span className="truncate text-[11px] font-medium text-slate-500 uppercase tracking-wider">{user?.role}</span>
+                {isSuperAdmin ? (
+                    <div className="flex items-center gap-3 bg-gradient-to-br from-amber-500/15 via-yellow-500/10 to-amber-600/15 border border-amber-400/50 rounded-xl px-3 py-2.5 shadow-sm">
+                        <div className="relative shrink-0">
+                            <Avatar className="h-9 w-9 border-2 border-amber-400 shadow-sm ring-2 ring-amber-400/30">
+                                <AvatarFallback className="bg-gradient-to-tr from-amber-500 to-yellow-600 text-slate-950 font-black">
+                                    {user?.username?.charAt(0).toUpperCase() || "S"}
+                                </AvatarFallback>
+                            </Avatar>
+                            <span className="absolute -top-1.5 -right-1 bg-amber-500 rounded-full p-0.5 shadow-xs border border-white">
+                                <Crown className="h-2.5 w-2.5 text-slate-950 fill-slate-950" />
+                            </span>
+                        </div>
+                        <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
+                            <div className="flex items-center gap-1.5">
+                                <span className="truncate font-bold capitalize text-slate-900">{user?.username || "Super Admin"}</span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[10px] font-extrabold tracking-wider text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded border border-amber-400/60 inline-flex items-center gap-1">
+                                    <Crown className="w-2.5 h-2.5 fill-amber-900" /> SUPER ADMIN
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex items-center shrink-0">
+                            <Link href="/api/auth/signout" title="Sign Out">
+                                <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
+                            </Link>
+                        </div>
                     </div>
-                    <div className="flex items-center">
-                        <Link href="/api/auth/signout" title="Sign Out">
-                            <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
-                        </Link>
+                ) : (
+                    <div className="flex items-center gap-3 bg-slate-100 rounded-xl px-3 py-2">
+                        <Avatar className="h-9 w-9 border-2 border-white shadow-sm ring-1 ring-slate-200">
+                            <AvatarFallback className="bg-primary/10 text-primary font-bold">{user?.username?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+                        </Avatar>
+                        <div className="grid flex-1 text-left text-sm leading-tight">
+                            <span className="truncate font-semibold capitalize text-slate-800">{user?.username || "Guest"}</span>
+                            <span className="truncate text-[11px] font-medium text-slate-500 uppercase tracking-wider">{user?.role}</span>
+                        </div>
+                        <div className="flex items-center">
+                            <Link href="/api/auth/signout" title="Sign Out">
+                                <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
+                            </Link>
+                        </div>
                     </div>
-                </div>
+                )}
             </SidebarFooter>
         </Sidebar>
     )

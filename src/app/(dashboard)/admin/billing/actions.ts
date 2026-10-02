@@ -93,16 +93,21 @@ export async function getUnbilledTransactions(filters: {
         ? (filters.locationId && filters.locationId !== "all" ? { locationId: filters.locationId } : {})
         : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
+    const startDateObj = filters.startDate ? new Date(filters.startDate.includes("T") ? filters.startDate : `${filters.startDate}T00:00:00.000+07:00`) : undefined
+    const endDateObj = filters.endDate ? new Date(filters.endDate.includes("T") ? filters.endDate : `${filters.endDate}T23:59:59.999+07:00`) : undefined
+
     const [prodTxs, sewaTxs] = await Promise.all([
         prisma.productionTransaction.findMany({
             where: {
                 ...locationFilter,
+                status: "Confirmed",
                 invoiceItem: null, // no InvoiceItem = unbilled
                 ...(filters.projectId ? { projectId: filters.projectId } : {}),
-                ...(filters.startDate || filters.endDate ? {
+                ...(filters.customerId ? { project: { customerId: filters.customerId } } : {}),
+                ...(startDateObj || endDateObj ? {
                     date: {
-                        ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
-                        ...(filters.endDate ? { lte: new Date(filters.endDate) } : {}),
+                        ...(startDateObj ? { gte: startDateObj } : {}),
+                        ...(endDateObj ? { lte: endDateObj } : {}),
                     }
                 } : {}),
             },
@@ -123,10 +128,10 @@ export async function getUnbilledTransactions(filters: {
                 status: { not: "Cancelled" },
                 ...(filters.projectId ? { projectId: filters.projectId } : {}),
                 ...(filters.customerId ? { customerId: filters.customerId } : {}),
-                ...(filters.startDate || filters.endDate ? {
+                ...(startDateObj || endDateObj ? {
                     date: {
-                        ...(filters.startDate ? { gte: new Date(filters.startDate) } : {}),
-                        ...(filters.endDate ? { lte: new Date(filters.endDate) } : {}),
+                        ...(startDateObj ? { gte: startDateObj } : {}),
+                        ...(endDateObj ? { lte: endDateObj } : {}),
                     }
                 } : {}),
             },
@@ -177,7 +182,7 @@ export async function getUnbilledTransactions(filters: {
                 name: tx.lokasi_proyek || "Penyewaan Alat & Kendaraan",
                 customerId: tx.customerId,
                 customer: tx.customer,
-                tax_ppn: tx.is_ppn ? (tx.ppn_rate || 11) : 0,
+                tax_ppn: tx.is_ppn ? (tx.ppn_rate ?? 11) : 0,
                 prices: []
             },
             projectId: tx.projectId || `SEWA_${tx.customerId}`,
@@ -194,6 +199,9 @@ export async function getInvoicesGroupedByCustomer(filters: {
     locationId?: string
     status?: string
     showCancelled?: boolean
+    startDate?: string
+    endDate?: string
+    customerId?: string
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return []
@@ -203,12 +211,27 @@ export async function getInvoicesGroupedByCustomer(filters: {
         ? (filters.locationId && filters.locationId !== "all" ? { locationId: filters.locationId } : {})
         : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
+    const startDateObj = filters.startDate ? new Date(filters.startDate.includes("T") ? filters.startDate : `${filters.startDate}T00:00:00.000+07:00`) : undefined
+    const endDateObj = filters.endDate ? new Date(filters.endDate.includes("T") ? filters.endDate : `${filters.endDate}T23:59:59.999+07:00`) : undefined
+
     const invoices = await prisma.invoice.findMany({
         where: {
             ...locationFilter,
             // Hide cancelled by default unless showCancelled flag is set
             ...(filters.showCancelled ? {} : { NOT: { status: "CANCELLED" } }),
             ...(filters.status && filters.status !== "all" ? { status: filters.status as any } : {}),
+            ...(filters.customerId ? {
+                OR: [
+                    { customerId: filters.customerId },
+                    { project: { customerId: filters.customerId } },
+                ]
+            } : {}),
+            ...(startDateObj || endDateObj ? {
+                issue_date: {
+                    ...(startDateObj ? { gte: startDateObj } : {}),
+                    ...(endDateObj ? { lte: endDateObj } : {}),
+                }
+            } : {}),
         },
         include: {
             project: { include: { customer: true } },
@@ -362,7 +385,7 @@ export async function createInvoice(params: {
                 where: { id: { in: params.transactionIds }, invoiceItem: null },
                 include: {
                     concreteQuality: true,
-                    project: { include: { customer: true, prices: true } },
+                    project: { include: { customer: true, prices: { include: { concreteQuality: true } } } },
                 },
             }),
         ])
@@ -425,14 +448,20 @@ export async function createInvoice(params: {
         // 2. Process ReadyMix items
         if (prodTransactions.length > 0) {
             const projPrices = project?.prices || []
-            const unpriced = prodTransactions.filter(tx => !projPrices.find((p: any) => p.qualityId === tx.qualityId))
+            const unpriced = prodTransactions.filter(tx => !projPrices.find((p: any) => 
+                p.qualityId === tx.qualityId || 
+                (p.concreteQuality?.name && tx.concreteQuality?.name && p.concreteQuality.name.toLowerCase() === tx.concreteQuality.name.toLowerCase())
+            ))
             if (unpriced.length > 0) {
                 const names = [...new Set(unpriced.map(t => t.concreteQuality?.name || "Mutu"))]
                 return { success: false, error: `Harga belum diset untuk mutu beton: ${names.join(", ")}` }
             }
 
             for (const tx of prodTransactions) {
-                const priceEntry = projPrices.find((p: any) => p.qualityId === tx.qualityId)!
+                const priceEntry = projPrices.find((p: any) => 
+                    p.qualityId === tx.qualityId || 
+                    (p.concreteQuality?.name && tx.concreteQuality?.name && p.concreteQuality.name.toLowerCase() === tx.concreteQuality.name.toLowerCase())
+                )!
                 const rawPrice = priceEntry.price
                 const rmPpnMode = priceEntry.ppn_mode || "NON_PPN"
                 const rmPpnRate = priceEntry.ppn_rate ?? 11
@@ -458,16 +487,18 @@ export async function createInvoice(params: {
 
         const subtotal = sewaDppSubtotal + rmDppSubtotal
 
-        // Tax: untuk sewa ambil ppn_rate dari transaksi sewa (default 11%), untuk RM dari proyek
-        // Jika ada mix, hitung PPN per komponen
+        // Tax: untuk sewa hitung PPN per transaksi sewa, untuk RM dari tarif PPN proyek
         let taxAmount = 0
         if (params.includePpn) {
-            if (sewaTransactions.length > 0) {
-                const sewaRate = (sewaTransactions[0]?.ppn_rate ?? 11) / 100
-                taxAmount += sewaDppSubtotal * sewaRate
+            for (const tx of sewaTransactions) {
+                const sRate = (tx.ppn_rate ?? 11) / 100
+                const txDpp = tx.ppn_mode === "INCLUDE"
+                    ? (tx.dpp_amount ?? (tx.total_price / (1 + sRate)))
+                    : (tx.total_price || (tx.price_per_day * tx.total_days))
+                taxAmount += txDpp * sRate
             }
             if (rmDppSubtotal > 0) {
-                const rmTaxRate = (project?.tax_ppn ?? 11) / 100
+                const rmTaxRate = ((project?.tax_ppn !== undefined && project?.tax_ppn !== null) ? project.tax_ppn : 11) / 100
                 taxAmount += rmDppSubtotal * rmTaxRate
             }
         }
@@ -547,10 +578,19 @@ export async function recordPayment(params: {
         const invoice = await prisma.invoice.findUnique({ where: { id: params.invoiceId } })
         if (!invoice) return { success: false, error: "Invoice tidak ditemukan" }
 
+        let targetPaymentDate: Date
+        if (!params.paymentDate) {
+            targetPaymentDate = new Date()
+        } else if (params.paymentDate.includes("T")) {
+            targetPaymentDate = new Date(params.paymentDate)
+        } else {
+            targetPaymentDate = new Date(`${params.paymentDate}T12:00:00.000Z`)
+        }
+
         const payment = await prisma.payment.create({
             data: {
                 invoiceId: params.invoiceId,
-                payment_date: new Date(params.paymentDate),
+                payment_date: targetPaymentDate,
                 amount: params.amount,
                 method: params.method as any,
                 reference_no: params.referenceNo,
@@ -567,12 +607,19 @@ export async function recordPayment(params: {
             data: { paid_amount: newPaid, status: newStatus },
         })
 
+        const paymentDateStr = targetPaymentDate.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })
         await writeBillingLog({
             action: "PAYMENT_RECORDED",
             invoiceId: params.invoiceId,
             paymentId: payment.id,
-            description: `Pembayaran Rp ${params.amount.toLocaleString("id-ID")} via ${params.method} — status: ${newStatus}`,
-            metadata: { amount: params.amount, method: params.method, newPaid, status: newStatus },
+            description: `Pembayaran Rp ${params.amount.toLocaleString("id-ID")} via ${params.method} (Tgl Bayar: ${paymentDateStr}) — status: ${newStatus}`,
+            metadata: { 
+                amount: params.amount, 
+                method: params.method, 
+                paymentDate: targetPaymentDate.toISOString(),
+                newPaid, 
+                status: newStatus 
+            },
         })
 
         revalidatePath("/admin/billing")
@@ -741,7 +788,12 @@ export async function updatePaymentProof(paymentId: string, proofUrl: string) {
     }
 }
 
-export async function getBillingPageData(filters: { locationId?: string } = {}) {
+export async function getBillingPageData(filters: { 
+    locationId?: string
+    startDate?: string
+    endDate?: string
+    customerId?: string
+} = {}) {
     const session = await auth()
     if (!session?.user?.employeeId) return null
 
@@ -751,8 +803,18 @@ export async function getBillingPageData(filters: { locationId?: string } = {}) 
         : (session.user.locationId || undefined)
 
     const [unbilled, grouped, deposits] = await Promise.all([
-        getUnbilledTransactions({ locationId }),
-        getInvoicesGroupedByCustomer({ locationId }),
+        getUnbilledTransactions({ 
+            locationId, 
+            startDate: filters.startDate, 
+            endDate: filters.endDate, 
+            customerId: filters.customerId 
+        }),
+        getInvoicesGroupedByCustomer({ 
+            locationId, 
+            startDate: filters.startDate, 
+            endDate: filters.endDate, 
+            customerId: filters.customerId 
+        }),
         getDepositSummary({ locationId }),
     ])
 

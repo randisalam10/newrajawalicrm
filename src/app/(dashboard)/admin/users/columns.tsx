@@ -112,9 +112,15 @@ export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
                                 <Edit className="w-4 h-4 mr-2" /> Edit User
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="cursor-pointer text-destructive focus:text-destructive">
-                                <Trash2 className="w-4 h-4 mr-2" /> Hapus User
-                            </DropdownMenuItem>
+                            {user.role === "SuperAdminBP" ? (
+                                <DropdownMenuItem disabled className="cursor-not-allowed opacity-50 text-slate-500">
+                                    Akun Dilindungi (Sistem)
+                                </DropdownMenuItem>
+                            ) : (
+                                <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="cursor-pointer text-destructive focus:text-destructive">
+                                    <Trash2 className="w-4 h-4 mr-2" /> Hapus User
+                                </DropdownMenuItem>
+                            )}
                         </DropdownMenuContent>
                     </DropdownMenu>
 

@@ -3,6 +3,11 @@ import { PrismaClient, VehicleType } from '@prisma/client'
 const prisma = new PrismaClient()
 
 async function main() {
+    if (process.env.NODE_ENV === "production") {
+        console.error("⛔ FATAL: seed-dummy.ts DILARANG KERAS dijalankan di lingkungan PRODUCTION!")
+        process.exit(1)
+    }
+
     console.log('Seeding dummy data...')
 
     // We need to fetch an existing location to tie the data to.

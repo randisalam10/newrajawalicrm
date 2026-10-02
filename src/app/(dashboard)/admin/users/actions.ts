@@ -8,7 +8,7 @@ import { z } from "zod"
 
 const userCreateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
-    password: z.string().min(5, "Password minimal 5 karakter"),
+    password: z.string().min(8, "Password minimal 8 karakter"),
     role: z.string().min(1, "Role required"),
     employeeId: z.string().min(1, "Pegawai required"),
 })
@@ -16,7 +16,7 @@ const userCreateSchema = z.object({
 const userUpdateSchema = z.object({
     id: z.string(),
     username: z.string().min(3, "Username minimal 3 karakter"),
-    password: z.string().min(5, "Password minimal 5 karakter").optional().or(z.literal("")),
+    password: z.string().min(8, "Password minimal 8 karakter").optional().or(z.literal("")),
     role: z.string().min(1, "Role required"),
 })
 
@@ -157,7 +157,11 @@ export async function deleteUser(id: string) {
 
     try {
         const user = await prisma.user.findUnique({ where: { id } })
-        if (!user) return { success: false, error: "User not found" }
+        if (!user) return { success: false, error: "User tidak ditemukan." }
+
+        if (user.role === "SuperAdminBP") {
+            return { success: false, error: "Akun Super Admin dilindungi oleh sistem dan tidak dapat dihapus!" }
+        }
 
         await prisma.user.delete({ where: { id } })
 

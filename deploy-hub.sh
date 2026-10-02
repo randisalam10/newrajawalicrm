@@ -17,7 +17,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 IMAGE_REPO="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="${1:-v2.4.8}"
+IMAGE_TAG="${1:-v2.4.9}"
 IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
 
 echo -e "${BLUE}================================================${NC}"
@@ -71,13 +71,16 @@ else
     echo -e "${YELLOW}   ℹ pg_dump dilewati, melanjutkan.${NC}"
 fi
 
+# Rotasi backup: Hapus file snapshot yang lebih tua dari 7 hari agar disk VPS tidak penuh
+find ./backups -name "backup_db_*.sql" -type f -mtime +7 -delete 2>/dev/null || true
+
 # ── 3. Pull image dari Docker Hub ─────────────────────────────
 echo ""
 echo -e "${CYAN}[3/5] Menarik image dari Docker Hub ($IMAGE_NAME)...${NC}"
 docker pull "$IMAGE_NAME"
 echo -e "${GREEN}   ✓ Image berhasil di-pull: $IMAGE_NAME${NC}"
 
-# ── 4. Database migration — AMAN & IDEMPOTENT ──────────────────
+# ── 4. Database migration — AMAN & IDEMPOTENT (Fail-fast) ──────
 echo ""
 echo -e "${CYAN}[4/5] Menerapkan migrasi schema database (Prisma migrate deploy)...${NC}"
 
@@ -86,17 +89,17 @@ echo -e "${CYAN}[4/5] Menerapkan migrasi schema database (Prisma migrate deploy)
 # yang berbahaya jika diulang — bisa duplikat atau timpa data production.
 # Jalankan MANUAL sekali saat setup server baru: bash apply-indexes.sh
 
-# Prisma migrate deploy — HANYA jalankan migrasi schema baru.
-# Melacak status via tabel _prisma_migrations. Tidak pernah re-run migrasi lama.
-# Tidak DROP tabel, tidak DROP kolom, tidak menghapus data production.
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
-docker run --rm \
+if ! docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     "$IMAGE_NAME" \
-    sh -c "npx prisma migrate deploy" \
-    && echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}" \
-    || echo -e "${YELLOW}   ℹ Migrasi sudah up-to-date atau dilewati.${NC}"
+    sh -c "npx prisma migrate deploy"; then
+    echo -e "${RED}❌ ERROR KRITIS: Prisma migrate deploy GAGAL! Deployment dibatalkan.${NC}"
+    echo -e "${YELLOW}   Data production aman. Snapshot database sebelum deploy: $BACKUP_FILE${NC}"
+    exit 1
+fi
+echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}"
 
 # Ensure DDL patch aman (Idempotent) agar kolom custom_material_name selalu terpasang
 echo -e "${YELLOW}   Memastikan kolom custom_material_name pada AggregateIncoming & Outgoing...${NC}"

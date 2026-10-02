@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UserForm } from "./user-form"
-import { Plus, MoreHorizontal, Edit, Trash2 } from "lucide-react"
+import { Plus, MoreHorizontal, Edit, Trash2, Crown, Lock } from "lucide-react"
 import { UserRow } from "./columns"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
 import { Badge } from "@/components/ui/badge"
@@ -41,8 +41,9 @@ export const getRoleBadge = (role: string) => {
     switch (role) {
         case "SuperAdminBP":
             return (
-                <Badge className="bg-purple-600 hover:bg-purple-700 text-white border-none text-[11px] font-medium tracking-wide">
-                    Super Admin
+                <Badge className="bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-extrabold border border-amber-400/60 shadow-xs text-[11px] tracking-wide inline-flex items-center gap-1.5 px-2 py-0.5">
+                    <Crown className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                    Super Admin HQ
                 </Badge>
             )
         case "AdminBP":
@@ -162,55 +163,84 @@ export function DataTable({
                                         </TableCell>
                                     </TableRow>
                                 ) : (
-                                    items.map((row) => (
-                                        <TableRow key={row.id}>
-                                            <TableCell className="font-semibold text-slate-900">
-                                                {row.username}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-slate-800">{row.name}</span>
-                                                    <span className="text-xs text-muted-foreground">{row.position}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {getRoleBadge(row.role)}
-                                            </TableCell>
-                                            <TableCell>
-                                                <span className="text-sm font-medium text-slate-600">
-                                                    {row.locationName}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <DropdownMenu>
-                                                    <DropdownMenuTrigger asChild>
-                                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                                            <span className="sr-only">Open menu</span>
-                                                            <MoreHorizontal className="h-4 w-4" />
-                                                        </Button>
-                                                    </DropdownMenuTrigger>
-                                                    <DropdownMenuContent align="end">
-                                                        <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                                                        <DropdownMenuSeparator />
-                                                        <DropdownMenuItem
-                                                            onClick={() => setEditingUser(row)}
-                                                            className="cursor-pointer gap-2"
-                                                        >
-                                                            <Edit className="h-4 w-4 text-blue-500" />
-                                                            Edit User
-                                                        </DropdownMenuItem>
-                                                        <DropdownMenuItem
-                                                            onClick={() => setDeleteUserObj(row)}
-                                                            className="cursor-pointer gap-2 text-rose-600 focus:text-rose-600"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                            Hapus User
-                                                        </DropdownMenuItem>
-                                                    </DropdownMenuContent>
-                                                </DropdownMenu>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
+                                    items.map((row) => {
+                                        const isSuperAdminRow = row.role === "SuperAdminBP"
+
+                                        return (
+                                            <TableRow
+                                                key={row.id}
+                                                className={isSuperAdminRow ? "bg-amber-50/40 hover:bg-amber-50/70 border-l-2 border-l-amber-500 transition-colors" : ""}
+                                            >
+                                                <TableCell className="font-semibold text-slate-900">
+                                                    <div className="flex items-center gap-2">
+                                                        {isSuperAdminRow && (
+                                                            <Crown className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
+                                                        )}
+                                                        <span className={isSuperAdminRow ? "text-amber-950 font-bold" : ""}>
+                                                            {row.username}
+                                                        </span>
+                                                        {isSuperAdminRow && (
+                                                            <span className="text-[10px] bg-amber-200/90 text-amber-950 font-extrabold px-1.5 py-0.5 rounded border border-amber-300 shrink-0">
+                                                                HQ
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium text-slate-800">{row.name}</span>
+                                                        <span className="text-xs text-muted-foreground">{row.position}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    {getRoleBadge(row.role)}
+                                                </TableCell>
+                                                <TableCell>
+                                                    <span className="text-sm font-medium text-slate-600">
+                                                        {row.locationName}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                                                <span className="sr-only">Open menu</span>
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
+                                                            <DropdownMenuSeparator />
+                                                            <DropdownMenuItem
+                                                                onClick={() => setEditingUser(row)}
+                                                                className="cursor-pointer gap-2"
+                                                            >
+                                                                <Edit className="h-4 w-4 text-blue-500" />
+                                                                Edit User
+                                                            </DropdownMenuItem>
+                                                            {isSuperAdminRow ? (
+                                                                <DropdownMenuItem
+                                                                    disabled
+                                                                    className="cursor-not-allowed opacity-50 gap-2 text-slate-500"
+                                                                >
+                                                                    <Lock className="h-4 w-4 text-amber-600" />
+                                                                    Akun Dilindungi (Sistem)
+                                                                </DropdownMenuItem>
+                                                            ) : (
+                                                                <DropdownMenuItem
+                                                                    onClick={() => setDeleteUserObj(row)}
+                                                                    className="cursor-pointer gap-2 text-rose-600 focus:text-rose-600"
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                    Hapus User
+                                                                </DropdownMenuItem>
+                                                            )}
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })
                                 )}
                             </TableBody>
                         </Table>

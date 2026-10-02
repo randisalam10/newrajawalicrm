@@ -21,7 +21,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 DEFAULT_IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-DEFAULT_IMAGE_TAG="v2.4.8"
+DEFAULT_IMAGE_TAG="v2.4.9"
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} 🚀 Memulai Deployment Otomatis Rajawali BP ERP  ${NC}"
@@ -109,6 +109,9 @@ if [ -f "$ENV_FILE" ]; then
             pg_dump "$DB_URL" > "$BACKUP_FILE" 2>/dev/null \
             && echo -e "${GREEN}   ✓ Snapshot database tersimpan aman: $BACKUP_FILE${NC}" \
             || echo -e "${YELLOW}   ℹ Catatan: pg_dump via docker dilewati.${NC}"
+
+        # Rotasi backup: Hapus file snapshot yang lebih tua dari 7 hari agar disk VPS tidak penuh
+        find ./backups -name "backup_db_*.sql" -type f -mtime +7 -delete 2>/dev/null || true
     fi
 fi
 
@@ -129,13 +132,17 @@ docker run --rm \
     $IMAGE_TO_USE \
     sh -c "npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true"
 
-# 2. Jalankan migrasi deploy resmi
+# 2. Jalankan migrasi deploy resmi (Fail-fast: wajib sukses sebelum lanjut)
 echo -e "${YELLOW}   Mengeksekusi npx prisma migrate deploy...${NC}"
-docker run --rm \
+if ! docker run --rm \
     --network host \
     --env-file $ENV_FILE \
     $IMAGE_TO_USE \
-    npx prisma migrate deploy || true
+    npx prisma migrate deploy; then
+    echo -e "${RED}❌ ERROR KRITIS: Prisma migrate deploy GAGAL! Deployment dibatalkan.${NC}"
+    echo -e "${YELLOW}   Data production aman. Snapshot sebelum deploy: $BACKUP_FILE${NC}"
+    exit 1
+fi
 
 # Ensure DDL patch aman (Idempotent) agar kolom custom_material_name selalu terpasang
 docker run --rm \

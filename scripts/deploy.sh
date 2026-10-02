@@ -21,7 +21,7 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 DEFAULT_IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-DEFAULT_IMAGE_TAG="v2.4.8"
+DEFAULT_IMAGE_TAG="v2.4.9"
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} 🚀 Memulai Deployment Otomatis Rajawali BP ERP  ${NC}"
@@ -123,12 +123,8 @@ docker run --rm \
     sh -c "node /app/prisma/seed.js" \
     || echo -e "${YELLOW}   ⚠ Seed akun admin dilewati (mungkin sudah terdaftar).${NC}"
 
-docker run --rm \
-    --network host \
-    --env-file $ENV_FILE \
-    $IMAGE_TO_USE \
-    sh -c "node /app/prisma/seed-rbac.js 2>/dev/null || true" \
-    || echo -e "${YELLOW}   ⚠ Seed RBAC dilewati.${NC}"
+# ⛔ seed-rbac.js TIDAK dijalankan otomatis di sini agar tidak mengubah kustomisasi permissions user
+# docker run --rm --network host --env-file $ENV_FILE $IMAGE_TO_USE sh -c "node /app/prisma/seed-rbac.js 2>/dev/null || true" || true
 
 echo -e "${GREEN}   ✓ Data seed siap.${NC}"
 

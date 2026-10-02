@@ -12,11 +12,7 @@ export async function getMasterIncentives(filters?: {
     const session = await auth()
     if (!session?.user) return []
 
-    // Seed default records if table is completely empty
-    await seedInitialIncentivesIfEmpty()
-    // Auto-sinkronisasi settingan retase cabang yang sudah ada ke data master
-    await syncExistingRetaseSettingsToMasterIncentives()
-
+    // Murni query read-only tanpa mutasi data otomatis
     if (!(prisma as any).masterIncentiveRate) {
         return []
     }

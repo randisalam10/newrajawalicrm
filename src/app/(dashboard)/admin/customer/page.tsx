@@ -28,16 +28,15 @@ export default async function CustomerPage() {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col space-y-1">
-                <div className="flex items-center gap-3">
-                    <h1 className="text-3xl font-bold tracking-tight">Data Customer & Proyek</h1>
+            <div className="flex items-center justify-between pb-0.5">
+                <div className="flex items-center gap-2.5">
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900">Data Customer & Proyek</h1>
                     {!canCreate && (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            Mode Pemantauan (Hanya Lihat)
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                            Hanya Lihat
                         </span>
                     )}
                 </div>
-                <p className="text-slate-500">Kelola master data Customer & Proyek Batching Plant.</p>
             </div>
 
             <CustomerClient

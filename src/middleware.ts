@@ -21,6 +21,14 @@ export default auth((req) => {
 
     const res = NextResponse.next()
 
+    // 2. Global Security Headers
+    res.headers.set('X-Frame-Options', 'SAMEORIGIN')
+    res.headers.set('X-Content-Type-Options', 'nosniff')
+    res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
+    res.headers.set('X-XSS-Protection', '1; mode=block')
+    res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()')
+    res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+
     if (isApiRoute) {
         res.headers.set('Access-Control-Allow-Origin', '*')
         res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')

@@ -165,6 +165,11 @@ model User {
 
   // Web Push Subscriptions
   webPushSubscriptions WebPushSubscription[]
+
+  // Finance Credit Relations
+  creditsCreated          CreditObligation[] @relation("CreditCreatedBy")
+  creditPaymentsRecorded  CreditPayment[]    @relation("CreditPaymentRecordedBy")
+  creditPaymentsCancelled CreditPayment[]    @relation("CreditPaymentCancelledBy")
 }
 
 model WebPushSubscription {
@@ -227,6 +232,8 @@ model Location {
   sewaEquipments         MasterSewaAlat[]
   masterIncentiveRates   MasterIncentiveRate[]
   materialPriceHistories MaterialPriceHistory[]
+  fixedCostContracts     FixedCostContract[]
+  operationalTargetSettings OperationalTargetSetting[]
 }
 
 model Vehicle {
@@ -259,6 +266,14 @@ model Vehicle {
   rental_status      String?                 @default("Tersedia") // "Tersedia" | "Disewa" | "Maintenance" | "Nonaktif"
   rental_notes       String?                 // Catatan spesifikasi sewa
   sewaTransactions   SewaTransaction[]
+
+  // Legalitas, Pajak STNK & Uji KIR (Amortisasi Bulanan)
+  annual_tax_cost    Float?                  @default(0)     // Pajak STNK Tahunan (Rp)
+  tax_expiry_date    DateTime?               // Tanggal Jatuh Tempo Pajak STNK
+  kir_cost           Float?                  @default(0)     // Biaya Uji KIR Berkala (Rp)
+  kir_expiry_date    DateTime?               // Tanggal Jatuh Tempo Uji KIR
+  kir_period_months  Int?                    @default(6)     // Periode Uji KIR dalam bulan (default 6 bulan)
+  complianceRecords  VehicleComplianceRecord[]
 
   @@index([categoryId])
   @@index([is_for_rent])
@@ -895,7 +910,8 @@ model PurchaseOrder {
   is_for_bp         Boolean            @default(false)
   materialIncomings MaterialIncoming[]
 
-  items     PoItem[]
+  items            PoItem[]
+  creditObligation CreditObligation?
   createdAt DateTime @default(now())
   updatedAt DateTime? @updatedAt
 
@@ -1171,5 +1187,208 @@ model MaterialPriceHistory {
   @@index([locationId, effective_date])
 }
 
+// ─── BEBAN TETAP & KONTRAK BERKALA (FIXED COST & AMORTIZATION CONTRACTS) ───
 
+model FixedCostContract {
+  id              String    @id @default(uuid())
+  name            String    // e.g. "Sewa Lahan Batching Plant Youtefa", "Sewa Mess Karyawan", "Izin Operasional & Amdal"
+  category        String    // "SEWA_TANAH" | "SEWA_MESS" | "PERIZINAN" | "ASURANSI" | "RETRIBUSI" | "LAINNYA"
+  vendor_name     String?   // Nama Pemilik Tanah / Instansi / Rekanan
+  contract_number String?   // No Perjanjian Kontrak / No Akta
+  total_amount    Float     // Total Nilai Kontrak (Rp)
+  start_date      DateTime  // Tanggal Mulai Periode Kontrak
+  end_date        DateTime  // Tanggal Berakhir Periode Kontrak
+  duration_months Int       // Total Durasi Kontrak dalam Bulan (e.g. 12 bulan)
+  monthly_amount  Float     // Beban Amortisasi per Bulan = total_amount / duration_months
+  payment_status  String?   @default("LUNAS") // "LUNAS" | "BERJALAN" | "TERMIN"
+  notes           String?   // Catatan & detail perjanjian
+  isActive        Boolean   @default(true)
+
+  locationId      String?   // null = Konsolidasi Seluruh Cabang / HO, atau UUID cabang
+  location        Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([locationId])
+  @@index([category])
+  @@index([isActive])
+  @@index([start_date, end_date])
+}
+
+// ─── RIWAYAT KEPATUHAN & PAJAK/KIR KENDARAAN (COMPLIANCE HISTORY) ───────────
+
+model VehicleComplianceRecord {
+  id              String    @id @default(uuid())
+  vehicleId       String
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type            String    // "PAJAK_STNK" | "UJI_KIR" | "IZIN_TRAYEK" | "LAINNYA"
+  cost            Float     // Biaya dibayarkan (Rp)
+  payment_date    DateTime? // Tanggal Bayar
+  valid_from      DateTime  // Tanggal Mulai Berlaku
+  valid_until     DateTime  // Tanggal Jatuh Tempo / Habis Masa Berlaku
+  period_months   Int       @default(12) // 12 bulan untuk Pajak STNK, 6 bulan untuk KIR
+  monthly_amount  Float     // Amortisasi Beban per Bulan = cost / period_months
+  receipt_number  String?   // No Bukti / No Registrasi Pembayaran
+  notes           String?
+  created_by      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([vehicleId])
+  @@index([type])
+  @@index([valid_from, valid_until])
+}
+
+// ─── STANDAR & TARGET BIAYA OPERASIONAL (UNIT ECONOMICS & TARGET BULANAN) ───
+
+model OperationalTargetSetting {
+  id                      String    @id @default(uuid())
+  name                    String    @default("Standar Target Operasional")
+  target_monthly_volume   Float     @default(5000)   // Target Volume Produksi per Bulan (m³)
+  target_branch_volume    Float     @default(2000)   // Target Volume Produksi per Cabang (m³)
+  target_asp              Float     @default(835000) // Target Harga Jual Rata-rata (ASP DPP / m³)
+  target_semen_cost       Float     @default(300000) // Target Biaya Semen per m³
+  target_pasir_cost       Float     @default(95000)  // Target Biaya Pasir per m³
+  target_split_cost       Float     @default(75000)  // Target Biaya Split per m³
+  target_solar_cost       Float     @default(60000)  // Target Biaya Solar Armada per m³
+  target_retase_cost      Float     @default(70000)  // Target Upah Retase Supir per m³
+  target_maintenance_cost Float     @default(30000)  // Target Suku Cadang & Bengkel per m³
+  target_other_cogs       Float     @default(0)      // Target Biaya Pokok Langsung Lainnya per m³
+  target_cogs             Float     @default(640000) // Target Total HPP / COGS per m³
+  target_gross_profit     Float     @default(195000) // Target Laba Kotor per m³ (target_asp - target_cogs)
+  
+  // Catatan Status Efisiensi (Snapshot text)
+  label_asp               String?   @default("Harga Jual Pasar")
+  label_semen             String?   @default("Standar SNI")
+  label_pasir             String?   @default("On Target")
+  label_split             String?   @default("Efisiensi Crushing Quarry")
+  label_solar             String?   @default("Tergantung radius jobsite")
+  label_retase            String?   @default("On Target Sesuai KM")
+  label_maintenance       String?   @default("Maintenance Rutin")
+  label_other             String?   @default("Input Manual COGS")
+  label_cogs              String?   @default("Biaya Standar Operasional")
+  label_gross_profit      String?   @default("Margin Bersih Sehat")
+
+  locationId              String?   // null = Standar Konsolidasi Nasional / Pusat, atau spesifik per cabang
+  location                Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  updatedAt               DateTime  @updatedAt
+  createdAt               DateTime  @default(now())
+
+  @@index([locationId])
+}
+
+// ─── MODUL FINANCE: KREDIT & KEWAJIBAN (ACCOUNTS PAYABLE) ────────────────────
+
+enum CreditStatus {
+  UNPAID        // Belum ada pembayaran sama sekali
+  PARTIAL       // Sudah dibayar sebagian
+  PAID          // Lunas 100%
+  OVERDUE       // Melewati jatuh tempo dan masih ada sisa
+  CANCELLED     // Dibatalkan / Void
+}
+
+enum CreditSourceType {
+  PO_PURCHASE   // Berasal dari Purchase Order Logistik
+  NON_PO        // Kredit Bank, Leasing Kendaraan, Sewa Lahan, dll.
+}
+
+model CreditObligation {
+  id              String            @id @default(uuid())
+  credit_number   String            @unique // Auto-generated: CRD/2026/09/001
+  source_type     CreditSourceType  @default(PO_PURCHASE)
+
+  // Link ke PO Existing (Opsional jika Non-PO)
+  purchaseOrderId String?           @unique
+  purchaseOrder   PurchaseOrder?    @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+
+  // Entitas Terkait (Snapshot / Denormalized untuk kecepatan query)
+  supplierId      String?
+  supplier_name   String            // Snapshot nama supplier
+  companyGroupId  String?           // Link ke PoCompanyGroup
+  company_name    String            // Snapshot nama PT (PT RPJ / PT HP)
+  locationId      String?           // Cabang operasional
+
+  // Finansial
+  total_amount    Float             // Total nilai kredit (Rp)
+  paid_amount     Float             @default(0) // Total yang sudah dibayar
+  outstanding     Float             // total_amount - paid_amount
+
+  // Periode & Jatuh Tempo
+  credit_date     DateTime          // Tanggal timbulnya kredit (misal tanggal terbit PO)
+  due_date        DateTime?         // Tanggal jatuh tempo pembayaran
+  term_days       Int?              @default(30) // TOP (Term of Payment) dalam hari
+
+  status          CreditStatus      @default(UNPAID)
+  notes           String?           // Catatan klausul / perjanjian kredit
+
+  // Audit Fields Standar
+  createdById     String
+  createdBy       User              @relation("CreditCreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  payments        CreditPayment[]
+  auditLogs       CreditAuditLog[]
+
+  @@index([status])
+  @@index([credit_date])
+  @@index([due_date])
+  @@index([supplierId])
+  @@index([companyGroupId])
+  @@index([locationId])
+}
+
+model CreditPayment {
+  id              String            @id @default(uuid())
+  creditId        String
+  credit          CreditObligation  @relation(fields: [creditId], references: [id], onDelete: Cascade)
+
+  payment_date    DateTime          // Tanggal realisasi transfer/pembayaran
+  amount          Float             // Jumlah yang dibayarkan (Rp)
+  method          PaymentMethod     // TRANSFER | CASH | GIRO
+  source_account  String?           // Nama Rekening / Bank Pengirim (e.g. Mandiri Operasional)
+  reference_no    String?           // No. Referensi Transfer / No. Cek
+  proof_url       String?           // Path foto bukti transfer / voucher bank
+  notes           String?
+
+  // Soft Cancel Tracking
+  is_cancelled    Boolean           @default(false)
+  cancel_reason   String?
+  cancelled_at    DateTime?
+  cancelledById   String?
+  cancelledBy     User?             @relation("CreditPaymentCancelledBy", fields: [cancelledById], references: [id])
+
+  // Audit Fields Standar
+  recordedById    String
+  recordedBy      User              @relation("CreditPaymentRecordedBy", fields: [recordedById], references: [id])
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  auditLogs       CreditAuditLog[]
+
+  @@index([creditId])
+  @@index([payment_date])
+  @@index([is_cancelled])
+}
+
+// Immutable audit trail untuk modul Finance Kredit
+model CreditAuditLog {
+  id          String            @id @default(uuid())
+  action      String            // "CREDIT_CREATED" | "PAYMENT_RECORDED" | "PAYMENT_CANCELLED" | "DUE_DATE_UPDATED"
+  creditId    String?
+  credit      CreditObligation? @relation(fields: [creditId], references: [id], onDelete: SetNull)
+  paymentId   String?
+  payment     CreditPayment?    @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  actorId     String
+  actorName   String
+  description String
+  metadata    String?           // JSON string state sebelum dan sesudah
+  createdAt   DateTime          @default(now())
+
+  @@index([creditId])
+  @@index([paymentId])
+  @@index([createdAt])
+}
 

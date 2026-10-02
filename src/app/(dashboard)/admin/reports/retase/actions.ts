@@ -234,11 +234,14 @@ export async function getTransactionReport(filters: {
     const session = await auth()
     if (!session?.user?.employeeId) return { rows: [], pembuat: "-" }
 
+    const startObj = new Date(filters.dateFrom.includes("T") ? filters.dateFrom : `${filters.dateFrom}T00:00:00.000+07:00`)
+    const endObj = new Date(filters.dateTo.includes("T") ? filters.dateTo : `${filters.dateTo}T23:59:59.999+07:00`)
+
     const where: any = {
         status: "Confirmed",
         date: {
-            gte: new Date(filters.dateFrom + "T00:00:00"),
-            lte: new Date(filters.dateTo + "T23:59:59"),
+            gte: startObj,
+            lte: endObj,
         }
     }
     if (filters.customerId) {

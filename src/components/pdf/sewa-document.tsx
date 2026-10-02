@@ -250,7 +250,7 @@ function SewaSingleCopy({
         parsedDates = []
     }
 
-    const txDateFormatted = format(new Date(tx.date), "dd MMMM yyyy, HH:mm", { locale: idLocale })
+    const txDateFormatted = format(new Date(tx.date || tx.start_date), "dd MMMM yyyy", { locale: idLocale })
     const startDateFormatted = format(new Date(tx.start_date), "dd/MM/yyyy")
     const endDateFormatted = format(new Date(tx.end_date), "dd/MM/yyyy")
 
@@ -270,7 +270,7 @@ function SewaSingleCopy({
                 <View style={s.docTitleBox}>
                     <Text style={s.docTitle}>SURAT JALAN SEWA ALAT</Text>
                     <Text style={s.noSJ}>NO: {tx.sewa_number}</Text>
-                    <Text style={s.docMeta}>Tgl: {txDateFormatted} WIT</Text>
+                    <Text style={s.docMeta}>Tgl: {txDateFormatted}</Text>
                 </View>
             </View>
 

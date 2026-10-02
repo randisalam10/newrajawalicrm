@@ -80,15 +80,15 @@ const DEFAULT_MATERIALS = [
 ]
 
 /**
- * Seed initial default materials (explicitly non-cement) if empty.
- * Also seeds MaterialPriceHistory for any MasterMaterial that has no history yet,
- * so that a partial data loss (histories deleted but materials intact) is auto-recovered.
+ * Seed initial default materials (explicitly non-cement) HANYA jika tabel benar-benar kosong.
+ * Dijalankan murni secara eksplisit oleh admin, BUKAN otomatis saat query data.
+ * Dilarang keras melakukan silent fallback / auto-inject harga tebakan pada material yang ada.
  */
 export async function seedInitialMaterialsIfEmpty() {
     try {
         const count = await prisma.masterMaterial.count()
 
-        // Case 1: No materials at all → full seed
+        // HANYA jika tabel benar-benar 0 (kosong total saat setup awal)
         if (count === 0) {
             for (const m of DEFAULT_MATERIALS) {
                 const mat = await prisma.masterMaterial.create({
@@ -111,39 +111,10 @@ export async function seedInitialMaterialsIfEmpty() {
                         price_per_m3: m.initialPrice,
                         effective_date: new Date(m.effectiveDate),
                         old_price: 0,
-                        notes: "Harga dasar default inisialisasi master data",
+                        notes: "Harga dasar default inisialisasi master data awal",
                     }
                 })
             }
-            return
-        }
-
-        // Case 2: Materials exist but some have NO price history at all
-        // (recovery from partial data loss — e.g. migration patch deleted histories)
-        const defaultPriceMap: Record<string, number> = {}
-        for (const m of DEFAULT_MATERIALS) {
-            defaultPriceMap[m.code] = m.initialPrice
-        }
-
-        const materialsWithoutHistory = await prisma.masterMaterial.findMany({
-            where: {
-                priceHistories: { none: {} }
-            }
-        })
-
-        for (const mat of materialsWithoutHistory) {
-            const fallbackPrice = defaultPriceMap[mat.code] ?? 80000
-            await prisma.materialPriceHistory.create({
-                data: {
-                    materialId: mat.id,
-                    material_code: mat.code,
-                    material_name: mat.name,
-                    price_per_m3: fallbackPrice,
-                    effective_date: new Date("2026-01-01"),
-                    old_price: 0,
-                    notes: "Harga dasar awal — dipulihkan otomatis",
-                }
-            })
         }
     } catch (err) {
         console.error("seedInitialMaterialsIfEmpty error:", err)
@@ -151,13 +122,11 @@ export async function seedInitialMaterialsIfEmpty() {
 }
 
 /**
- * Main query: Fetches all materials with active price and full history
+ * Main query: Fetches all materials with active price and full history (Murni Read-Only, No Side Effects)
  */
 export async function getMasterMaterialsData(filters?: { locationId?: string }) {
     const session = await auth()
     if (!session?.user) return { materials: [], histories: [], locations: [] }
-
-    await seedInitialMaterialsIfEmpty()
 
     const now = new Date()
 

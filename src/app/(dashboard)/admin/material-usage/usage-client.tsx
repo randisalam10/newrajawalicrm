@@ -25,10 +25,10 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid,
     Tooltip as RechartsTooltip, Legend, ResponsiveContainer
 } from 'recharts'
-import { startOfDay, endOfDay, startOfMonth, subDays, format } from "date-fns"
+import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 
-type PeriodFilter = "today" | "7days" | "month" | "all"
+type PeriodFilter = "today" | "7days" | "month" | "all" | string
 type UnitType = "ton" | "kg"
 type ChartMode = "grouped" | "stacked"
 
@@ -44,9 +44,32 @@ export function MaterialUsageClient({
     isCorporate?: boolean
 }) {
     const [selectedLocation, setSelectedLocation] = useState<string>("all")
-    const [period, setPeriod] = useState<PeriodFilter>("month")
     const [unit, setUnit] = useState<UnitType>("ton")
     const [chartMode, setChartMode] = useState<ChartMode>("grouped")
+
+    // Extract all distinct historical months from actual transactions
+    const availableMonths = useMemo(() => {
+        const monthMap = new Map<string, string>()
+        initialData.forEach((t: any) => {
+            if (t.date) {
+                const d = new Date(t.date)
+                const key = format(d, "yyyy-MM")
+                if (!monthMap.has(key)) {
+                    monthMap.set(key, format(d, "MMMM yyyy", { locale: idLocale }))
+                }
+            }
+        })
+        return Array.from(monthMap.entries())
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .map(([value, label]) => ({ value, label }))
+    }, [initialData])
+
+    // Initial period state: if current month has no transactions, auto-select latest available month with data
+    const [period, setPeriod] = useState<PeriodFilter>(() => {
+        const currentMonthKey = format(new Date(), "yyyy-MM")
+        const hasCurrentMonthData = initialData.some(t => t.date && format(new Date(t.date), "yyyy-MM") === currentMonthKey)
+        return hasCurrentMonthData ? "month" : (availableMonths[0]?.value || "month")
+    })
 
     const showCabang = userRole === "SuperAdminBP" || isCorporate
 
@@ -61,7 +84,7 @@ export function MaterialUsageClient({
         if (period === "all") return locationFiltered
         const now = new Date()
         let start: Date
-        const end = endOfDay(now)
+        let end: Date = endOfDay(now)
 
         if (period === "today") {
             start = startOfDay(now)
@@ -69,6 +92,11 @@ export function MaterialUsageClient({
             start = startOfDay(subDays(now, 6))
         } else if (period === "month") {
             start = startOfMonth(now)
+        } else if (/^\d{4}-\d{2}$/.test(period)) {
+            // Specific Year-Month filter (e.g. 2026-09)
+            const [y, m] = period.split("-").map(Number)
+            start = startOfMonth(new Date(y, m - 1, 1))
+            end = endOfMonth(new Date(y, m - 1, 1))
         } else {
             return locationFiltered
         }
@@ -269,7 +297,7 @@ export function MaterialUsageClient({
         <div className="space-y-4">
             {/* ── 1. COMPACT CONTROL & FILTER BAR ── */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white p-2.5 px-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-slate-700">Periode:</span>
                     {/* Period Filter Buttons */}
                     <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200 text-xs">
@@ -306,45 +334,32 @@ export function MaterialUsageClient({
                             Semua
                         </button>
                     </div>
+
+                    {/* Month Selector Dropdown */}
+                    {availableMonths.length > 0 && (
+                        <Select
+                            value={availableMonths.some(m => m.value === period) ? period : ""}
+                            onValueChange={(val) => {
+                                if (val) setPeriod(val)
+                            }}
+                        >
+                            <SelectTrigger className="h-7 text-xs bg-slate-50 border-slate-200 min-w-[140px]">
+                                <Calendar className="w-3.5 h-3.5 text-slate-500 mr-1" />
+                                <SelectValue placeholder="Pilih Bulan..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {availableMonths.map(m => (
+                                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                 </div>
 
                 {/* Filters & Actions */}
                 <div className="flex flex-wrap items-center gap-2">
-                    {/* Period Filter Buttons */}
-                    <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200 text-xs">
-                        <button
-                            onClick={() => setPeriod("today")}
-                            className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                                period === "today" ? "bg-white text-slate-900 shadow-xs font-semibold" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            Hari Ini
-                        </button>
-                        <button
-                            onClick={() => setPeriod("7days")}
-                            className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                                period === "7days" ? "bg-white text-slate-900 shadow-xs font-semibold" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            7 Hari
-                        </button>
-                        <button
-                            onClick={() => setPeriod("month")}
-                            className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                                period === "month" ? "bg-white text-slate-900 shadow-xs font-semibold" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            Bulan Ini
-                        </button>
-                        <button
-                            onClick={() => setPeriod("all")}
-                            className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
-                                period === "all" ? "bg-white text-slate-900 shadow-xs font-semibold" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                        >
-                            Semua
-                        </button>
-                    </div>
 
                     {/* Unit Switcher (Ton vs Kg) */}
                     <div className="inline-flex rounded-lg p-0.5 bg-slate-100 border border-slate-200 text-xs">

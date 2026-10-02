@@ -369,7 +369,11 @@ export async function getConcreteQualitiesForLocation() {
                 ? { locationId: userLocId }
                 : {}
 
-        return await prisma.concreteQuality.findMany({ where: filter, orderBy: { name: 'asc' } })
+        return await prisma.concreteQuality.findMany({
+            where: filter,
+            include: { location: true },
+            orderBy: [{ name: 'asc' }, { location: { name: 'asc' } }]
+        })
     } catch (err: any) {
         console.error("Error in getConcreteQualitiesForLocation:", err)
         return []

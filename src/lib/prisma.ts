@@ -13,13 +13,36 @@ function createPrismaClient() {
     url = `${url}${separator}connection_limit=5&pool_timeout=20`
   }
 
-  return new PrismaClient({
+  let ClientConstructor: any = PrismaClient
+  try {
+    const probe = new PrismaClient() as any
+    if (!probe.creditObligation) {
+      const { createRequire } = require("module")
+      const nativeRequire = createRequire(process.cwd() + "/package.json")
+      const { PrismaClient: FreshClient } = nativeRequire("@prisma/client")
+      if (FreshClient) {
+        ClientConstructor = FreshClient
+      }
+    }
+  } catch (e) {
+    // fallback
+  }
+
+  return new ClientConstructor({
     datasources: url ? { db: { url } } : undefined,
     log:
       process.env.NODE_ENV === "development"
         ? ["error", "warn"]
         : ["error"],
   })
+}
+
+// If cached client is missing newly added models, reset it
+if (globalForPrisma.prisma) {
+  const cached = globalForPrisma.prisma as any
+  if (!cached.fixedCostContract || !cached.vehicleComplianceRecord || !cached.creditObligation) {
+    globalForPrisma.prisma = undefined
+  }
 }
 
 export const prisma: PrismaClient =

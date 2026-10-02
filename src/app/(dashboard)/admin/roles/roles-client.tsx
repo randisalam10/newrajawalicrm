@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Shield, ShieldCheck, Plus, Check, Save, Lock, Building2, Globe, Users, Edit2, Trash2, CheckSquare, Square } from "lucide-react"
+import { Shield, ShieldCheck, Plus, Check, Save, Lock, Building2, Globe, Users, Edit2, Trash2, CheckSquare, Square, Crown } from "lucide-react"
 import { createRole, updateRole, deleteRole, updateRolePermissions } from "./actions"
 import { toast } from "sonner"
 
@@ -242,11 +242,15 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
                                                 <span className="font-bold text-slate-900 text-sm">
                                                     {role.label}
                                                 </span>
-                                                {role.isSystem && (
+                                                {role.name === "SuperAdminBP" ? (
+                                                    <span title="Super Admin HQ - Full Access Bypass" className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-extrabold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-1">
+                                                        <Crown className="w-2.5 h-2.5 fill-slate-950" /> Super HQ
+                                                    </span>
+                                                ) : role.isSystem ? (
                                                     <span title="Role sistem bawaan" className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
                                                         <Lock className="w-2.5 h-2.5" /> Sistem
                                                     </span>
-                                                )}
+                                                ) : null}
                                             </div>
                                             <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                                                 {role.description || "Tidak ada deskripsi."}
@@ -338,9 +342,11 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
 
                             <CardContent className="p-0 divide-y divide-slate-100">
                                 {selectedRole.name === "SuperAdminBP" && (
-                                    <div className="p-4 bg-purple-50/60 border-b border-purple-100 text-purple-800 text-xs flex items-center gap-2 font-medium">
-                                        <ShieldCheck className="h-4 w-4 text-purple-600 shrink-0" />
-                                        <span>Role <strong>Super Admin</strong> secara otomatis memiliki hak akses penuh ke seluruh modul sistem (full bypass).</span>
+                                    <div className="p-4 bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50/50 border-b border-amber-200 text-amber-950 text-xs flex items-center gap-2.5 font-medium">
+                                        <Crown className="h-5 w-5 text-amber-600 fill-amber-400 shrink-0" />
+                                        <div>
+                                            <span className="font-bold">Super Admin (HQ) - Akses Penuh:</span> Role ini memiliki hak akses tertinggi, bypass seluruh pembatasan cabang, dan akses eksklusif ke Laporan Bulanan Manajemen Direksi.
+                                        </div>
                                     </div>
                                 )}
 

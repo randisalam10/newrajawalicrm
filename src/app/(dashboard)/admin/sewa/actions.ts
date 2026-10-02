@@ -221,7 +221,7 @@ export async function getSewaTransactions(filters?: {
     return await prisma.sewaTransaction.findMany({
         where,
         take: filters?.limit || 100,
-        orderBy: { date: "desc" },
+        orderBy: [{ start_date: "desc" }, { date: "desc" }, { createdAt: "desc" }],
         include: {
             customer: true,
             project: true,
@@ -241,6 +241,7 @@ export async function getSewaTransactions(filters?: {
 
 const sewaSchema = z.object({
     id: z.string().optional(),
+    date: z.string().optional().nullable(),
     customerId: z.string().min(1, "Customer wajib dipilih"),
     projectId: z.preprocess(v => (v === "" || v === "NONE" ? null : v), z.string().nullable().optional()),
     lokasi_proyek: z.string().optional().nullable(),
@@ -288,11 +289,11 @@ export async function createSewaTransaction(formData: FormData) {
             return { success: false, error: "Cabang (Location) wajib ditentukan" }
         }
 
-        const now = new Date()
-        const sewa_number = await generateSewaNumber(now, finalLocationId)
-
         const startDate = new Date(parsed.data.start_date)
         const endDate = new Date(parsed.data.end_date)
+        // Use specified date or default to rental start date (support backdating)
+        const txDate = parsed.data.date ? new Date(parsed.data.date) : startDate
+        const sewa_number = await generateSewaNumber(txDate, finalLocationId)
 
         // Resolve Vehicle and MasterSewaAlat IDs for dual association
         let targetVehicleId: string | null = null
@@ -336,7 +337,7 @@ export async function createSewaTransaction(formData: FormData) {
         const newSewa = await prisma.sewaTransaction.create({
             data: {
                 sewa_number,
-                date: now,
+                date: txDate,
                 customerId: parsed.data.customerId,
                 projectId: parsed.data.projectId || null,
                 lokasi_proyek: parsed.data.lokasi_proyek || null,
@@ -414,6 +415,7 @@ export async function updateSewaTransaction(id: string, formData: FormData) {
 
         const startDate = new Date(parsed.data.start_date)
         const endDate = new Date(parsed.data.end_date)
+        const txDate = parsed.data.date ? new Date(parsed.data.date) : startDate
 
         // Resolve Vehicle and MasterSewaAlat IDs for dual association
         let targetVehicleId: string | null = null
@@ -440,6 +442,7 @@ export async function updateSewaTransaction(id: string, formData: FormData) {
         const updated = await prisma.sewaTransaction.update({
             where: { id },
             data: {
+                date: txDate,
                 customerId: parsed.data.customerId,
                 projectId: parsed.data.projectId || null,
                 lokasi_proyek: parsed.data.lokasi_proyek || null,

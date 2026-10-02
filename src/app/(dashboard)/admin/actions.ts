@@ -3,9 +3,9 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { startOfDay, endOfDay, startOfMonth, endOfMonth, subDays, format } from "date-fns"
+import { id as idLocale } from "date-fns/locale"
 
-
-export async function getDashboardData() {
+export async function getDashboardData(selectedMonthParam?: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return null
 
@@ -15,8 +15,15 @@ export async function getDashboardData() {
     const now = new Date()
     const todayStart = startOfDay(now)
     const todayEnd = endOfDay(now)
-    const monthStart = startOfMonth(now)
-    const monthEnd = endOfMonth(now)
+
+    let targetDate = now
+    if (selectedMonthParam && /^\d{4}-\d{2}$/.test(selectedMonthParam)) {
+        const [y, m] = selectedMonthParam.split('-').map(Number)
+        targetDate = new Date(y, m - 1, 1)
+    }
+
+    const monthStart = startOfMonth(targetDate)
+    const monthEnd = endOfMonth(targetDate)
 
     // Base filter for location scoping
     const locationFilter = (!isSuperAdmin && userLocationId) ? { locationId: userLocationId } : {}
@@ -402,6 +409,8 @@ export async function getDashboardData() {
             isCorporate
         },
         isSuperAdmin,
+        selectedMonth: format(targetDate, 'yyyy-MM'),
+        selectedMonthLabel: format(targetDate, 'MMMM yyyy', { locale: idLocale }),
 
         // 1. Operasional & Produksi
         todayVolumeTotal,
