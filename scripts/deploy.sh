@@ -105,6 +105,8 @@ docker run --rm \
         npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true
         npx prisma migrate resolve --applied 20260906020000_add_master_item_price_history 2>/dev/null || true
         npx prisma migrate resolve --applied 20260906040000_add_web_push_subscription 2>/dev/null || true
+        npx prisma migrate resolve --applied 20260929000000_add_ppn_mode_to_project_price 2>/dev/null || true
+        npx prisma migrate resolve --applied 20260930000000_add_custom_material_name 2>/dev/null || true
     " || true
 
 # 2. Jalankan migrasi deploy resmi
