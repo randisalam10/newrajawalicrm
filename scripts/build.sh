@@ -9,7 +9,7 @@
 set -e
 
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-TAG="${1:-v2.4.4}"
+TAG="${1:-v2.4.9}"
 
 echo "================================================"
 echo " 🔨 Building Rajawali BP ERP — $IMAGE_NAME:$TAG"
@@ -29,6 +29,7 @@ fi
 echo ""
 echo "[1/3] Building Docker image..."
 docker build \
+    --progress=plain \
     --platform linux/amd64 \
     --build-arg NEXT_PUBLIC_PUSHER_APP_KEY="$PUSHER_KEY" \
     --build-arg NEXT_PUBLIC_PUSHER_CLUSTER="$PUSHER_CLUSTER" \
