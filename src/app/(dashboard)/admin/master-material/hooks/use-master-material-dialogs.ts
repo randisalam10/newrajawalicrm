@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { fmtDateInput } from "../helpers"
 import {
     addMaterialPrice,
@@ -8,21 +10,21 @@ import {
     editMaterialPriceHistory,
     deleteMaterialPriceHistory
 } from "../actions"
-import { MasterMaterialItem } from "../types"
+import { MasterMaterialItem, MaterialPriceHistoryItem } from "../types"
 
 export function useMasterMaterialDialogs(selectedLocation: string) {
+    const router = useRouter()
     const [isPending, startTransition] = useTransition()
 
-    // Dialog state for setting new price
-    const [showPriceDialog, setShowPriceDialog] = useState(false)
-    const [priceFormMaterialId, setPriceFormMaterialId] = useState("")
-    const [priceFormValue, setPriceFormValue] = useState<number | string>("")
-    const [priceFormEffectiveDate, setPriceFormEffectiveDate] = useState(new Date().toISOString().split("T")[0])
-    const [priceFormLocationIds, setPriceFormLocationIds] = useState<string[]>(["all"])
-    const [priceFormNotes, setPriceFormNotes] = useState("")
-    const [priceError, setPriceError] = useState("")
+    // 1. Unified Price Dialog State
+    const [showUnifiedPriceDialog, setShowUnifiedPriceDialog] = useState(false)
+    const [selectedMaterialForPrice, setSelectedMaterialForPrice] = useState<MasterMaterialItem | null>(null)
 
-    // Dialog state for creating new material
+    // 2. Material-specific History Modal State
+    const [showMaterialHistoryModal, setShowMaterialHistoryModal] = useState(false)
+    const [selectedMaterialForHistory, setSelectedMaterialForHistory] = useState<MasterMaterialItem | null>(null)
+
+    // 3. New Material Dialog State
     const [showNewMaterialDialog, setShowNewMaterialDialog] = useState(false)
     const [newMatCode, setNewMatCode] = useState("")
     const [newMatName, setNewMatName] = useState("")
@@ -34,7 +36,7 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
     const [newMatLocationId, setNewMatLocationId] = useState("all")
     const [newMatError, setNewMatError] = useState("")
 
-    // Dialog state for editing history
+    // 4. Edit Specific History Entry Dialog State
     const [showEditHistoryDialog, setShowEditHistoryDialog] = useState(false)
     const [editHistoryId, setEditHistoryId] = useState("")
     const [editHistoryMaterialName, setEditHistoryMaterialName] = useState("")
@@ -43,57 +45,70 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
     const [editHistoryLocationId, setEditHistoryLocationId] = useState("all")
     const [editHistoryNotes, setEditHistoryNotes] = useState("")
 
-    // Dialog state for delete confirmation
+    // 5. Delete Confirmation Dialog State
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
     const [deleteTargetId, setDeleteTargetId] = useState("")
     const [deleteTargetText, setDeleteTargetText] = useState("")
 
-    // Open set price modal for specific material
-    const handleOpenSetPrice = (mat: MasterMaterialItem) => {
-        setPriceFormMaterialId(mat.id)
-        setPriceFormValue(mat.displayPrice || mat.currentPrice || "")
-        setPriceFormEffectiveDate(new Date().toISOString().split("T")[0])
-        setPriceFormLocationIds(selectedLocation === "all" ? ["all"] : [selectedLocation])
-        setPriceFormNotes("")
-        setPriceError("")
-        setShowPriceDialog(true)
+    // --- Actions for Unified Price Dialog ---
+    const handleOpenManagePrice = (mat: MasterMaterialItem) => {
+        setSelectedMaterialForPrice(mat)
+        setShowUnifiedPriceDialog(true)
     }
 
-    // Submit Set Price
-    const handleSavePrice = () => {
-        setPriceError("")
-        const numPrice = Number(priceFormValue)
-        if (!numPrice || numPrice <= 0) {
-            setPriceError("Nominal harga per kubik harus lebih besar dari 0.")
-            return
-        }
-        if (!priceFormEffectiveDate) {
-            setPriceError("Tanggal mulai berlaku wajib dipilih.")
-            return
-        }
-        if (!priceFormLocationIds || priceFormLocationIds.length === 0) {
-            setPriceError("Pilih minimal satu cabang atau Semua Cabang.")
-            return
-        }
-
-        startTransition(async () => {
-            try {
-                await addMaterialPrice({
-                    materialId: priceFormMaterialId,
-                    price_per_m3: numPrice,
-                    effective_date: priceFormEffectiveDate,
-                    locationIds: priceFormLocationIds,
-                    notes: priceFormNotes,
-                })
-                setShowPriceDialog(false)
-                window.location.reload()
-            } catch (err: any) {
-                setPriceError(err.message || "Gagal menyimpan harga material.")
-            }
+    const handleSaveNewPrice = async (payload: {
+        materialId: string
+        price_per_m3: number
+        effective_date: string
+        locationIds: string[]
+        notes?: string
+    }) => {
+        return new Promise<void>((resolve, reject) => {
+            startTransition(async () => {
+                try {
+                    await addMaterialPrice(payload)
+                    toast.success("Tarif baru material berhasil ditetapkan.")
+                    setShowUnifiedPriceDialog(false)
+                    router.refresh()
+                    resolve()
+                } catch (err: any) {
+                    toast.error(err.message || "Gagal menetapkan tarif baru.")
+                    reject(err)
+                }
+            })
         })
     }
 
-    // Open New Material Dialog
+    const handleSaveCorrection = async (payload: {
+        id: string
+        price_per_m3: number
+        effective_date: string
+        locationId?: string | null
+        notes?: string
+    }) => {
+        return new Promise<void>((resolve, reject) => {
+            startTransition(async () => {
+                try {
+                    await editMaterialPriceHistory(payload)
+                    toast.success("Koreksi data tarif berhasil disimpan.")
+                    setShowUnifiedPriceDialog(false)
+                    router.refresh()
+                    resolve()
+                } catch (err: any) {
+                    toast.error(err.message || "Gagal menyimpan koreksi.")
+                    reject(err)
+                }
+            })
+        })
+    }
+
+    // --- Actions for Material History Modal ---
+    const handleOpenMaterialHistory = (mat: MasterMaterialItem) => {
+        setSelectedMaterialForHistory(mat)
+        setShowMaterialHistoryModal(true)
+    }
+
+    // --- Actions for New Material Dialog ---
     const handleOpenNewMaterial = () => {
         setNewMatCode("")
         setNewMatName("")
@@ -102,12 +117,11 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
         setNewMatDescription("")
         setNewMatInitialPrice("")
         setNewMatEffectiveDate(new Date().toISOString().split("T")[0])
-        setNewMatLocationId("all")
+        setNewMatLocationId(selectedLocation && selectedLocation !== "all" ? selectedLocation : "all")
         setNewMatError("")
         setShowNewMaterialDialog(true)
     }
 
-    // Submit New Material
     const handleCreateMaterial = () => {
         setNewMatError("")
         const numPrice = Number(newMatInitialPrice)
@@ -131,29 +145,30 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
         startTransition(async () => {
             try {
                 await createMasterMaterial({
-                    code: newMatCode,
-                    name: newMatName,
+                    code: newMatCode.trim().toUpperCase(),
+                    name: newMatName.trim(),
                     category: newMatCategory,
                     unit: "m³",
                     defaultDensity: newMatDensity ? Number(newMatDensity) : undefined,
-                    description: newMatDescription,
+                    description: newMatDescription.trim() || undefined,
                     initial_price: numPrice,
                     effective_date: newMatEffectiveDate,
                     locationId: newMatLocationId === "all" ? null : newMatLocationId,
                     notes: "Penetapan harga awal material baru",
                 })
+                toast.success(`Material baru ${newMatName} berhasil ditambahkan.`)
                 setShowNewMaterialDialog(false)
-                window.location.reload()
+                router.refresh()
             } catch (err: any) {
                 setNewMatError(err.message || "Gagal membuat material baru.")
             }
         })
     }
 
-    // Open Edit History Modal
+    // --- Actions for Editing History from History List ---
     const handleOpenEditHistory = (h: any) => {
         setEditHistoryId(h.id)
-        setEditHistoryMaterialName(h.material_name)
+        setEditHistoryMaterialName(h.material_name || h.material?.name || "Material")
         setEditHistoryPrice(h.price_per_m3)
         setEditHistoryDate(fmtDateInput(h.effective_date))
         setEditHistoryLocationId(h.locationId || "all")
@@ -161,30 +176,12 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
         setShowEditHistoryDialog(true)
     }
 
-    // Quick Edit Active Price & Effective Date directly from Tab 1 or Cards
-    const handleQuickEditActivePrice = (mat: MasterMaterialItem) => {
-        let activeEntry = mat.histories?.find((h: any) => h.id === mat.currentHistoryId)
-        if (!activeEntry && mat.histories && mat.histories.length > 0) {
-            activeEntry = mat.histories[0]
-        }
-
-        if (activeEntry) {
-            handleOpenEditHistory(activeEntry)
-        } else {
-            setEditHistoryId(mat.currentHistoryId || mat.id || "")
-            setEditHistoryMaterialName(mat.name)
-            setEditHistoryPrice(mat.currentPrice || 0)
-            setEditHistoryDate(fmtDateInput(mat.currentEffectiveDate || new Date()))
-            setEditHistoryLocationId(mat.currentLocationId || "all")
-            setEditHistoryNotes(mat.currentNotes || "")
-            setShowEditHistoryDialog(true)
-        }
-    }
-
-    // Submit Edit History
     const handleSaveEditHistory = () => {
         const num = Number(editHistoryPrice)
-        if (!num || num <= 0) return
+        if (!num || num <= 0) {
+            toast.error("Nominal harga harus lebih besar dari 0.")
+            return
+        }
         startTransition(async () => {
             try {
                 await editMaterialPriceHistory({
@@ -192,55 +189,55 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
                     price_per_m3: num,
                     effective_date: editHistoryDate,
                     locationId: editHistoryLocationId === "all" ? null : editHistoryLocationId,
-                    notes: editHistoryNotes,
+                    notes: editHistoryNotes.trim() || undefined,
                 })
+                toast.success("Data riwayat harga berhasil diperbarui.")
                 setShowEditHistoryDialog(false)
-                window.location.reload()
+                router.refresh()
             } catch (err: any) {
-                alert(err.message || "Gagal mengupdate riwayat.")
+                toast.error(err.message || "Gagal mengupdate riwayat.")
             }
         })
     }
 
-    // Open Delete Confirm
+    // --- Actions for Deleting History ---
     const handleOpenDeleteConfirm = (id: string, text: string) => {
         setDeleteTargetId(id)
         setDeleteTargetText(text)
         setShowDeleteConfirm(true)
     }
 
-    // Execute Delete History
     const handleConfirmDelete = () => {
         if (!deleteTargetId) return
         startTransition(async () => {
             try {
                 await deleteMaterialPriceHistory(deleteTargetId)
+                toast.success("Catatan riwayat berhasil dihapus.")
                 setShowDeleteConfirm(false)
-                window.location.reload()
+                router.refresh()
             } catch (err: any) {
-                alert(err.message || "Gagal menghapus riwayat.")
+                toast.error(err.message || "Gagal menghapus riwayat.")
             }
         })
     }
 
     return {
         isPending,
-        // Price Dialog
-        showPriceDialog,
-        setShowPriceDialog,
-        priceFormMaterialId,
-        setPriceFormMaterialId,
-        priceFormValue,
-        setPriceFormValue,
-        priceFormEffectiveDate,
-        setPriceFormEffectiveDate,
-        priceFormLocationIds,
-        setPriceFormLocationIds,
-        priceFormNotes,
-        setPriceFormNotes,
-        priceError,
-        handleOpenSetPrice,
-        handleSavePrice,
+
+        // Unified Price Dialog
+        showUnifiedPriceDialog,
+        setShowUnifiedPriceDialog,
+        selectedMaterialForPrice,
+        handleOpenManagePrice,
+        handleSaveNewPrice,
+        handleSaveCorrection,
+
+        // Material History Modal
+        showMaterialHistoryModal,
+        setShowMaterialHistoryModal,
+        selectedMaterialForHistory,
+        handleOpenMaterialHistory,
+
         // New Material Dialog
         showNewMaterialDialog,
         setShowNewMaterialDialog,
@@ -263,7 +260,8 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
         newMatError,
         handleOpenNewMaterial,
         handleCreateMaterial,
-        // Edit History Dialog
+
+        // Edit History Entry Dialog
         showEditHistoryDialog,
         setShowEditHistoryDialog,
         editHistoryId,
@@ -277,8 +275,8 @@ export function useMasterMaterialDialogs(selectedLocation: string) {
         editHistoryNotes,
         setEditHistoryNotes,
         handleOpenEditHistory,
-        handleQuickEditActivePrice,
         handleSaveEditHistory,
+
         // Delete Confirm Dialog
         showDeleteConfirm,
         setShowDeleteConfirm,

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { ROLE_CATEGORIES, FORMULA_TEMPLATES } from "./constants"
+import { isCorporateUser } from "@/lib/rbac"
 
 export async function getMasterIncentives(filters?: {
     locationId?: string
@@ -63,10 +64,24 @@ export async function upsertMasterIncentive(data: {
     }
 
     try {
+        const isCorp = isCorporateUser(session.user)
+        let cleanLocationId = data.locationId === "ALL" || !data.locationId ? null : data.locationId
+        if (!isCorp) {
+            if (!session.user.locationId) {
+                return { error: "Akun Anda tidak memiliki penugasan cabang resmi." }
+            }
+            cleanLocationId = session.user.locationId
+        }
+
         const effectiveDateObj = new Date(`${data.effective_date}T00:00:00.000Z`)
-        const cleanLocationId = data.locationId === "ALL" || !data.locationId ? null : data.locationId
 
         if (data.id) {
+            const existing = await prisma.masterIncentiveRate.findUnique({ where: { id: data.id } })
+            if (!existing) return { error: "Tarif tidak ditemukan" }
+            if (!isCorp && existing.locationId !== session.user.locationId) {
+                return { error: "Anda tidak memiliki izin mengubah tarif cabang lain." }
+            }
+
             // Update
             const updated = await prisma.masterIncentiveRate.update({
                 where: { id: data.id },
@@ -224,6 +239,14 @@ export async function deleteMasterIncentive(id: string) {
     }
 
     try {
+        const existing = await prisma.masterIncentiveRate.findUnique({ where: { id } })
+        if (!existing) return { error: "Tarif tidak ditemukan." }
+
+        const isCorp = isCorporateUser(session.user)
+        if (!isCorp && existing.locationId !== session.user.locationId) {
+            return { error: "Anda tidak memiliki izin menghapus tarif cabang lain." }
+        }
+
         await prisma.masterIncentiveRate.delete({
             where: { id }
         })
@@ -242,6 +265,14 @@ export async function toggleMasterIncentiveStatus(id: string, nextStatus: boolea
     }
 
     try {
+        const existing = await prisma.masterIncentiveRate.findUnique({ where: { id } })
+        if (!existing) return { error: "Tarif tidak ditemukan." }
+
+        const isCorp = isCorporateUser(session.user)
+        if (!isCorp && existing.locationId !== session.user.locationId) {
+            return { error: "Anda tidak memiliki izin mengubah status tarif cabang lain." }
+        }
+
         await prisma.masterIncentiveRate.update({
             where: { id },
             data: { isActive: nextStatus }

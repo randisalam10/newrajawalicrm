@@ -1,6 +1,7 @@
 "use server"
 
 import { auth } from "@/auth"
+import { prisma } from "@/lib/prisma"
 import { startOfMonth, endOfMonth, subMonths, format, parse } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { MonthlyReportFilters, MonthlyManagementReportResult } from "./types"
@@ -53,6 +54,34 @@ export async function getMonthlyManagementReportData(
 
         // 2. Location Scoping
         const selectedLocId = filters.locationId && filters.locationId !== "all" ? filters.locationId : null
+
+        // ── CEK ARSIP TUTUP BUKU (IMMUTABLE SNAPSHOT) ──
+        // Jika periode ini sudah ditutup buku (CLOSED), muat langsung dari snapshot tersimpan
+        const closingKey = `${selectedPeriodStr}__${selectedLocId || "ALL"}`
+        try {
+            const closedRecord = await (prisma as any).monthlyClosing.findUnique({
+                where: { closingKey },
+                include: {
+                    closedBy: { select: { username: true, employee: { select: { name: true } } } }
+                }
+            })
+
+            if (closedRecord && closedRecord.status === "CLOSED" && closedRecord.snapshotData) {
+                const snapshot = closedRecord.snapshotData as MonthlyManagementReportResult
+                return {
+                    ...snapshot,
+                    isClosed: true,
+                    closingInfo: {
+                        id: closedRecord.id,
+                        closedAt: closedRecord.closedAt ? closedRecord.closedAt.toISOString() : "",
+                        closedByName: closedRecord.closedBy?.employee?.name || closedRecord.closedBy?.username || "Super Admin",
+                        notes: closedRecord.notes
+                    }
+                }
+            }
+        } catch (closeErr) {
+            console.warn("Notice: Failed checking monthly closing snapshot, continuing live calculation:", closeErr)
+        }
 
         // 3. Fetch Raw Data in Parallel Batches
         const raw = await fetchMonthlyReportRawData({
@@ -677,7 +706,9 @@ export async function getMonthlyManagementReportData(
                         notes: p.notes || "-"
                     }))
                 }
-            }
+            },
+            isClosed: false,
+            closingInfo: null
         }
     } catch (error: any) {
         console.error("Error generating monthly management report:", error)

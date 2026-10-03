@@ -564,4 +564,11 @@ export interface MonthlyManagementReportResult {
     fleetStats?: FleetStatsData
     costComposition?: CostCompositionItem[]
     drilldown?: DrilldownData
+    isClosed?: boolean
+    closingInfo?: {
+        id: string
+        closedAt: string | Date
+        closedByName?: string
+        notes?: string | null
+    } | null
 }

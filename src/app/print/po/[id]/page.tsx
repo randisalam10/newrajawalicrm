@@ -12,9 +12,18 @@ export default async function PrintPOPage({
     params: Promise<{ id: string }>
 }) {
     const { id } = await params
+    const decodedId = decodeURIComponent(id)
+    const normalizedPoNumber = decodedId.replace(/^PO_/, '').replace(/-/g, '/')
 
-    const po = await prisma.purchaseOrder.findUnique({
-        where: { id },
+    const po = await prisma.purchaseOrder.findFirst({
+        where: {
+            OR: [
+                { id },
+                { po_number: id },
+                { po_number: decodedId },
+                { po_number: normalizedPoNumber }
+            ]
+        },
         include: {
             companyGroup: true,
             category: true,
@@ -41,11 +50,11 @@ export default async function PrintPOPage({
 
     // Fetch new fields via raw SQL karena Prisma client belum di-regenerate
     const rawPO = await prisma.$queryRaw<{ jabatan_kepala: string | null, updatedAt: Date | null, ceoId: string | null, fvpId: string | null }[]>`
-        SELECT "jabatan_kepala", "updatedAt", "ceoId", "fvpId" FROM "PurchaseOrder" WHERE id = ${id} LIMIT 1`
+        SELECT "jabatan_kepala", "updatedAt", "ceoId", "fvpId" FROM "PurchaseOrder" WHERE id = ${po.id} LIMIT 1`
     const rawCompany = await prisma.$queryRaw<{ logo_url: string | null }[]>`
         SELECT "logo_url" FROM "PoCompanyGroup" WHERE id = ${po.companyGroupId} LIMIT 1`
 
-    const jabatanKepala = rawPO[0]?.jabatan_kepala || "Yang Mengajukan"
+    const rawJabatan = rawPO[0]?.jabatan_kepala || ""
     const updatedAtRaw = rawPO[0]?.updatedAt || null
     let logoUrl = rawCompany[0]?.logo_url || null
     if (logoUrl && logoUrl.startsWith('/uploads/logos/')) {
@@ -59,9 +68,9 @@ export default async function PrintPOPage({
     const dynamicBaseUrl = `${protocol}://${host}`
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || dynamicBaseUrl
 
-    // Fetch real names for CEO & FVP if IDs exist
+    // Fetch real names for CEO & Approver (Tengah) if IDs exist
     let ceoName = po.pimpinan || "PIMPINAN"
-    let fvpName = po.kepala_peralatan || "YANG MENGAJUKAN"
+    let fvpName = (po.kepala_peralatan && po.kepala_peralatan !== "-") ? po.kepala_peralatan : ""
 
     if (rawPO[0]?.ceoId) {
         const ceo = await prisma.user.findUnique({
@@ -78,6 +87,8 @@ export default async function PrintPOPage({
         })
         if (fvp?.employee?.name) fvpName = fvp.employee.name
     }
+
+    const jabatanKepala = rawJabatan || (fvpName ? "Approver" : "")
 
     // Fetch Employee name based on pembuat_admin (username)
     let pembuatName = po.pembuat_admin || "ADMIN"

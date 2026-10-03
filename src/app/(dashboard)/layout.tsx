@@ -55,11 +55,13 @@ export default async function DashboardLayout({
     }
 
     return (
-        <SidebarProvider>
-            <AppSidebar user={userForSidebar} />
-            <div className="flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen overflow-x-hidden">
+        <SidebarProvider className="print:block print:min-h-0">
+            <div className="print:hidden">
+                <AppSidebar user={userForSidebar} />
+            </div>
+            <div className="flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen overflow-x-hidden print:bg-white print:min-h-0 print:overflow-visible print:block">
                 {/* Modern Sticky Top Header Bar */}
-                <header className="h-16 border-b border-sidebar-border bg-white/80 backdrop-blur-md sticky top-0 z-30 px-4 md:px-6 flex items-center justify-between shrink-0">
+                <header className="h-16 border-b border-sidebar-border bg-white/80 backdrop-blur-md sticky top-0 z-30 px-4 md:px-6 flex items-center justify-between shrink-0 print:hidden">
                     <div className="flex items-center gap-3 min-w-0">
                         <SidebarTrigger className="text-slate-600 hover:text-slate-900 shrink-0" />
                         <DashboardNavbarTitle />
@@ -69,14 +71,16 @@ export default async function DashboardLayout({
                     </div>
                 </header>
 
-                <main className="flex-1 p-4 md:p-6 lg:p-8 w-full">
+                <main className="flex-1 p-4 md:p-6 lg:p-8 w-full print:p-0 print:m-0 print:w-full">
                     {children}
                 </main>
             </div>
-            <Toaster />
-            <SonnerToaster position="top-right" richColors />
-            <PusherListener />
-            <WebPushManager />
+            <div className="print:hidden">
+                <Toaster />
+                <SonnerToaster position="top-right" richColors />
+                <PusherListener />
+                <WebPushManager />
+            </div>
         </SidebarProvider>
     )
 }

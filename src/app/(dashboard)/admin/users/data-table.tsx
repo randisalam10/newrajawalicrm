@@ -12,18 +12,10 @@ import {
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { UserForm } from "./user-form"
-import { Plus, MoreHorizontal, Edit, Trash2, Crown, Lock } from "lucide-react"
+import { Plus, Edit, Trash2, Crown, Lock } from "lucide-react"
 import { UserRow } from "./columns"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
 import { Badge } from "@/components/ui/badge"
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -193,7 +185,14 @@ export function DataTable({
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>
-                                                    {getRoleBadge(row.role)}
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        {getRoleBadge(row.role)}
+                                                        {row.isPoApprover && (
+                                                            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-300">
+                                                                Approver PO: {row.poApproverRole === 'CEO' ? 'CEO (Kiri)' : row.poApproverRole === 'BOTH' ? 'CEO & Mengetahui' : 'Mengetahui (Tengah)'}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell>
                                                     <span className="text-sm font-medium text-slate-600">
@@ -201,42 +200,41 @@ export function DataTable({
                                                     </span>
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                                <span className="sr-only">Open menu</span>
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuLabel>Aksi</DropdownMenuLabel>
-                                                            <DropdownMenuSeparator />
-                                                            <DropdownMenuItem
-                                                                onClick={() => setEditingUser(row)}
-                                                                className="cursor-pointer gap-2"
+                                                    <div className="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                                                            title="Edit User"
+                                                            onClick={() => setEditingUser(row)}
+                                                        >
+                                                            <Edit className="h-4 w-4" />
+                                                            <span className="sr-only">Edit User</span>
+                                                        </Button>
+                                                        {isSuperAdminRow ? (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 w-8 p-0 text-slate-300 cursor-not-allowed"
+                                                                disabled
+                                                                title="Akun Super Admin dilindungi"
                                                             >
-                                                                <Edit className="h-4 w-4 text-blue-500" />
-                                                                Edit User
-                                                            </DropdownMenuItem>
-                                                            {isSuperAdminRow ? (
-                                                                <DropdownMenuItem
-                                                                    disabled
-                                                                    className="cursor-not-allowed opacity-50 gap-2 text-slate-500"
-                                                                >
-                                                                    <Lock className="h-4 w-4 text-amber-600" />
-                                                                    Akun Dilindungi (Sistem)
-                                                                </DropdownMenuItem>
-                                                            ) : (
-                                                                <DropdownMenuItem
-                                                                    onClick={() => setDeleteUserObj(row)}
-                                                                    className="cursor-pointer gap-2 text-rose-600 focus:text-rose-600"
-                                                                >
-                                                                    <Trash2 className="h-4 w-4" />
-                                                                    Hapus User
-                                                                </DropdownMenuItem>
-                                                            )}
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
+                                                                <Lock className="h-3.5 w-3.5 text-slate-400" />
+                                                                <span className="sr-only">Dilindungi</span>
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                                                title="Hapus User"
+                                                                onClick={() => setDeleteUserObj(row)}
+                                                            >
+                                                                <Trash2 className="h-4 w-4" />
+                                                                <span className="sr-only">Hapus User</span>
+                                                            </Button>
+                                                        )}
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         )

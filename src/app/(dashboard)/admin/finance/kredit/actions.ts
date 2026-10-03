@@ -120,14 +120,20 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
 
     const where: Prisma.CreditObligationWhereInput = {}
 
-    // Location filter scoping
+    // Strict RBAC Location scoping:
+    // Non-corporate users (AdminBP) are strictly locked to their own branch credits.
+    // They MUST NOT see holding project credits or other branches.
     if (!isCorp && userLocationId) {
         where.OR = [
             { locationId: userLocationId },
-            { locationId: null },
+            { purchaseOrder: { locationId: userLocationId } },
+            { purchaseOrder: { is_for_bp: true, locationId: userLocationId } },
         ]
     } else if (filters?.locationId && filters.locationId !== "ALL") {
-        where.locationId = filters.locationId
+        where.OR = [
+            { locationId: filters.locationId },
+            { purchaseOrder: { locationId: filters.locationId } },
+        ]
     }
 
     // Status filter
@@ -157,6 +163,14 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
         where.supplierId = filters.supplierId
     }
 
+    // Specific Project filter (if requested)
+    if (filters?.companyProjectId && filters.companyProjectId !== "ALL") {
+        where.purchaseOrder = {
+            ...(where.purchaseOrder as object || {}),
+            companyProjectId: filters.companyProjectId,
+        }
+    }
+
     // Date range filter
     if (filters?.startDate && filters?.endDate) {
         const start = new Date(filters.startDate)
@@ -169,11 +183,16 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
     // Search filter
     if (filters?.search && filters.search.trim()) {
         const term = filters.search.trim()
-        where.OR = [
-            { credit_number: { contains: term, mode: "insensitive" } },
-            { supplier_name: { contains: term, mode: "insensitive" } },
-            { company_name: { contains: term, mode: "insensitive" } },
-            { purchaseOrder: { po_number: { contains: term, mode: "insensitive" } } },
+        where.AND = [
+            ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+            {
+                OR: [
+                    { credit_number: { contains: term, mode: "insensitive" } },
+                    { supplier_name: { contains: term, mode: "insensitive" } },
+                    { company_name: { contains: term, mode: "insensitive" } },
+                    { purchaseOrder: { po_number: { contains: term, mode: "insensitive" } } },
+                ]
+            }
         ]
     }
 
@@ -184,8 +203,8 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
     else if (filters?.sortBy === "outstanding_desc") orderBy = { outstanding: "desc" }
     else if (filters?.sortBy === "due_soon") orderBy = { due_date: "asc" }
 
-    // Fetch credits and all related data in parallel
-    const [credits, allActiveCredits, companies, suppliers, locations, activePayments] = await Promise.all([
+    // Fetch credits and all related reference data in parallel (100% from database)
+    const [rawCredits, allActiveCredits, companies, suppliers, locations, projects, activePayments] = await Promise.all([
         prisma.creditObligation.findMany({
             where,
             include: {
@@ -195,6 +214,10 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
                         po_number: true,
                         tanggal_terbit: true,
                         status: true,
+                        is_for_bp: true,
+                        locationId: true,
+                        companyProjectId: true,
+                        location: { select: { id: true, name: true } },
                         category: { select: { name: true, kode_kategori: true } },
                     },
                 },
@@ -205,12 +228,21 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
             },
             orderBy,
         }),
-        // Fetch all credits for calculating KPI stats (unaffected by search/status filter for consistent overview)
+        // Fetch credits for KPI overview (scoped by branch if non-corp)
         prisma.creditObligation.findMany({
-            where: !isCorp && userLocationId ? { OR: [{ locationId: userLocationId }, { locationId: null }] } : {},
+            where: !isCorp && userLocationId ? {
+                OR: [
+                    { locationId: userLocationId },
+                    { purchaseOrder: { locationId: userLocationId } },
+                    { purchaseOrder: { is_for_bp: true, locationId: userLocationId } },
+                ]
+            } : {},
             include: {
                 purchaseOrder: {
                     select: {
+                        is_for_bp: true,
+                        locationId: true,
+                        companyProjectId: true,
                         category: { select: { name: true } },
                     },
                 },
@@ -219,12 +251,59 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
         prisma.poCompanyGroup.findMany({ select: { id: true, name: true, kode_cabang: true }, orderBy: { name: "asc" } }),
         prisma.supplier.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
         prisma.location.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+        prisma.poCompanyProject.findMany({ select: { id: true, name: true, kode_proyek: true, companyGroupId: true }, orderBy: { name: "asc" } }),
         prisma.creditPayment.findMany({
             where: { is_cancelled: false },
             select: { payment_date: true, amount: true },
             orderBy: { payment_date: "asc" },
         }),
     ])
+
+    const projectMap = new Map(projects.map(p => [p.id, p]))
+    const locationMap = new Map(locations.map(l => [l.id, l]))
+
+    // Format and classify all raw credits into CreditItemDTO with ZERO GUESSWORK
+    const formattedCredits: CreditItemDTO[] = rawCredits.map(c => {
+        const po = c.purchaseOrder
+        let allocation_type: "PROJECT" | "BATCHING_PLANT" | "HOLDING" = "HOLDING"
+        let allocation_label = "Kantor Pusat / Umum"
+        let projectId: string | null = null
+        let projectName: string | null = null
+        let locId: string | null = c.locationId ?? po?.locationId ?? null
+        let locName: string | null = null
+
+        if (locId) {
+            locName = locationMap.get(locId)?.name ?? null
+        }
+
+        if (po?.is_for_bp || locId) {
+            allocation_type = "BATCHING_PLANT"
+            allocation_label = locName ? `BP ${locName}` : "Batching Plant"
+        } else if (po?.companyProjectId) {
+            allocation_type = "PROJECT"
+            projectId = po.companyProjectId
+            const projObj = projectMap.get(po.companyProjectId)
+            projectName = projObj?.name ?? "Proyek Konstruksi"
+            allocation_label = projectName
+        }
+
+        return {
+            ...c,
+            allocation_type,
+            allocation_label,
+            projectId,
+            projectName,
+            locationId: locId,
+            locationName: locName,
+            is_for_bp: po?.is_for_bp ?? false,
+        } as unknown as CreditItemDTO
+    })
+
+    // Filter by allocationType if requested
+    let filteredCredits = formattedCredits
+    if (filters?.allocationType && filters.allocationType !== "ALL") {
+        filteredCredits = formattedCredits.filter(c => c.allocation_type === filters.allocationType)
+    }
 
     // Dynamic KPI Calculation (100% dari Database, NO HARDCODING)
     const now = new Date()
@@ -242,6 +321,13 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
     let unpaidCount = 0
     let partialCount = 0
 
+    // Sub-stats per domain alokasi
+    const projectStats = { totalAmount: 0, outstanding: 0, paidAmount: 0, count: 0 }
+    const batchingPlantStats = { totalAmount: 0, outstanding: 0, paidAmount: 0, count: 0 }
+    const holdingStats = { totalAmount: 0, outstanding: 0, paidAmount: 0, count: 0 }
+
+    const projectMapStats = new Map<string, { projectId: string; projectName: string; totalAmount: number; outstanding: number; count: number }>()
+    const locationMapStats = new Map<string, { locationId: string; locationName: string; totalAmount: number; outstanding: number; count: number }>()
     const companyMap = new Map<string, { totalAmount: number; outstanding: number; count: number }>()
     const categoryMap = new Map<string, { totalAmount: number; outstanding: number; count: number }>()
     const supplierMap = new Map<string, { totalAmount: number; outstanding: number; count: number }>()
@@ -268,6 +354,49 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
             }
         }
 
+        // Domain Allocation Aggregation
+        const po = c.purchaseOrder
+        const locId = c.locationId ?? po?.locationId ?? null
+        const isBp = Boolean(po?.is_for_bp || locId)
+        const isProj = Boolean(!isBp && po?.companyProjectId)
+
+        if (isBp) {
+            batchingPlantStats.totalAmount += c.total_amount
+            batchingPlantStats.outstanding += c.outstanding
+            batchingPlantStats.paidAmount += c.paid_amount
+            batchingPlantStats.count++
+
+            if (locId) {
+                const locObj = locationMap.get(locId)
+                const lName = locObj?.name ?? "Cabang Lainnya"
+                const existing = locationMapStats.get(locId) || { locationId: locId, locationName: lName, totalAmount: 0, outstanding: 0, count: 0 }
+                existing.totalAmount += c.total_amount
+                existing.outstanding += c.outstanding
+                existing.count++
+                locationMapStats.set(locId, existing)
+            }
+        } else if (isProj) {
+            projectStats.totalAmount += c.total_amount
+            projectStats.outstanding += c.outstanding
+            projectStats.paidAmount += c.paid_amount
+            projectStats.count++
+
+            if (po?.companyProjectId) {
+                const projObj = projectMap.get(po.companyProjectId)
+                const pName = projObj?.name ?? "Proyek Lainnya"
+                const existing = projectMapStats.get(po.companyProjectId) || { projectId: po.companyProjectId, projectName: pName, totalAmount: 0, outstanding: 0, count: 0 }
+                existing.totalAmount += c.total_amount
+                existing.outstanding += c.outstanding
+                existing.count++
+                projectMapStats.set(po.companyProjectId, existing)
+            }
+        } else {
+            holdingStats.totalAmount += c.total_amount
+            holdingStats.outstanding += c.outstanding
+            holdingStats.paidAmount += c.paid_amount
+            holdingStats.count++
+        }
+
         // Breakdown by Company
         const compName = c.company_name || "Lainnya"
         const existingComp = companyMap.get(compName) || { totalAmount: 0, outstanding: 0, count: 0 }
@@ -292,6 +421,9 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
         existingSup.count++
         supplierMap.set(supName, existingSup)
     }
+
+    const byProject = Array.from(projectMapStats.values()).sort((a, b) => b.outstanding - a.outstanding)
+    const byLocation = Array.from(locationMapStats.values()).sort((a, b) => b.outstanding - a.outstanding)
 
     const byCompany = Array.from(companyMap.entries()).map(([companyName, data]) => ({
         companyName,
@@ -341,6 +473,11 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
         unpaidCount,
         partialCount,
         repaymentRatePct,
+        projectStats,
+        batchingPlantStats,
+        holdingStats,
+        byProject,
+        byLocation,
         byCompany,
         byCategory,
         topSuppliers,
@@ -348,11 +485,12 @@ export async function getCreditPageData(filters?: Partial<CreditFilterState>) {
     }
 
     return {
-        credits: credits as unknown as CreditItemDTO[],
+        credits: filteredCredits,
         stats,
         companies,
         suppliers,
         locations,
+        projects,
         userRole: session.user.role || "",
         userPermissions: session.user.permissions || [],
         userLocationId,
@@ -371,6 +509,7 @@ export async function getCreditDetail(creditId: string) {
                     include: {
                         category: true,
                         companyGroup: true,
+                        location: true,
                         items: {
                             include: {
                                 masterItem: true,
@@ -399,7 +538,39 @@ export async function getCreditDetail(creditId: string) {
         })
 
         if (!credit) return { success: false, error: "Data kredit tidak ditemukan" }
-        return { success: true, data: credit }
+
+        // Fetch project name if credit is linked to a PO with companyProjectId
+        let projectName: string | null = null
+        if (credit.purchaseOrder?.companyProjectId) {
+            const project = await prisma.poCompanyProject.findUnique({
+                where: { id: credit.purchaseOrder.companyProjectId },
+                select: { name: true, kode_proyek: true },
+            })
+            projectName = project?.name ?? null
+        }
+
+        const po = credit.purchaseOrder
+        let allocation_type: "PROJECT" | "BATCHING_PLANT" | "HOLDING" = "HOLDING"
+        let allocation_label = "Kantor Pusat / Umum"
+
+        if (po?.is_for_bp || credit.locationId || po?.locationId) {
+            allocation_type = "BATCHING_PLANT"
+            allocation_label = po?.location?.name ? `BP ${po.location.name}` : "Batching Plant"
+        } else if (projectName) {
+            allocation_type = "PROJECT"
+            allocation_label = projectName
+        }
+
+        return {
+            success: true,
+            data: {
+                ...credit,
+                allocation_type,
+                allocation_label,
+                projectName,
+                locationName: po?.location?.name ?? null,
+            },
+        }
     } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "Gagal memuat detail kredit"
         return { success: false, error: msg }
@@ -562,6 +733,8 @@ export async function cancelCreditPayment(paymentId: string, reason: string) {
 export async function createManualCreditObligation(params: {
     supplierName: string
     companyGroupId: string
+    allocationType?: "BATCHING_PLANT" | "PROJECT" | "HOLDING"
+    companyProjectId?: string
     locationId?: string
     totalAmount: number
     creditDate: string
@@ -586,6 +759,20 @@ export async function createManualCreditObligation(params: {
         const seqStr = String(seq).padStart(3, "0")
         const creditNumber = `CRD/NONPO/${company.kode_cabang}/${cDate.getFullYear()}/${seqStr}`
 
+        let finalLocId: string | null = null
+        let projectNoteTag = ""
+
+        if (params.allocationType === "BATCHING_PLANT" && params.locationId) {
+            finalLocId = params.locationId
+        } else if (params.allocationType === "PROJECT" && params.companyProjectId) {
+            const proj = await prisma.poCompanyProject.findUnique({ where: { id: params.companyProjectId } })
+            if (proj) {
+                projectNoteTag = `[Alokasi Proyek: ${proj.name}] `
+            }
+        }
+
+        const finalNotes = projectNoteTag ? `${projectNoteTag}${params.notes || ""}`.trim() : (params.notes || null)
+
         const credit = await prisma.creditObligation.create({
             data: {
                 credit_number: creditNumber,
@@ -593,7 +780,7 @@ export async function createManualCreditObligation(params: {
                 supplier_name: params.supplierName.trim(),
                 companyGroupId: company.id,
                 company_name: company.name,
-                locationId: params.locationId || null,
+                locationId: finalLocId,
                 total_amount: params.totalAmount,
                 paid_amount: 0,
                 outstanding: params.totalAmount,
@@ -601,7 +788,7 @@ export async function createManualCreditObligation(params: {
                 due_date: dDate,
                 term_days: term,
                 status: "UNPAID",
-                notes: params.notes || null,
+                notes: finalNotes,
                 createdById: session.user.id,
             },
         })

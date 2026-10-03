@@ -44,6 +44,7 @@ export default async function FinanceKreditPage() {
             companies={data.companies}
             suppliers={data.suppliers}
             locations={data.locations}
+            projects={data.projects}
             userRole={data.userRole}
             userPermissions={data.userPermissions}
             userLocationId={data.userLocationId || undefined}

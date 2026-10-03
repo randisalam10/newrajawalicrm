@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Crown, Landmark } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Landmark, BookLock } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -116,12 +116,6 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Laporan & Tagihan",
             defaultOpen: false,
             items: [
-                ...(isSuperAdmin ? [{
-                    title: "Laporan Bulanan Manajemen",
-                    url: "/admin/reports/monthly-management",
-                    icon: BarChart3,
-                    isSuperAdminOnly: true,
-                }] : []),
                 ...(hasPerm("BILLING_VIEW") ? [{ title: "Tagihan & Invoice", url: "/admin/billing", icon: Receipt, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("RBL_VIEW") ? [
                     { title: "Rekap Bulanan (RBL)", url: "/admin/rbl", icon: WalletCards, isSuperAdminOnly: false },
@@ -140,6 +134,24 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Finance & Keuangan",
             defaultOpen: true,
             items: [
+                ...(isSuperAdmin ? [{
+                    title: "Simulator Kas & Break-Even",
+                    url: "/admin/finance/cashflow-simulator",
+                    icon: Calculator,
+                    isSuperAdminOnly: true,
+                }] : []),
+                ...(isSuperAdmin ? [{
+                    title: "Laporan Bulanan Manajemen",
+                    url: "/admin/reports/monthly-management",
+                    icon: BarChart3,
+                    isSuperAdminOnly: true,
+                }] : []),
+                ...(isSuperAdmin ? [{
+                    title: "Tutup Buku",
+                    url: "/admin/finance/tutup-buku",
+                    icon: BookLock,
+                    isSuperAdminOnly: true,
+                }] : []),
                 ...(hasAnyPerm("FINANCE_VIEW", "FINANCE_CREDIT_VIEW") ? [
                     { title: "Kredit & Kewajiban", url: "/admin/finance/kredit", icon: Landmark, isSuperAdminOnly: false }
                 ] : []),
@@ -171,8 +183,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Master Harga Material", url: "/admin/master-material", icon: Tag, isSuperAdminOnly: false }
                 ] : []),
                 ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory, isSuperAdminOnly: false }] : []),
-                ...(isSuperAdmin || hasPerm("MASTER_DATA_VIEW") || hasPerm("RBL_VIEW") || ['SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(user?.role || '') ? [
-                    { title: "Master Biaya & Target", url: "/admin/fixed-costs", icon: Landmark, isSuperAdminOnly: false }
+                ...(isSuperAdmin ? [
+                    { title: "Master Biaya & Target", url: "/admin/fixed-costs", icon: Landmark, isSuperAdminOnly: true }
                 ] : [])
             ]
         },
@@ -292,20 +304,16 @@ export function AppSidebar({ user }: AppSidebarProps) {
                                                             asChild
                                                             isActive={isActive}
                                                             tooltip={item.title}
-                                                            className={`rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100/50 data-[active=true]:shadow-sm transition-all ${
-                                                                item.isSuperAdminOnly
-                                                                    ? "bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent text-amber-950 font-semibold border-amber-300/40 hover:bg-amber-100/60"
-                                                                    : ""
-                                                            }`}
+                                                            className="rounded-lg h-9 font-medium text-[13px] border border-transparent data-[active=true]:border-slate-200 data-[active=true]:bg-slate-100 data-[active=true]:text-slate-900 data-[active=true]:font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 transition-colors"
                                                         >
                                                             <Link href={item.url} className="flex items-center justify-between w-full">
                                                                 <div className="flex items-center gap-2 min-w-0">
-                                                                    <item.icon className={`!h-4 !w-4 ${item.isSuperAdminOnly ? "!text-amber-600 opacity-100" : "opacity-70"}`} />
+                                                                    <item.icon className="!h-4 !w-4 opacity-70" />
                                                                     <span className="truncate">{item.title}</span>
                                                                 </div>
                                                                 {item.isSuperAdminOnly && (
-                                                                    <span className="ml-auto text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500 text-slate-950 shadow-xs flex items-center gap-0.5 shrink-0">
-                                                                        <Crown className="w-2.5 h-2.5 fill-slate-950" /> HQ
+                                                                    <span className="ml-auto text-[9px] font-medium tracking-wider uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
+                                                                        HQ
                                                                     </span>
                                                                 )}
                                                             </Link>
@@ -326,30 +334,27 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
             <SidebarFooter className="p-4 pb-6">
                 {isSuperAdmin ? (
-                    <div className="flex items-center gap-3 bg-gradient-to-br from-amber-500/15 via-yellow-500/10 to-amber-600/15 border border-amber-400/50 rounded-xl px-3 py-2.5 shadow-sm">
+                    <div className="flex items-center gap-3 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-2.5 shadow-2xs">
                         <div className="relative shrink-0">
-                            <Avatar className="h-9 w-9 border-2 border-amber-400 shadow-sm ring-2 ring-amber-400/30">
-                                <AvatarFallback className="bg-gradient-to-tr from-amber-500 to-yellow-600 text-slate-950 font-black">
+                            <Avatar className="h-9 w-9 border border-slate-200 shadow-2xs">
+                                <AvatarFallback className="bg-slate-800 text-white font-bold text-xs">
                                     {user?.username?.charAt(0).toUpperCase() || "S"}
                                 </AvatarFallback>
                             </Avatar>
-                            <span className="absolute -top-1.5 -right-1 bg-amber-500 rounded-full p-0.5 shadow-xs border border-white">
-                                <Crown className="h-2.5 w-2.5 text-slate-950 fill-slate-950" />
-                            </span>
                         </div>
                         <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
                             <div className="flex items-center gap-1.5">
-                                <span className="truncate font-bold capitalize text-slate-900">{user?.username || "Super Admin"}</span>
+                                <span className="truncate font-semibold capitalize text-slate-900">{user?.username || "Super Admin"}</span>
                             </div>
                             <div className="flex items-center gap-1 mt-0.5">
-                                <span className="text-[10px] font-extrabold tracking-wider text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded border border-amber-400/60 inline-flex items-center gap-1">
-                                    <Crown className="w-2.5 h-2.5 fill-amber-900" /> SUPER ADMIN
+                                <span className="text-[10px] font-medium tracking-wider text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-flex items-center gap-1">
+                                    SUPER ADMIN
                                 </span>
                             </div>
                         </div>
                         <div className="flex items-center shrink-0">
                             <Link href="/api/auth/signout" title="Sign Out">
-                                <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
+                                <LogOut className="h-4 w-4 text-slate-400 hover:text-red-500 transition-colors" />
                             </Link>
                         </div>
                     </div>

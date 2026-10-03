@@ -14,6 +14,8 @@ export function useKreditFilters() {
         startDate: "",
         endDate: "",
         status: "ALL",
+        allocationType: "ALL",
+        companyProjectId: "ALL",
         companyGroupId: "ALL",
         supplierId: "ALL",
         locationId: "ALL",
@@ -41,6 +43,8 @@ export function useKreditFilters() {
             startDate: "",
             endDate: "",
             status: "ALL",
+            allocationType: "ALL",
+            companyProjectId: "ALL",
             companyGroupId: "ALL",
             supplierId: "ALL",
             locationId: "ALL",
@@ -54,6 +58,8 @@ export function useKreditFilters() {
             filters.startDate ||
             filters.endDate ||
             filters.status !== "ALL" ||
+            filters.allocationType !== "ALL" ||
+            filters.companyProjectId !== "ALL" ||
             filters.companyGroupId !== "ALL" ||
             filters.supplierId !== "ALL" ||
             filters.locationId !== "ALL" ||

@@ -18,6 +18,7 @@ interface CreditFilterBarProps {
     companies: Array<{ id: string; name: string }>
     suppliers: Array<{ id: string; name: string }>
     locations: Array<{ id: string; name: string }>
+    projects: Array<{ id: string; name: string; kode_proyek: string | null }>
     onApply: () => void
     onSyncPos: () => void
     onOpenCreateModal: () => void
@@ -34,6 +35,7 @@ export function CreditFilterBar({
     companies,
     suppliers,
     locations,
+    projects,
     onApply,
     onSyncPos,
     onOpenCreateModal,
@@ -135,7 +137,7 @@ export function CreditFilterBar({
                 </div>
             </div>
 
-            {/* Filter Controls Row */}
+            {/* Filter Controls Row 1: Search & Allocation Segments */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
                 {/* Search */}
                 <div className="relative lg:col-span-2">
@@ -149,6 +151,66 @@ export function CreditFilterBar({
                         onKeyDown={e => { if (e.key === "Enter") onApply() }}
                     />
                 </div>
+
+                {/* Filter Jenis Alokasi (Proyek vs BP vs Holding) */}
+                <Select
+                    value={filters.allocationType}
+                    onValueChange={v => {
+                        setFilters(prev => ({
+                            ...prev,
+                            allocationType: v as any,
+                            companyProjectId: v === "BATCHING_PLANT" || v === "HOLDING" ? "ALL" : prev.companyProjectId,
+                            locationId: v === "PROJECT" || v === "HOLDING" ? "ALL" : prev.locationId,
+                        }))
+                        onApply()
+                    }}
+                >
+                    <SelectTrigger className="h-8 text-xs bg-white border-slate-200 font-medium">
+                        <SelectValue placeholder="Peruntukan / Alokasi" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="ALL">Semua Peruntukan</SelectItem>
+                        <SelectItem value="PROJECT">🏗️ Khusus Proyek</SelectItem>
+                        <SelectItem value="BATCHING_PLANT">🏭 Khusus Batching Plant</SelectItem>
+                        <SelectItem value="HOLDING">🏢 Kantor Pusat / Holding</SelectItem>
+                    </SelectContent>
+                </Select>
+
+                {/* Filter Proyek Spesifik (aktif jika ALL atau PROJECT) */}
+                {filters.allocationType !== "BATCHING_PLANT" && filters.allocationType !== "HOLDING" ? (
+                    <Select
+                        value={filters.companyProjectId}
+                        onValueChange={v => { setFilters(prev => ({ ...prev, companyProjectId: v })); onApply(); }}
+                    >
+                        <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
+                            <SelectValue placeholder="Pilih Proyek" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Semua Proyek</SelectItem>
+                            {projects.map(p => (
+                                <SelectItem key={p.id} value={p.id}>
+                                    {p.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                ) : (
+                    /* Filter Lokasi Batching Plant Spesifik */
+                    <Select
+                        value={filters.locationId}
+                        onValueChange={v => { setFilters(prev => ({ ...prev, locationId: v })); onApply(); }}
+                    >
+                        <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
+                            <SelectValue placeholder="Batching Plant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Semua Cabang BP</SelectItem>
+                            {locations.map(loc => (
+                                <SelectItem key={loc.id} value={loc.id}>BP {loc.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
 
                 {/* Status Filter */}
                 <Select
@@ -167,6 +229,44 @@ export function CreditFilterBar({
                         <SelectItem value="CANCELLED">Dibatalkan</SelectItem>
                     </SelectContent>
                 </Select>
+
+                {/* Sort By */}
+                <Select
+                    value={filters.sortBy}
+                    onValueChange={v => { setFilters(prev => ({ ...prev, sortBy: v as any })); onApply(); }}
+                >
+                    <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
+                        <SelectValue placeholder="Urutkan" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="date_desc">Tgl Terbit (Terbaru)</SelectItem>
+                        <SelectItem value="date_asc">Tgl Terbit (Terlama)</SelectItem>
+                        <SelectItem value="outstanding_desc">Sisa Tertinggi</SelectItem>
+                        <SelectItem value="amount_desc">Nilai Kredit Terbesar</SelectItem>
+                        <SelectItem value="due_soon">Jatuh Tempo Terdekat</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* Filter Controls Row 2: Secondary Dropdowns (Company & Supplier & BP if Project mode) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1 border-t border-slate-100">
+                {/* Batching Plant Filter (when in ALL mode) */}
+                {filters.allocationType === "ALL" && (
+                    <Select
+                        value={filters.locationId}
+                        onValueChange={v => { setFilters(prev => ({ ...prev, locationId: v })); onApply(); }}
+                    >
+                        <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
+                            <SelectValue placeholder="Batching Plant" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Semua Cabang BP</SelectItem>
+                            {locations.map(loc => (
+                                <SelectItem key={loc.id} value={loc.id}>BP {loc.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                )}
 
                 {/* Company Filter */}
                 <Select
@@ -197,23 +297,6 @@ export function CreditFilterBar({
                         {suppliers.map(s => (
                             <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                         ))}
-                    </SelectContent>
-                </Select>
-
-                {/* Sort By */}
-                <Select
-                    value={filters.sortBy}
-                    onValueChange={v => { setFilters(prev => ({ ...prev, sortBy: v as any })); onApply(); }}
-                >
-                    <SelectTrigger className="h-8 text-xs bg-white border-slate-200">
-                        <SelectValue placeholder="Urutkan" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="date_desc">Tgl Terbit (Terbaru)</SelectItem>
-                        <SelectItem value="date_asc">Tgl Terbit (Terlama)</SelectItem>
-                        <SelectItem value="outstanding_desc">Sisa Tertinggi</SelectItem>
-                        <SelectItem value="amount_desc">Nilai Kredit Terbesar</SelectItem>
-                        <SelectItem value="due_soon">Jatuh Tempo Terdekat</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

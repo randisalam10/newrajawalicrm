@@ -4,7 +4,7 @@ import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CreditKPIStats } from "../../types"
 import { fmtRp, fmtCompact } from "../../utils/kredit-helpers"
-import { Building2, Layers, Store, TrendingUp, Calendar, CheckCircle2 } from "lucide-react"
+import { Building2, Layers, Store, TrendingUp, Calendar, CheckCircle2, HardHat, Factory } from "lucide-react"
 
 interface CreditDashboardTabProps {
     stats: CreditKPIStats
@@ -12,7 +12,12 @@ interface CreditDashboardTabProps {
 
 export function CreditDashboardTab({ stats }: CreditDashboardTabProps) {
     const totalVal = stats.totalCreditValue || 1 // Avoid divide by zero
+    const totalOutstanding = stats.totalOutstandingValue || 1
     const rate = Math.min(100, Math.max(0, stats.repaymentRatePct || 0))
+
+    const projPct = ((stats.projectStats?.outstanding ?? 0) / totalOutstanding) * 100
+    const bpPct = ((stats.batchingPlantStats?.outstanding ?? 0) / totalOutstanding) * 100
+    const holdingPct = ((stats.holdingStats?.outstanding ?? 0) / totalOutstanding) * 100
 
     return (
         <div className="space-y-4">
@@ -66,6 +71,134 @@ export function CreditDashboardTab({ stats }: CreditDashboardTabProps) {
                     </div>
                 </div>
             </div>
+
+            {/* SEKSI BARU: Komposisi Alokasi Beban Proyek vs Batching Plant vs Kantor Pusat */}
+            <Card className="border-slate-200/80 shadow-2xs">
+                <CardHeader className="p-4 pb-2 border-b border-slate-100 flex flex-row items-center justify-between">
+                    <div>
+                        <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                            <Layers className="w-4 h-4 text-indigo-600" />
+                            <span>Segmentasi Alokasi Beban: Proyek vs Batching Plant</span>
+                        </CardTitle>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                            Perbandingan portofolio hutang pengadaan berdasarkan peruntukan cost center
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="inline-flex items-center gap-1 font-semibold text-indigo-700 text-[11px]">
+                            <span className="w-2 h-2 rounded-full bg-indigo-600" /> Proyek ({projPct.toFixed(1)}%)
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-blue-700 text-[11px]">
+                            <span className="w-2 h-2 rounded-full bg-blue-600" /> Batching Plant ({bpPct.toFixed(1)}%)
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-slate-600 text-[11px]">
+                            <span className="w-2 h-2 rounded-full bg-slate-500" /> Pusat ({holdingPct.toFixed(1)}%)
+                        </span>
+                    </div>
+                </CardHeader>
+                <CardContent className="p-4 space-y-4">
+                    {/* Multi-segment Progress Bar */}
+                    <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden flex border border-slate-200">
+                        <div
+                            className="bg-indigo-600 h-full transition-all duration-500"
+                            style={{ width: `${projPct}%` }}
+                            title={`Proyek: ${fmtRp(stats.projectStats?.outstanding ?? 0)} (${projPct.toFixed(1)}%)`}
+                        />
+                        <div
+                            className="bg-blue-600 h-full transition-all duration-500"
+                            style={{ width: `${bpPct}%` }}
+                            title={`Batching Plant: ${fmtRp(stats.batchingPlantStats?.outstanding ?? 0)} (${bpPct.toFixed(1)}%)`}
+                        />
+                        <div
+                            className="bg-slate-400 h-full transition-all duration-500"
+                            style={{ width: `${holdingPct}%` }}
+                            title={`Kantor Pusat: ${fmtRp(stats.holdingStats?.outstanding ?? 0)} (${holdingPct.toFixed(1)}%)`}
+                        />
+                    </div>
+
+                    {/* 2 Kolom Sub-Breakdown: Proyek vs Batching Plant */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                        {/* 1. Proyek Fisik Terbesar */}
+                        <div className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3.5 space-y-2.5">
+                            <div className="flex items-center justify-between text-xs border-b border-indigo-100 pb-2">
+                                <span className="font-bold text-indigo-900 flex items-center gap-1.5 uppercase text-[11px]">
+                                    <HardHat className="w-3.5 h-3.5 text-indigo-600" />
+                                    Eksposur per Proyek Konstruksi
+                                </span>
+                                <span className="font-mono font-bold text-indigo-800">
+                                    {fmtCompact(stats.projectStats?.outstanding ?? 0)}
+                                </span>
+                            </div>
+                            {stats.byProject.length === 0 ? (
+                                <p className="text-xs text-slate-400 py-3 text-center">Belum ada kewajiban proyek</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {stats.byProject.slice(0, 4).map(p => {
+                                        const share = totalOutstanding > 0 ? ((p.outstanding / totalOutstanding) * 100).toFixed(1) : "0"
+                                        return (
+                                            <div key={p.projectId} className="text-xs space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-semibold text-slate-800 truncate max-w-[220px]" title={p.projectName}>
+                                                        {p.projectName}
+                                                    </span>
+                                                    <span className="font-mono text-slate-700 font-medium">
+                                                        {fmtCompact(p.outstanding)} <span className="text-[10px] text-slate-400 font-sans">({share}%)</span>
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>{p.count} PO Kredit</span>
+                                                    <span>Plafon: {fmtRp(p.totalAmount)}</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 2. Batching Plant Cabang */}
+                        <div className="bg-blue-50/40 border border-blue-100 rounded-xl p-3.5 space-y-2.5">
+                            <div className="flex items-center justify-between text-xs border-b border-blue-100 pb-2">
+                                <span className="font-bold text-blue-900 flex items-center gap-1.5 uppercase text-[11px]">
+                                    <Factory className="w-3.5 h-3.5 text-blue-600" />
+                                    Eksposur per Batching Plant
+                                </span>
+                                <span className="font-mono font-bold text-blue-800">
+                                    {fmtCompact(stats.batchingPlantStats?.outstanding ?? 0)}
+                                </span>
+                            </div>
+                            {stats.byLocation.length === 0 ? (
+                                <div className="py-4 text-center text-xs text-slate-400">
+                                    <p className="font-medium text-slate-600">Belum ada PO kredit spesifik cabang</p>
+                                    <p className="text-[11px] text-slate-400 mt-0.5">PO baru bertag BP akan otomatis tampil di sini.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {stats.byLocation.map(l => {
+                                        const share = totalOutstanding > 0 ? ((l.outstanding / totalOutstanding) * 100).toFixed(1) : "0"
+                                        return (
+                                            <div key={l.locationId} className="text-xs space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-semibold text-slate-800">
+                                                        BP {l.locationName}
+                                                    </span>
+                                                    <span className="font-mono text-slate-700 font-medium">
+                                                        {fmtCompact(l.outstanding)} <span className="text-[10px] text-slate-400 font-sans">({share}%)</span>
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500">
+                                                    <span>{l.count} PO Kredit</span>
+                                                    <span>Plafon: {fmtRp(l.totalAmount)}</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Grid 2 Kolom: Perusahaan & Kategori */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

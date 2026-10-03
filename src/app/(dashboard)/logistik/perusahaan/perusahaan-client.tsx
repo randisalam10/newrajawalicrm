@@ -285,21 +285,21 @@ export function PerusahaanClient({ initialData, signers, canManage = true }: { i
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="none">-- Kosongkan --</SelectItem>
-                                        {signers.filter(s => s.role === 'CEO').map(s => (
+                                        {signers.filter(s => s.role === 'CEO' || (s.isPoApprover && (s.poApproverRole === 'CEO' || s.poApproverRole === 'BOTH'))).map(s => (
                                             <SelectItem key={s.id} value={s.id}>{s.employee?.name || s.username}</SelectItem>
                                         ))}
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="space-y-2">
-                                <Label>Default FVP Signer</Label>
+                                <Label>Default FVP / Approver Signer</Label>
                                 <Select name="defaultFvpId" defaultValue={editData?.defaultFvpId || "none"}>
                                     <SelectTrigger>
-                                        <SelectValue placeholder="Pilih FVP (Opsional)" />
+                                        <SelectValue placeholder="Pilih FVP / Approver (Opsional)" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="none">-- Kosongkan --</SelectItem>
-                                        {signers.filter(s => s.role === 'FVP').map(s => (
+                                        {signers.filter(s => s.role === 'FVP' || s.role === 'Approver' || (s.isPoApprover && (s.poApproverRole === 'FVP' || s.poApproverRole === 'BOTH' || !s.poApproverRole))).map(s => (
                                             <SelectItem key={s.id} value={s.id}>{s.employee?.name || s.username}</SelectItem>
                                         ))}
                                     </SelectContent>

@@ -5,35 +5,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Edit, Trash2 } from "lucide-react"
 
-export type MaterialInRow = {
-    id: string
-    date: string
-    name: string
-    supplier: string
-    tonnage: number
-    delivery_note: string
-    locationName: string
-    locationId: string
-    unit_price?: number
-    total_price?: number
-    purchase_unit?: string
-    purchase_qty?: number
-    purchaseOrderId?: string | null
-    poNumber?: string | null
-    poItemId?: string | null
-}
-
-export type LedgerRow = {
-    id: string
-    formattedDate: string
-    type: "IN" | "OUT"
-    description: string
-    reference: string
-    qty_in: number
-    qty_out: number
-    balance: number
-    locationName: string
-}
+import { MaterialInRow, LedgerRow } from "./types"
+export type { MaterialInRow, LedgerRow }
 
 const fmtRupiah = (n?: number) => "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n || 0)
 

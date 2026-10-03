@@ -28,6 +28,7 @@ export default auth((req) => {
     res.headers.set('X-XSS-Protection', '1; mode=block')
     res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()')
     res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload')
+    res.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://*.pusher.com wss://*.pusher.com https://*.firebaseio.com https://fcm.googleapis.com; frame-src 'self' blob: data:; worker-src 'self' blob:; object-src 'self' blob: data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self';")
 
     if (isApiRoute) {
         res.headers.set('Access-Control-Allow-Origin', '*')

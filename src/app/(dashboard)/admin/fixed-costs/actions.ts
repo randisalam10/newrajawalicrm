@@ -25,17 +25,7 @@ const fixedCostSchema = z.object({
 
 export async function canManageFixedCosts(user: any): Promise<boolean> {
     if (!user) return false
-    if (user.role === "SuperAdminBP") return true
-    if (user.role === "AdminBP") return true
-    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-
-    const perms: string[] = user.permissions || []
-    return (
-        perms.includes("MASTER_DATA_CREATE") ||
-        perms.includes("MASTER_DATA_EDIT") ||
-        perms.includes("RBL_CREATE") ||
-        perms.includes("RBL_EDIT")
-    )
+    return user.role === "SuperAdminBP"
 }
 
 function calculateDurationAndMonthly(startDateStr: string, endDateStr: string, totalAmount: number, overrideMonths?: number | null) {
@@ -56,7 +46,7 @@ function calculateDurationAndMonthly(startDateStr: string, endDateStr: string, t
 
 export async function getFixedCostContracts(filterLocationId?: string) {
     const session = await auth()
-    if (!session?.user) return []
+    if (!session?.user || session.user.role !== "SuperAdminBP") return []
 
     const isCorp = isCorporateUser(session.user)
     const activeLocId = isCorp ? filterLocationId : session.user.locationId

@@ -30,6 +30,8 @@ const userSchema = z.object({
     password: z.string().optional(),
     role: z.string().min(1, "Role required"),
     employeeId: z.string().min(1, "Pegawai required"),
+    isPoApprover: z.boolean().default(false),
+    poApproverRole: z.enum(["FVP", "CEO", "BOTH"]).default("FVP"),
 })
 
 export function UserForm({
@@ -48,13 +50,16 @@ export function UserForm({
     const [isLoading, setIsLoading] = useState(false)
     const { toast } = useToast()
 
-    const form = useForm<z.infer<typeof userSchema>>({
+    const form = useForm<any>({
         resolver: zodResolver(userSchema),
-        defaultValues: initialData || {
-            username: "",
+        defaultValues: {
+            id: initialData?.id,
+            username: initialData?.username || "",
             password: "",
-            role: "AdminBP",
-            employeeId: "",
+            role: initialData?.role || "AdminBP",
+            employeeId: initialData?.employeeId || "",
+            isPoApprover: Boolean(initialData?.isPoApprover),
+            poApproverRole: initialData?.poApproverRole || "FVP",
         },
     })
 
@@ -62,7 +67,7 @@ export function UserForm({
         setIsLoading(true)
         const formData = new FormData()
         Object.entries(values).forEach(([key, value]) => {
-            if (value !== undefined) formData.append(key, value)
+            if (value !== undefined) formData.append(key, String(value))
         })
 
         const result = initialData?.id
@@ -188,6 +193,64 @@ export function UserForm({
                             </FormItem>
                         )}
                     />
+
+                    {/* PO Approver Designation */}
+                    <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-lg space-y-3">
+                        <FormField
+                            control={form.control}
+                            name="isPoApprover"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-row items-center justify-between space-y-0">
+                                    <div className="space-y-0.5">
+                                        <FormLabel className="text-xs font-semibold text-slate-800 cursor-pointer">
+                                            Penugasan Approver PO
+                                        </FormLabel>
+                                        <p className="text-[11px] text-slate-500">
+                                            Aktifkan agar user ini dapat dipilih sebagai penandatangan Purchase Order (PO).
+                                        </p>
+                                    </div>
+                                    <FormControl>
+                                        <input
+                                            type="checkbox"
+                                            checked={field.value}
+                                            onChange={(e) => field.onChange(e.target.checked)}
+                                            className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+
+                        {form.watch("isPoApprover") && (
+                            <FormField
+                                control={form.control}
+                                name="poApproverRole"
+                                render={({ field }) => (
+                                    <FormItem className="pt-2 border-t border-slate-200">
+                                        <FormLabel className="text-xs font-semibold text-slate-700">
+                                            Peran Penandatangan di PO
+                                        </FormLabel>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value || "CEO"}>
+                                            <FormControl>
+                                                <SelectTrigger className="h-8 text-xs bg-white">
+                                                    <SelectValue placeholder="Pilih Peran Penandatangan" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                <SelectItem value="CEO">Pimpinan / CEO (Menyetujui — Kiri)</SelectItem>
+                                                <SelectItem value="FVP">Approver / Mengetahui (Tengah — Opsional)</SelectItem>
+                                                <SelectItem value="BOTH">Keduanya (Bisa CEO & Mengetahui Tengah)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-[11px] text-slate-500 mt-1">
+                                            * Posisi kanan (&ldquo;Yang Mengajukan&rdquo;) otomatis diisi oleh akun Admin yang membuat PO.
+                                        </p>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4 border-t">

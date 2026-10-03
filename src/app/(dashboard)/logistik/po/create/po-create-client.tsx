@@ -41,6 +41,7 @@ export function POCreateClient({
     const router = useRouter()
     const [saving, setSaving] = useState(false)
     const [savedPoNumber, setSavedPoNumber] = useState<string | null>(null)
+    const [savedPoId, setSavedPoId] = useState<string | null>(null)
     const [savedAsDraft, setSavedAsDraft] = useState(false)
 
     // Corporate scope detection: SuperAdminBP, AdminLogistik, CEO, FVP, Approver
@@ -158,9 +159,9 @@ export function POCreateClient({
             const ceoSigner = signers.find(s => s.id === comp.defaultCeoId)
             const fvpSigner = signers.find(s => s.id === comp.defaultFvpId)
             
-            setPimpinan(ceoSigner?.employee?.name || ceoSigner?.username || "")
-            setKepalaPeralatan(fvpSigner?.employee?.name || fvpSigner?.username || "")
-            setJabatanKepala("Yang Mengajukan")
+            setPimpinan(ceoSigner?.employee?.name || ceoSigner?.username || comp.pimpinan_default || "")
+            setKepalaPeralatan(fvpSigner?.employee?.name || fvpSigner?.username || comp.kepala_peralatan_default || "-")
+            setJabatanKepala(fvpSigner ? "Approver" : (comp.jabatan_kepala_default || ""))
             setSelectedCeoId(ceoSigner ? comp.defaultCeoId : "none")
             setSelectedFvpId(fvpSigner ? comp.defaultFvpId : "none")
         }
@@ -361,6 +362,7 @@ export function POCreateClient({
 
             if (result.success && result.po_number) {
                 setSavedPoNumber(result.po_number)
+                setSavedPoId((result as any).id || null)
                 setSavedAsDraft(isDraft)
             } else {
                 alert("Gagal menyimpan PO: " + result.error)
@@ -414,7 +416,7 @@ export function POCreateClient({
                 </div>
                 <div className="flex gap-3 mt-4">
                     <Button variant="outline" onClick={() => router.push("/logistik/po")}>Lihat Daftar PO</Button>
-                    <Button onClick={() => router.push(`/print/po/${savedPoNumber}`)}>Print PO</Button>
+                    <Button onClick={() => router.push(`/print/po/${savedPoId || savedPoNumber}`)}>Print PO</Button>
                 </div>
             </div>
         )
@@ -460,14 +462,24 @@ export function POCreateClient({
                     selectedCeoId={selectedCeoId}
                     onCeoChange={(val) => {
                         setSelectedCeoId(val)
-                        const s = signers.find(u => u.id === val)
-                        setPimpinan(s?.employee?.name || s?.username || "")
+                        if (val === "none") {
+                            setPimpinan("")
+                        } else {
+                            const s = signers.find(u => u.id === val)
+                            setPimpinan(s?.employee?.name || s?.username || "")
+                        }
                     }}
                     selectedFvpId={selectedFvpId}
                     onFvpChange={(val) => {
                         setSelectedFvpId(val)
-                        const s = signers.find(u => u.id === val)
-                        setKepalaPeralatan(s?.employee?.name || s?.username || "")
+                        if (val === "none") {
+                            setKepalaPeralatan("-")
+                            setJabatanKepala("")
+                        } else {
+                            const s = signers.find(u => u.id === val)
+                            setKepalaPeralatan(s?.employee?.name || s?.username || "")
+                            setJabatanKepala("Approver")
+                        }
                     }}
                     pembuatAdmin={pembuatAdmin}
                     notes={notes}

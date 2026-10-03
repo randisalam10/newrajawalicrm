@@ -90,6 +90,17 @@ export function MaterialHighlightCards({
                                         ))}
                                     </div>
                                 )}
+                                {selectedLocation !== "all" && (
+                                    <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                                            mat.isBranchOverride 
+                                                ? "bg-blue-50 text-blue-700 border border-blue-200" 
+                                                : "bg-slate-50 text-slate-600 border border-slate-200"
+                                        }`}>
+                                            {mat.isBranchOverride ? `Khusus ${mat.displayLocationName}` : "Standar Global"}
+                                        </span>
+                                    </div>
+                                )}
                                 {mat.nextPrice && (
                                     <div className="text-[10px] text-amber-800 bg-amber-50 rounded px-1.5 py-0.5 mt-1 border border-amber-200">
                                         Akan naik jadi {fmt(mat.nextPrice)} ({fmtDate(mat.nextEffectiveDate)})

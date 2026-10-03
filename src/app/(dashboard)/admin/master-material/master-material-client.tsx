@@ -3,12 +3,12 @@
 import React, { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from "@/components/ui/select"
-import {
-    Tag, Plus, Layers, History, Calculator, Building2, Search
+    Tag,
+    Plus,
+    Layers,
+    History,
+    Calculator
 } from "lucide-react"
 
 import { MasterMaterialItem, MaterialLocation, MaterialPriceHistoryItem } from "./types"
@@ -17,12 +17,13 @@ import { useMasterMaterialDialogs } from "./hooks/use-master-material-dialogs"
 import { useMaterialSimulator } from "./hooks/use-material-simulator"
 
 import { MaterialIntegrationBanner } from "./components/material-integration-banner"
-import { MaterialHighlightCards } from "./components/material-highlight-cards"
+import { MaterialFilterBar } from "./components/material-filter-bar"
 import { MaterialActiveTable } from "./components/material-active-table"
 import { MaterialHistoryTable } from "./components/material-history-table"
 import { MaterialSimulatorCard } from "./components/material-simulator-card"
 
-import { SetPriceDialog } from "./components/dialogs/set-price-dialog"
+import { UnifiedPriceDialog } from "./components/dialogs/unified-price-dialog"
+import { MaterialHistoryModal } from "./components/dialogs/material-history-modal"
 import { NewMaterialDialog } from "./components/dialogs/new-material-dialog"
 import { EditHistoryDialog } from "./components/dialogs/edit-history-dialog"
 import { DeleteHistoryDialog } from "./components/dialogs/delete-history-dialog"
@@ -33,6 +34,7 @@ interface MasterMaterialClientProps {
     locations: MaterialLocation[]
     userRole: string
     userLocationId?: string | null
+    isCorporate?: boolean
 }
 
 export function MasterMaterialClient({
@@ -40,10 +42,14 @@ export function MasterMaterialClient({
     initialHistories = [],
     locations = [],
     userRole,
+    userLocationId,
+    isCorporate = true,
 }: MasterMaterialClientProps) {
     const isSuperAdmin = userRole === "SuperAdminBP" || ["CEO", "FVP"].includes(userRole)
     const isAdmin = isSuperAdmin || userRole === "AdminBP" || userRole === "Admin" || userRole === "AdminLogistik"
     const canManage = isSuperAdmin || isAdmin
+
+    const initialLoc = (!isCorporate && userLocationId) ? userLocationId : "all"
 
     const [materials] = useState<MasterMaterialItem[]>(initialMaterials)
     const [histories] = useState<MaterialPriceHistoryItem[]>(initialHistories)
@@ -58,27 +64,23 @@ export function MasterMaterialClient({
         setActiveTab,
         filteredMaterials,
         filteredHistories,
-    } = useMasterMaterialFilter(materials, histories, locations)
+    } = useMasterMaterialFilter(materials, histories, locations, initialLoc)
 
     // 2. Dialogs and actions hook
     const {
         isPending,
-        // Price Dialog
-        showPriceDialog,
-        setShowPriceDialog,
-        priceFormMaterialId,
-        setPriceFormMaterialId,
-        priceFormValue,
-        setPriceFormValue,
-        priceFormEffectiveDate,
-        setPriceFormEffectiveDate,
-        priceFormLocationIds,
-        setPriceFormLocationIds,
-        priceFormNotes,
-        setPriceFormNotes,
-        priceError,
-        handleOpenSetPrice,
-        handleSavePrice,
+        // Unified Price Dialog
+        showUnifiedPriceDialog,
+        setShowUnifiedPriceDialog,
+        selectedMaterialForPrice,
+        handleOpenManagePrice,
+        handleSaveNewPrice,
+        handleSaveCorrection,
+        // Material History Modal
+        showMaterialHistoryModal,
+        setShowMaterialHistoryModal,
+        selectedMaterialForHistory,
+        handleOpenMaterialHistory,
         // New Material Dialog
         showNewMaterialDialog,
         setShowNewMaterialDialog,
@@ -101,7 +103,7 @@ export function MasterMaterialClient({
         newMatError,
         handleOpenNewMaterial,
         handleCreateMaterial,
-        // Edit History Dialog
+        // Edit History Entry Dialog
         showEditHistoryDialog,
         setShowEditHistoryDialog,
         editHistoryMaterialName,
@@ -114,7 +116,6 @@ export function MasterMaterialClient({
         editHistoryNotes,
         setEditHistoryNotes,
         handleOpenEditHistory,
-        handleQuickEditActivePrice,
         handleSaveEditHistory,
         // Delete Confirm Dialog
         showDeleteConfirm,
@@ -124,7 +125,7 @@ export function MasterMaterialClient({
         handleConfirmDelete,
     } = useMasterMaterialDialogs(selectedLocation)
 
-    // 3. Backdate safe price simulator hook
+    // 3. Backdate simulator hook
     const {
         simMaterialCode,
         setSimMaterialCode,
@@ -138,9 +139,9 @@ export function MasterMaterialClient({
     } = useMaterialSimulator(materials[0]?.code || "PASIR")
 
     return (
-        <div className="space-y-5">
+        <div className="space-y-4 w-full">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
                 <div>
                     <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-blue-600 text-white rounded-lg">
@@ -154,11 +155,11 @@ export function MasterMaterialClient({
                         </Badge>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">
-                        Kelola harga acuan dasar Pasir Cor, Batu Split, dan Agregat per m³ dengan pencatatan riwayat tanggal efektif (backdate safe).
+                        Kelola acuan harga dasar Pasir Cor, Batu Split, dan Agregat per m³ dengan riwayat tanggal efektif untuk kalkulasi HPP beton.
                     </p>
                 </div>
 
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
                     <Button
                         size="sm"
                         variant="outline"
@@ -168,104 +169,94 @@ export function MasterMaterialClient({
                         <Plus className="w-3.5 h-3.5 mr-1 text-slate-600" />
                         Tambah Material Baru
                     </Button>
-
-                    <Button
-                        size="sm"
-                        onClick={() => {
-                            if (materials.length > 0) {
-                                handleOpenSetPrice(materials[0])
-                            }
-                        }}
-                        className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white cursor-pointer font-medium"
-                    >
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Tetapkan Harga Baru
-                    </Button>
                 </div>
             </div>
 
             {/* Operational Pricing Integration Banner */}
             <MaterialIntegrationBanner />
 
-            {/* Material Highlight Cards */}
-            <MaterialHighlightCards
-                materials={materials}
+            {/* Unified Single Filter Bar: Batching Plant & Search */}
+            <MaterialFilterBar
+                locations={locations}
                 selectedLocation={selectedLocation}
-                canManage={canManage}
-                onQuickEditActivePrice={handleQuickEditActivePrice}
-                onOpenSetPrice={handleOpenSetPrice}
+                onSelectLocation={setSelectedLocation}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                isCorporate={isCorporate}
+                userLocationId={userLocationId}
             />
 
-            {/* Main Tabs */}
-            <Tabs value={activeTab} onValueChange={(v: any) => setActiveTab(v)}>
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
-                    <TabsList className="bg-slate-100 p-0.5">
-                        <TabsTrigger value="active" className="text-xs">
-                            <Layers className="w-3.5 h-3.5 mr-1" />
-                            <span>Daftar Material & Harga Aktif</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="history" className="text-xs">
-                            <History className="w-3.5 h-3.5 mr-1" />
-                            <span>Riwayat Perubahan Harga ({histories.length})</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="simulator" className="text-xs">
-                            <Calculator className="w-3.5 h-3.5 mr-1" />
-                            <span>Simulator Cek Backdate</span>
-                        </TabsTrigger>
-                    </TabsList>
+            {/* Main Tabs Navigation */}
+            <div className="border-b border-slate-200 pb-2">
+                <div className="inline-flex items-center rounded-lg bg-slate-100 p-0.5 text-slate-600">
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab("active")}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                            activeTab === "active"
+                                ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                        }`}
+                    >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Daftar Material & Harga Aktif</span>
+                    </button>
 
-                    {/* Filter controls */}
-                    <div className="flex items-center gap-2">
-                        {locations.length > 1 && (
-                            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-                                <SelectTrigger className="h-8 text-xs w-48 bg-white">
-                                    <Building2 className="w-3.5 h-3.5 mr-1 text-slate-400" />
-                                    <SelectValue placeholder="Lingkup Cabang" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Semua Cabang (Global)</SelectItem>
-                                    {locations.map(loc => (
-                                        <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab("history")}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                            activeTab === "history"
+                                ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                        }`}
+                    >
+                        <History className="w-3.5 h-3.5" />
+                        <span>Log Riwayat Global ({histories.length})</span>
+                    </button>
 
-                        <div className="relative w-44 sm:w-56">
-                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Cari material..."
-                                className="w-full h-8 pl-8 pr-3 text-xs border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                            />
-                        </div>
-                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab("simulator")}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+                            activeTab === "simulator"
+                                ? "bg-white text-slate-900 shadow-2xs font-semibold"
+                                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
+                        }`}
+                    >
+                        <Calculator className="w-3.5 h-3.5" />
+                        <span>Simulator Cek Backdate</span>
+                    </button>
                 </div>
+            </div>
 
-                {/* Tab 1: Active Materials */}
-                <TabsContent value="active" className="mt-4 space-y-4">
+            {/* Tab 1: Active Materials Main Table */}
+            {activeTab === "active" && (
+                <div className="mt-3 space-y-4">
                     <MaterialActiveTable
                         materials={filteredMaterials}
                         selectedLocation={selectedLocation}
                         canManage={canManage}
-                        onQuickEditActivePrice={handleQuickEditActivePrice}
-                        onOpenSetPrice={handleOpenSetPrice}
+                        onOpenManagePrice={handleOpenManagePrice}
+                        onOpenHistoryModal={handleOpenMaterialHistory}
                     />
-                </TabsContent>
+                </div>
+            )}
 
-                {/* Tab 2: Price History Timeline */}
-                <TabsContent value="history" className="mt-4 space-y-4">
+            {/* Tab 2: Global Price History Timeline */}
+            {activeTab === "history" && (
+                <div className="mt-3 space-y-4">
                     <MaterialHistoryTable
                         histories={filteredHistories}
                         onEditHistory={handleOpenEditHistory}
                         onOpenDeleteConfirm={handleOpenDeleteConfirm}
                     />
-                </TabsContent>
+                </div>
+            )}
 
-                {/* Tab 3: Backdate Safe Simulator */}
-                <TabsContent value="simulator" className="mt-4">
+            {/* Tab 3: Backdate Safe Simulator */}
+            {activeTab === "simulator" && (
+                <div className="mt-3">
                     <MaterialSimulatorCard
                         materials={materials}
                         locations={locations}
@@ -279,31 +270,32 @@ export function MasterMaterialClient({
                         simLoading={simLoading}
                         onRunSimulation={handleRunSimulation}
                     />
-                </TabsContent>
-            </Tabs>
+                </div>
+            )}
 
-            {/* Set Price Dialog */}
-            <SetPriceDialog
-                open={showPriceDialog}
-                onOpenChange={setShowPriceDialog}
-                materials={materials}
+            {/* 1. Unified Price Dialog (Single Source of Pricing Actions) */}
+            <UnifiedPriceDialog
+                open={showUnifiedPriceDialog}
+                onOpenChange={setShowUnifiedPriceDialog}
+                material={selectedMaterialForPrice}
                 locations={locations}
-                materialId={priceFormMaterialId}
-                onMaterialIdChange={setPriceFormMaterialId}
-                priceValue={priceFormValue}
-                onPriceValueChange={setPriceFormValue}
-                effectiveDate={priceFormEffectiveDate}
-                onEffectiveDateChange={setPriceFormEffectiveDate}
-                locationIds={priceFormLocationIds}
-                onLocationIdsChange={setPriceFormLocationIds}
-                notes={priceFormNotes}
-                onNotesChange={setPriceFormNotes}
-                error={priceError}
+                selectedLocation={selectedLocation}
                 isPending={isPending}
-                onSave={handleSavePrice}
+                onSaveNewPrice={handleSaveNewPrice}
+                onSaveCorrection={handleSaveCorrection}
             />
 
-            {/* New Material Dialog */}
+            {/* 2. Isolated Material-Specific History Modal */}
+            <MaterialHistoryModal
+                open={showMaterialHistoryModal}
+                onOpenChange={setShowMaterialHistoryModal}
+                material={selectedMaterialForHistory}
+                canManage={canManage}
+                onEditHistoryItem={handleOpenEditHistory}
+                onDeleteHistoryItem={handleOpenDeleteConfirm}
+            />
+
+            {/* 3. New Material Dialog */}
             <NewMaterialDialog
                 open={showNewMaterialDialog}
                 onOpenChange={setShowNewMaterialDialog}
@@ -326,7 +318,7 @@ export function MasterMaterialClient({
                 onSubmit={handleCreateMaterial}
             />
 
-            {/* Edit History Dialog */}
+            {/* 4. Edit Specific History Entry Dialog */}
             <EditHistoryDialog
                 open={showEditHistoryDialog}
                 onOpenChange={setShowEditHistoryDialog}
@@ -344,7 +336,7 @@ export function MasterMaterialClient({
                 onSave={handleSaveEditHistory}
             />
 
-            {/* Delete History Dialog */}
+            {/* 5. Delete History Confirm Dialog */}
             <DeleteHistoryDialog
                 open={showDeleteConfirm}
                 onOpenChange={setShowDeleteConfirm}

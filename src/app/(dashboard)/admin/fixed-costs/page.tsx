@@ -14,24 +14,13 @@ export default async function FixedCostsPage() {
     const session = await auth()
     if (!session?.user) redirect("/login")
 
-    const userRole = session.user.role || "OperatorBP"
-    const isCorporate = isCorporateUser(session.user)
-    const perms = session.user.permissions || []
+    const userRole = session.user.role || ""
+    if (userRole !== "SuperAdminBP") {
+        redirect("/admin")
+    }
 
-    const canView = userRole === "SuperAdminBP" ||
-        perms.includes("MASTER_DATA_VIEW") ||
-        perms.includes("RBL_VIEW") ||
-        ["AdminBP", "AdminLogistik", "CEO", "FVP", "Approver"].includes(userRole)
-
-    if (!canView) redirect("/admin")
-
-    const canManage = userRole === "SuperAdminBP" || (
-        !["CEO", "FVP", "Approver"].includes(userRole) && (
-            userRole === "AdminBP" ||
-            perms.includes("MASTER_DATA_CREATE") ||
-            perms.includes("MASTER_DATA_EDIT")
-        )
-    )
+    const isCorporate = true
+    const canManage = true
 
     const [data, locations, targetSetting] = await Promise.all([
         getFixedCostContracts(),

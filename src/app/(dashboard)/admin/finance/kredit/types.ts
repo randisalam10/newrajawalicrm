@@ -1,17 +1,28 @@
 export type CreditStatusType = "UNPAID" | "PARTIAL" | "PAID" | "OVERDUE" | "CANCELLED"
 export type CreditSourceType = "PO_PURCHASE" | "NON_PO"
-export type CreditPaymentMethod = "TRANSFER" | "CASH" | "GIRO"
+export type CreditPaymentMethod = "TRANSFER" | "CASH" | "GIRO" | "DEPOSIT"
+export type CreditAllocationType = "ALL" | "PROJECT" | "BATCHING_PLANT" | "HOLDING"
 
 export interface CreditItemDTO {
     id: string
     credit_number: string
     source_type: CreditSourceType
+    allocation_type: "PROJECT" | "BATCHING_PLANT" | "HOLDING"
+    allocation_label: string
+    projectId?: string | null
+    projectName?: string | null
+    locationId: string | null
+    locationName?: string | null
+    is_for_bp?: boolean
     purchaseOrderId: string | null
     purchaseOrder?: {
         id: string
         po_number: string
         tanggal_terbit: string | Date
         status: string
+        is_for_bp?: boolean
+        locationId?: string | null
+        companyProjectId?: string | null
         category?: { name: string; kode_kategori: string } | null
         pimpinan?: string
         items?: Array<{
@@ -26,7 +37,6 @@ export interface CreditItemDTO {
     supplier_name: string
     companyGroupId: string | null
     company_name: string
-    locationId: string | null
     total_amount: number
     paid_amount: number
     outstanding: number
@@ -52,7 +62,7 @@ export interface CreditPaymentDTO {
     creditId: string
     payment_date: string | Date
     amount: number
-    method: CreditPaymentMethod
+    method: CreditPaymentMethod | string
     source_account: string | null
     reference_no: string | null
     proof_url: string | null
@@ -77,6 +87,13 @@ export interface CreditAuditLogDTO {
     createdAt: string | Date
 }
 
+export interface CreditAllocationSubStats {
+    totalAmount: number
+    outstanding: number
+    paidAmount: number
+    count: number
+}
+
 export interface CreditKPIStats {
     totalCreditsCount: number
     totalCreditValue: number
@@ -90,6 +107,11 @@ export interface CreditKPIStats {
     unpaidCount: number
     partialCount: number
     repaymentRatePct: number
+    projectStats: CreditAllocationSubStats
+    batchingPlantStats: CreditAllocationSubStats
+    holdingStats: CreditAllocationSubStats
+    byProject: Array<{ projectId: string; projectName: string; totalAmount: number; outstanding: number; count: number }>
+    byLocation: Array<{ locationId: string; locationName: string; totalAmount: number; outstanding: number; count: number }>
     byCompany: Array<{ companyName: string; totalAmount: number; outstanding: number; count: number }>
     byCategory: Array<{ categoryName: string; totalAmount: number; outstanding: number; count: number }>
     topSuppliers: Array<{ supplierName: string; totalAmount: number; outstanding: number; count: number }>
@@ -101,6 +123,8 @@ export interface CreditFilterState {
     startDate: string
     endDate: string
     status: string
+    allocationType: CreditAllocationType
+    companyProjectId: string
     companyGroupId: string
     supplierId: string
     locationId: string
@@ -123,6 +147,8 @@ export interface PaymentFormState {
 export interface CreateCreditFormState {
     supplierName: string
     companyGroupId: string
+    allocationType: "BATCHING_PLANT" | "PROJECT" | "HOLDING"
+    companyProjectId?: string
     locationId: string
     totalAmount: string
     creditDate: string
@@ -138,7 +164,9 @@ export interface KreditClientProps {
     companies: Array<{ id: string; name: string; kode_cabang: string }>
     suppliers: Array<{ id: string; name: string }>
     locations: Array<{ id: string; name: string }>
+    projects: Array<{ id: string; name: string; kode_proyek: string | null; companyGroupId: string }>
     userRole: string
     userPermissions: string[]
     userLocationId?: string
 }
+

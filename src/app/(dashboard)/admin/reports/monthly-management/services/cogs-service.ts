@@ -60,6 +60,51 @@ export function calculateDirectCogs(params: CogsCalculationParams) {
         }
     })
 
+    /**
+     * Helper untuk mendapatkan harga material agregat per m³ yang berlaku pada tanggal transaksi tertentu (Point-in-Time Pricing).
+     * Mendukung kenaikan/perubahan harga di tengah bulan:
+     * 1. Prioritaskan harga spesifik cabang (locationId) di mana effective_date <= txDate
+     * 2. Fallback ke harga standar nasional/global (locationId == null) di mana effective_date <= txDate
+     * 3. Jika belum ada harga <= txDate, gunakan harga terdekat yang tersedia.
+     */
+    function resolveMaterialPriceAtDate(
+        materialCode: string,
+        txDate: Date | string,
+        txLocationId: string | null | undefined,
+        prices: any[]
+    ): number {
+        const tTime = new Date(txDate).getTime()
+
+        // 1. Cek spesifik cabang dengan tanggal efektif <= tanggal transaksi
+        if (txLocationId) {
+            const branchMatch = prices.find(p =>
+                (p.material?.code === materialCode || p.material_code === materialCode) &&
+                p.locationId === txLocationId &&
+                new Date(p.effective_date).getTime() <= tTime
+            )
+            if (branchMatch && branchMatch.price_per_m3 > 0) {
+                return branchMatch.price_per_m3
+            }
+        }
+
+        // 2. Cek harga global/semua cabang dengan tanggal efektif <= tanggal transaksi
+        const globalMatch = prices.find(p =>
+            (p.material?.code === materialCode || p.material_code === materialCode) &&
+            (!p.locationId || p.locationId === null) &&
+            new Date(p.effective_date).getTime() <= tTime
+        )
+        if (globalMatch && globalMatch.price_per_m3 > 0) {
+            return globalMatch.price_per_m3
+        }
+
+        // 3. Fallback: gunakan harga pertama yang cocok
+        const anyMatch = prices.find(p =>
+            (p.material?.code === materialCode || p.material_code === materialCode) &&
+            (txLocationId ? p.locationId === txLocationId || !p.locationId : true)
+        )
+        return anyMatch?.price_per_m3 ?? 0
+    }
+
     // Hitung harga satuan semen per Kg riil dari rata-rata tertimbang penerimaan Silo periode ini
     // Sesuai Opsi B: jika belum ada penerimaan fisik, cek harga master semen (KG/TON). Jika tidak ada, wajib 0 (tanpa tebakan 2020)
     let semenPricePerKg = 0
@@ -80,11 +125,6 @@ export function calculateDirectCogs(params: CogsCalculationParams) {
         }
     }
 
-    const pasirPricePerM3 = priceMap["PASIR"] ?? 0
-    const split12PricePerM3 = priceMap["SPLIT_1_2"] ?? 0
-    const split23PricePerM3 = priceMap["SPLIT_2_3"] ?? split12PricePerM3
-    const ciping05PricePerM3 = priceMap["CIPING_0_5"] ?? priceMap["SPLIT_0_5"] ?? split12PricePerM3
-
     let totalSemenCost = 0
     let totalPasirCost = 0
     let totalSplitCost = 0
@@ -102,6 +142,8 @@ export function calculateDirectCogs(params: CogsCalculationParams) {
     currentTxns.forEach(t => {
         const vol = t.volume_cubic || 0
         const q = t.concreteQuality
+        const txDate = t.date
+        const txLocId = t.locationId
 
         // Perhitungan material murni 100% dari resep mix design (ConcreteQuality) tanpa asumsi/fallback sepihak
         const semenPerM3 = q?.composition_cement ?? 0
@@ -128,10 +170,19 @@ export function calculateDirectCogs(params: CogsCalculationParams) {
         // Jika mutu beton tidak menggunakan split (misalnya Mortar di mana batu = 0), pemakaian split adalah 0 m³
         const splitM3 = stone12M3 + stone23M3 + stone05M3
 
-        const cost12 = stone12M3 * split12PricePerM3
-        const cost23 = stone23M3 * split23PricePerM3
-        const cost05 = stone05M3 * ciping05PricePerM3
+        // Point-in-Time Material Pricing sesuai tanggal transaksi (Mendukung multi-harga jika ada kenaikan di tengah bulan)
+        const pasirPrice = resolveMaterialPriceAtDate("PASIR", txDate, txLocId, activePrices)
+        const split12Price = resolveMaterialPriceAtDate("SPLIT_1_2", txDate, txLocId, activePrices)
+        const split23Price = resolveMaterialPriceAtDate("SPLIT_2_3", txDate, txLocId, activePrices) || split12Price
+        const ciping05Price = resolveMaterialPriceAtDate("CIPING_0_5", txDate, txLocId, activePrices) ||
+                              resolveMaterialPriceAtDate("SPLIT_0_5", txDate, txLocId, activePrices) ||
+                              split12Price
+
+        const cost12 = stone12M3 * split12Price
+        const cost23 = stone23M3 * split23Price
+        const cost05 = stone05M3 * ciping05Price
         const lineSplitCost = cost12 + cost23 + cost05
+        const linePasirCost = pasirM3 * pasirPrice
 
         totalSemenConsumedKg += semenKg
         totalPasirConsumedM3 += pasirM3
@@ -141,12 +192,29 @@ export function calculateDirectCogs(params: CogsCalculationParams) {
         totalCiping05ConsumedM3 += stone05M3
 
         totalSemenCost += semenKg * semenPricePerKg // komposisi dalam Kg x harga riil
-        totalPasirCost += pasirM3 * pasirPricePerM3 // volume pasir dari konversi mutu aktual x harga master
+        totalPasirCost += linePasirCost // volume pasir x harga master per tanggal transaksi
         totalSplitCost += lineSplitCost
         totalSplit12Cost += cost12
         totalSplit23Cost += cost23
         totalCiping05Cost += cost05
     })
+
+    // Rata-rata tertimbang harga per m³ sepanjang periode
+    const pasirPricePerM3 = totalPasirConsumedM3 > 0 && totalPasirCost > 0
+        ? Math.round(totalPasirCost / totalPasirConsumedM3)
+        : (priceMap["PASIR"] ?? 0)
+
+    const split12PricePerM3 = totalSplit12ConsumedM3 > 0 && totalSplit12Cost > 0
+        ? Math.round(totalSplit12Cost / totalSplit12ConsumedM3)
+        : (priceMap["SPLIT_1_2"] ?? 0)
+
+    const split23PricePerM3 = totalSplit23ConsumedM3 > 0 && totalSplit23Cost > 0
+        ? Math.round(totalSplit23Cost / totalSplit23ConsumedM3)
+        : (priceMap["SPLIT_2_3"] ?? split12PricePerM3)
+
+    const ciping05PricePerM3 = totalCiping05ConsumedM3 > 0 && totalCiping05Cost > 0
+        ? Math.round(totalCiping05Cost / totalCiping05ConsumedM3)
+        : (priceMap["CIPING_0_5"] ?? split12PricePerM3)
 
     const splitPricePerM3 = totalSplitConsumedM3 > 0 && totalSplitCost > 0
         ? Math.round(totalSplitCost / totalSplitConsumedM3)

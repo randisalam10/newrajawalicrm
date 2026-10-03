@@ -56,7 +56,24 @@ export function CreditDetailDialog({
                         )}
                     </div>
                     {creditDetail && (
-                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
+                            <span className="inline-flex items-center gap-1 font-medium">
+                                <span className="text-slate-500">Peruntukan:</span>
+                                {creditDetail.allocation_type === "BATCHING_PLANT" ? (
+                                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                                        🏭 {creditDetail.allocation_label}
+                                    </span>
+                                ) : creditDetail.allocation_type === "PROJECT" ? (
+                                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                        🏗️ {creditDetail.allocation_label}
+                                    </span>
+                                ) : (
+                                    <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                        🏢 {creditDetail.allocation_label}
+                                    </span>
+                                )}
+                            </span>
+                            <span>•</span>
                             <span>Supplier: <strong className="text-slate-800">{creditDetail.supplier_name}</strong></span>
                             <span>•</span>
                             <span>Perusahaan: <strong className="text-slate-800">{creditDetail.company_name}</strong></span>

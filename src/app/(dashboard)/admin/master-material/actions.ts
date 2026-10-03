@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
+import { isCorporateUser } from "@/lib/rbac"
 
 export interface MaterialPriceInput {
     materialId: string
@@ -275,9 +276,17 @@ export async function addMaterialPrice(input: MaterialPriceInput) {
 
     const effDate = new Date(effective_date)
 
+    const isCorp = isCorporateUser(session.user)
+
     // Determine target location IDs (multi-branch support)
     let targets: (string | null)[] = []
-    if (locationIds && locationIds.length > 0) {
+    if (!isCorp) {
+        // Non-corporate users (AdminBP) can only set price for their own branch
+        if (!session.user.locationId) {
+            throw new Error("Akun Anda tidak terikat pada cabang resmi manapun.")
+        }
+        targets = [session.user.locationId]
+    } else if (locationIds && locationIds.length > 0) {
         if (locationIds.includes("all")) {
             targets = [null]
         } else {
@@ -364,7 +373,17 @@ export async function editMaterialPriceHistory(data: {
     if (!price_per_m3 || price_per_m3 <= 0) throw new Error("Harga harus lebih besar dari 0.")
     if (!effective_date) throw new Error("Tanggal efektif wajib diisi.")
 
-    const cleanLocationId = locationId && locationId !== "all" ? locationId : null
+    const existing = await prisma.materialPriceHistory.findUnique({
+        where: { id }
+    })
+    if (!existing) throw new Error("Data riwayat tidak ditemukan.")
+
+    const isCorp = isCorporateUser(session.user)
+    if (!isCorp && existing.locationId !== session.user.locationId) {
+        throw new Error("Anda tidak memiliki izin mengedit tarif cabang lain.")
+    }
+
+    const cleanLocationId = !isCorp ? session.user.locationId : (locationId && locationId !== "all" ? locationId : null)
 
     await prisma.materialPriceHistory.update({
         where: { id },
@@ -393,6 +412,11 @@ export async function deleteMaterialPriceHistory(id: string) {
         where: { id }
     })
     if (!entry) throw new Error("Data riwayat tidak ditemukan.")
+
+    const isCorp = isCorporateUser(session.user)
+    if (!isCorp && entry.locationId !== session.user.locationId) {
+        throw new Error("Anda tidak memiliki izin menghapus tarif cabang lain.")
+    }
 
     const count = await prisma.materialPriceHistory.count({
         where: { materialId: entry.materialId }

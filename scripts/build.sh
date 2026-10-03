@@ -9,7 +9,7 @@
 set -e
 
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-TAG="${1:-v2.4.9}"
+TAG="${1:-v2.5.0}"
 
 echo "================================================"
 echo " 🔨 Building Rajawali BP ERP — $IMAGE_NAME:$TAG"
@@ -47,7 +47,7 @@ docker push "$IMAGE_NAME:$TAG"
 docker push "$IMAGE_NAME:latest"
 echo "   ✓ Push selesai"
 
-# ── 3. Update versi di deploy.sh
+# ── 3. Update versi di deploy scripts
 echo ""
 if [ -f deploy.sh ]; then
     sed -i "s/^DEFAULT_IMAGE_TAG=.*/DEFAULT_IMAGE_TAG=\"$TAG\"/" deploy.sh 2>/dev/null || true
@@ -55,7 +55,10 @@ fi
 if [ -f scripts/deploy.sh ]; then
     sed -i "s/^DEFAULT_IMAGE_TAG=.*/DEFAULT_IMAGE_TAG=\"$TAG\"/" scripts/deploy.sh 2>/dev/null || true
 fi
-echo "   ✓ deploy.sh DEFAULT_IMAGE_TAG diperbarui"
+if [ -f deploy-hub.sh ]; then
+    sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=\"\${1:-$TAG}\"/" deploy-hub.sh 2>/dev/null || true
+fi
+echo "   ✓ deploy scripts DEFAULT_IMAGE_TAG diperbarui"
 
 echo ""
 echo "================================================"

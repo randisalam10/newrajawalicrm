@@ -173,16 +173,18 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
                     </CardHeader>
                     <CardContent className="p-4 space-y-2 text-xs">
                         <div>
-                            <span className="text-slate-400 block text-[11px]">Pembuat (Admin):</span>
-                            <span className="font-medium text-slate-800">{po.pembuat_admin}</span>
+                            <span className="text-slate-400 block text-[11px]">1. Menyetujui (Kiri):</span>
+                            <span className="font-medium text-slate-800">{po.pimpinan || "-"}</span>
                         </div>
                         <div>
-                            <span className="text-slate-400 block text-[11px]">{po.jabatan_kepala || "Kepala Peralatan"}:</span>
-                            <span className="font-medium text-slate-800">{po.kepala_peralatan}</span>
+                            <span className="text-slate-400 block text-[11px]">2. Mengetahui (Tengah):</span>
+                            <span className="font-medium text-slate-800">
+                                {po.kepala_peralatan && po.kepala_peralatan !== "-" ? `${po.kepala_peralatan} (${po.jabatan_kepala || "Approver"})` : "— (Kosong / Tanpa Verifikator)"}
+                            </span>
                         </div>
                         <div>
-                            <span className="text-slate-400 block text-[11px]">Pimpinan:</span>
-                            <span className="font-medium text-slate-800">{po.pimpinan}</span>
+                            <span className="text-slate-400 block text-[11px]">3. Yang Mengajukan (Kanan):</span>
+                            <span className="font-medium text-slate-800">{po.pembuat_admin} (Admin)</span>
                         </div>
                         {/* Status Approval / Bypass */}
                         {po.status === 'APPROVED' ? (

@@ -40,6 +40,8 @@ export type UserRow = {
     locationId: string
     join_date: string
     employeeId: string
+    isPoApprover?: boolean
+    poApproverRole?: string | null
 }
 
 export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
@@ -57,7 +59,18 @@ export const getColumns = (eligibleEmployees: any[]): ColumnDef<UserRow>[] => [
         header: "Sistem Role",
         cell: ({ row }) => {
             const role = row.getValue("role") as string
-            return getRoleBadge(role)
+            const isApprover = row.original.isPoApprover
+            const approverRole = row.original.poApproverRole
+            return (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {getRoleBadge(role)}
+                    {isApprover && (
+                        <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 border border-amber-300">
+                            Approver PO: {approverRole === 'CEO' ? 'CEO (Kiri)' : approverRole === 'BOTH' ? 'CEO & Mengetahui' : 'Mengetahui (Tengah)'}
+                        </span>
+                    )}
+                </div>
+            )
         },
     },
     {

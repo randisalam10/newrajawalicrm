@@ -49,6 +49,8 @@ export function useKreditData(initialCredits: CreditItemDTO[], initialStats: Cre
     const [createForm, setCreateForm] = useState<CreateCreditFormState>({
         supplierName: "",
         companyGroupId: "",
+        allocationType: "BATCHING_PLANT",
+        companyProjectId: "",
         locationId: "",
         totalAmount: "",
         creditDate: new Date().toISOString().slice(0, 10),
@@ -184,6 +186,8 @@ export function useKreditData(initialCredits: CreditItemDTO[], initialStats: Cre
             const res = await createManualCreditObligation({
                 supplierName: createForm.supplierName,
                 companyGroupId: createForm.companyGroupId,
+                allocationType: createForm.allocationType,
+                companyProjectId: createForm.companyProjectId || undefined,
                 locationId: createForm.locationId || undefined,
                 totalAmount: amt,
                 creditDate: createForm.creditDate,

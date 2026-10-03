@@ -121,11 +121,10 @@ export const ExecutiveScorecard: React.FC<ExecutiveScorecardProps> = ({
                                 setActiveSummarySection(id)
                                 setIsDrilldownMinimized(false)
                             }}
-                            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer ${
-                                activeSummarySection === id
+                            className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all border cursor-pointer ${activeSummarySection === id
                                     ? "bg-slate-800 text-white border-slate-800 shadow-sm"
                                     : "bg-white text-slate-500 border-slate-200 hover:text-slate-800 hover:border-slate-400"
-                            }`}
+                                }`}
                         >
                             {id === "all" ? "Semua Seksi" : id === "A" ? "A. Pendapatan" : id === "B" ? "B. Biaya Langsung" : id === "C" ? "C. Laba Kotor" : "D. Overhead"}
                         </button>
@@ -133,9 +132,8 @@ export const ExecutiveScorecard: React.FC<ExecutiveScorecardProps> = ({
                 </div>
 
                 {/* Rekapitulasi Rinci Formula Manajerial A, B, C, D */}
-                <div className={`text-xs font-mono bg-slate-50 p-4 rounded-xl border border-slate-200/80 ${
-                    activeSummarySection !== "all" ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4"
-                }`}>
+                <div className={`text-xs font-mono bg-slate-50 p-4 rounded-xl border border-slate-200/80 ${activeSummarySection !== "all" ? "grid grid-cols-1 gap-4" : "grid grid-cols-1 md:grid-cols-2 gap-4"
+                    }`}>
                     {/* SEKSI A */}
                     {(activeSummarySection === "all" || activeSummarySection === "A") && (
                         <div className="space-y-3">
@@ -255,7 +253,7 @@ export const ExecutiveScorecard: React.FC<ExecutiveScorecardProps> = ({
                             </div>
 
                             {/* Kelompok 3: Agregat Quarry & Upah Supir */}
-                            <div className="bg-blue-50/40 p-2.5 rounded-lg border border-blue-200/70 space-y-1">
+                            <div className="bg-blue-50/40 p-2.5 rounded-lg border border-blue-200/70 space-y-1.5">
                                 <div className="text-[10px] font-bold uppercase tracking-wider text-blue-900 flex items-center justify-between">
                                     <span>3. Agregat Quarry &amp; Upah Supir</span>
                                     <span className="text-blue-800 font-mono font-bold">
@@ -265,13 +263,41 @@ export const ExecutiveScorecard: React.FC<ExecutiveScorecardProps> = ({
                                         )}
                                     </span>
                                 </div>
-                                <div className="flex justify-between text-slate-700">
-                                    <span>• Pasir Cor &amp; Batu Split (Agregat Quarry):</span>
-                                    <span className="font-bold">
-                                        {formatRp(scorecard.aggregateCost || ((scorecard.pasirCost || 0) + (scorecard.splitCost || 0)))}
-                                    </span>
+
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center text-slate-800">
+                                        <span className="font-semibold">• Bahan Baku Agregat (Quarry / Plant):</span>
+                                        <span className="font-bold">
+                                            {formatRp(scorecard.aggregateCost || ((scorecard.pasirCost || 0) + (scorecard.splitCost || 0)))}
+                                        </span>
+                                    </div>
+                                    <div className="pl-3.5 border-l-2 border-blue-300/80 space-y-0.5 text-[11px] text-slate-600">
+                                        <div className="flex justify-between">
+                                            <span>- Pasir:</span>
+                                            <span className="font-semibold text-slate-800">{formatRp(scorecard.pasirCost || 0)}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span>- Batu Split 1-2:</span>
+                                            <span className="font-semibold text-slate-800">
+                                                {formatRp(scorecard.split12Cost || (scorecard.split23Cost ? 0 : (scorecard.splitCost || 0)))}
+                                            </span>
+                                        </div>
+                                        {((scorecard.split23Cost && scorecard.split23Cost > 0) || (!scorecard.split12Cost && !scorecard.split23Cost && scorecard.splitCost)) && (
+                                            <div className="flex justify-between">
+                                                <span>- Batu Split 2-3:</span>
+                                                <span className="font-semibold text-slate-800">{formatRp(scorecard.split23Cost || 0)}</span>
+                                            </div>
+                                        )}
+                                        {scorecard.ciping05Cost && scorecard.ciping05Cost > 0 ? (
+                                            <div className="flex justify-between">
+                                                <span>- Ciping (0-5) / Skrining:</span>
+                                                <span className="font-semibold text-slate-800">{formatRp(scorecard.ciping05Cost)}</span>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 </div>
-                                <div className="flex justify-between text-slate-700">
+
+                                <div className="flex justify-between text-slate-700 pt-1 border-t border-blue-200/50">
                                     <span>• Upah Langsung Retase Supir (Mixer &amp; DT):</span>
                                     <span className="font-bold">{formatRp(scorecard.retaseCost)}</span>
                                 </div>

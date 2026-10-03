@@ -43,16 +43,35 @@ export async function getPoCompanies() {
 }
 
 export async function getUsersForSigners() {
-    return await prisma.user.findMany({
-        where: { role: { in: ['CEO', 'FVP', 'Approver'] } },
-        select: { 
-            id: true, 
-            username: true, 
-            role: true,
-            employee: { select: { name: true } }
-        },
-        orderBy: { username: 'asc' }
-    })
+    try {
+        return await prisma.user.findMany({
+            where: { 
+                OR: [
+                    { role: { in: ['CEO', 'FVP', 'Approver'] } },
+                    { isPoApprover: true }
+                ]
+            },
+            select: { 
+                id: true, 
+                username: true, 
+                role: true,
+                isPoApprover: true,
+                poApproverRole: true,
+                employee: { select: { name: true } }
+            },
+            orderBy: { username: 'asc' }
+        })
+    } catch {
+        const rows = await prisma.$queryRaw<any[]>`
+            SELECT u.id, u.username, u.role, u."isPoApprover", u."poApproverRole",
+                   json_build_object('name', e.name) as employee
+            FROM "User" u
+            LEFT JOIN "Employee" e ON e.id = u."employeeId"
+            WHERE u.role IN ('CEO', 'FVP', 'Approver') OR u."isPoApprover" = true
+            ORDER BY u.username ASC
+        `
+        return rows
+    }
 }
 
 export async function createPoCompany(formData: FormData) {

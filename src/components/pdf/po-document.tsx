@@ -458,13 +458,13 @@ export function PODocument({ po }: { po: POData }) {
                             ) : null}
                         </View>
                         <View style={s.signLine} />
-                        <Text style={s.signName}>{po.pimpinan}</Text>
+                        <Text style={s.signName}>{po.pimpinan || "Pimpinan"}</Text>
                         <Text style={s.signTitle}>
-                            Pemilik Perusahaan
+                            Pimpinan / Direksi
                         </Text>
                     </View>
 
-                    {/* MENGETAHUI (TENGAH) - FVP / APPROVER */}
+                    {/* MENGETAHUI (TENGAH) - APPROVER / OPSIONAL */}
                     <View style={s.signBox}>
                         <Text style={s.signLabel}>Mengetahui,</Text>
                         <View style={s.signArea}>
@@ -473,22 +473,24 @@ export function PODocument({ po }: { po: POData }) {
                             ) : null}
                         </View>
                         <View style={s.signLine} />
-                        <Text style={s.signName}>{po.kepala_peralatan}</Text>
+                        <Text style={s.signName}>
+                            {po.kepala_peralatan && po.kepala_peralatan !== '-' ? po.kepala_peralatan : ' '}
+                        </Text>
                         <Text style={s.signTitle}>
-                            {po.jabatan_kepala || "Yang Mengajukan"}
+                            {po.kepala_peralatan && po.kepala_peralatan !== '-' ? (po.jabatan_kepala || "Approver") : ' '}
                         </Text>
                     </View>
 
-                    {/* DIBUAT OLEH (KANAN) - ADMIN */}
+                    {/* YANG MENGAJUKAN (KANAN) - ADMIN PEMBUAT */}
                     <View style={s.signBox}>
-                        <Text style={s.signLabel}>Dibuat oleh,</Text>
+                        <Text style={s.signLabel}>Yang Mengajukan,</Text>
                         <View style={s.signArea}>
                             {/* Ruang stempel / paraf */}
                         </View>
                         <View style={s.signLine} />
-                        <Text style={s.signName}>{po.pembuat}</Text>
+                        <Text style={s.signName}>{po.pembuat || "Admin"}</Text>
                         <Text style={s.signTitle}>
-                            Admin
+                            Admin / Pembuat PO
                         </Text>
                     </View>
                 </View>

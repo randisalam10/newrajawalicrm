@@ -6,9 +6,10 @@ import { MasterMaterialItem, MaterialLocation, MaterialPriceHistoryItem } from "
 export function useMasterMaterialFilter(
     materials: MasterMaterialItem[],
     histories: MaterialPriceHistoryItem[],
-    locations: MaterialLocation[]
+    locations: MaterialLocation[],
+    initialLocation: string = "all"
 ) {
-    const [selectedLocation, setSelectedLocation] = useState<string>("all")
+    const [selectedLocation, setSelectedLocation] = useState<string>(initialLocation)
     const [searchQuery, setSearchQuery] = useState("")
     const [activeTab, setActiveTab] = useState<"active" | "history" | "simulator">("active")
 
@@ -56,7 +57,7 @@ export function useMasterMaterialFilter(
     // Filtered histories
     const filteredHistories = useMemo(() => {
         return histories.filter(h => {
-            const matchesLoc = selectedLocation === "all" || h.locationId === selectedLocation || (!h.locationId && selectedLocation === "all")
+            const matchesLoc = selectedLocation === "all" || h.locationId === selectedLocation || !h.locationId
             const matchesSearch = !searchQuery ||
                 h.material_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 h.material_code.toLowerCase().includes(searchQuery.toLowerCase()) ||

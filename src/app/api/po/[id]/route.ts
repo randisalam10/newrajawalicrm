@@ -163,7 +163,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                 rejectedById: user.id
             }
         } else if (status === 'APPROVED') {
-            if (user.role === 'FVP' || user.role === 'Approver') {
+            const isDesignatedFvp = existingPo.fvpId === user.id
+            const isDesignatedCeo = existingPo.ceoId === user.id
+
+            if (isDesignatedFvp || user.role === 'FVP' || user.role === 'Approver') {
                 updateData.fvpApprovedAt = now
                 updateData.fvpApprovedById = user.id
                 updateData.fvpApprovalChannel = 'MOBILE'
@@ -176,7 +179,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
                     updateData.approvalChannel = 'MOBILE'
                     updateData.isBypassed = false
                 }
-            } else if (user.role === 'CEO') {
+            } else if (isDesignatedCeo || user.role === 'CEO') {
                 updateData.ceoApprovedAt = now
                 updateData.ceoApprovedById = user.id
                 updateData.ceoApprovalChannel = 'MOBILE'

@@ -11,6 +11,8 @@ const userCreateSchema = z.object({
     password: z.string().min(8, "Password minimal 8 karakter"),
     role: z.string().min(1, "Role required"),
     employeeId: z.string().min(1, "Pegawai required"),
+    isPoApprover: z.preprocess((val) => val === "true" || val === true, z.boolean()).default(false),
+    poApproverRole: z.enum(["FVP", "CEO", "BOTH"]).optional().default("FVP"),
 })
 
 const userUpdateSchema = z.object({
@@ -18,6 +20,8 @@ const userUpdateSchema = z.object({
     username: z.string().min(3, "Username minimal 3 karakter"),
     password: z.string().min(8, "Password minimal 8 karakter").optional().or(z.literal("")),
     role: z.string().min(1, "Role required"),
+    isPoApprover: z.preprocess((val) => val === "true" || val === true, z.boolean()).default(false),
+    poApproverRole: z.enum(["FVP", "CEO", "BOTH"]).optional().default("FVP"),
 })
 
 export async function getRolesList() {
@@ -88,15 +92,23 @@ export async function createUser(formData: FormData) {
             }
         })
 
-        await prisma.user.create({
+        const created = await prisma.user.create({
             data: {
                 username: parsed.data.username,
                 password: hashedPassword,
                 role: roleRecord?.name || parsed.data.role,
                 roleId: roleRecord?.id || null,
-                employeeId: parsed.data.employeeId
+                employeeId: parsed.data.employeeId,
             }
         })
+
+        // Simpan isPoApprover & poApproverRole via raw SQL agar kebal dari cache Prisma Client
+        await prisma.$executeRaw`
+            UPDATE "User" SET 
+                "isPoApprover" = ${parsed.data.isPoApprover}, 
+                "poApproverRole" = ${parsed.data.isPoApprover ? parsed.data.poApproverRole : null} 
+            WHERE id = ${created.id}
+        `
 
         revalidatePath("/admin/users")
         return { success: true }
@@ -142,6 +154,14 @@ export async function updateUser(id: string, formData: FormData) {
             where: { id },
             data: updateData
         })
+
+        // Simpan isPoApprover & poApproverRole via raw SQL agar kebal dari cache Prisma Client
+        await prisma.$executeRaw`
+            UPDATE "User" SET 
+                "isPoApprover" = ${parsed.data.isPoApprover}, 
+                "poApproverRole" = ${parsed.data.isPoApprover ? parsed.data.poApproverRole : null} 
+            WHERE id = ${id}
+        `
 
         revalidatePath("/admin/users")
         return { success: true }

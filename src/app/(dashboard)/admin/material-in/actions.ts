@@ -40,6 +40,13 @@ export async function getIncomingMaterials(limit: number = 250) {
                     id: true,
                     po_number: true,
                     status: true,
+                    tanggal_terbit: true,
+                    companyGroup: {
+                        select: {
+                            id: true,
+                            name: true,
+                        }
+                    }
                 }
             },
             poItem: {
@@ -66,9 +73,26 @@ export async function createIncomingMaterial(formData: FormData) {
         }
 
         const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+        let targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
             ? (formData.get("locationId") as string)
             : session.user.locationId
+
+        let purchaseOrderId = (formData.get("purchaseOrderId") as string) || null
+        let poItemId = (formData.get("poItemId") as string) || null
+
+        // PROTEKSI CABANG & ENFORCE PO: Pastikan lokasi selalu terkunci ke cabang PO asli
+        if (purchaseOrderId) {
+            const linkedPo = await prisma.purchaseOrder.findUnique({
+                where: { id: purchaseOrderId },
+                select: { id: true, locationId: true, items: { select: { id: true } } }
+            })
+            if (linkedPo) {
+                targetLocationId = linkedPo.locationId
+                if (!poItemId && linkedPo.items.length === 1) {
+                    poItemId = linkedPo.items[0].id
+                }
+            }
+        }
 
         const rawData = {
             date: formData.get("date"),
@@ -81,8 +105,8 @@ export async function createIncomingMaterial(formData: FormData) {
             total_price: formData.get("total_price") || 0,
             purchase_unit: formData.get("purchase_unit") || "KG",
             purchase_qty: formData.get("purchase_qty") || null,
-            purchaseOrderId: formData.get("purchaseOrderId") || null,
-            poItemId: formData.get("poItemId") || null,
+            purchaseOrderId: purchaseOrderId,
+            poItemId: poItemId,
         }
 
         const data = incomingSchema.parse(rawData)
@@ -124,9 +148,26 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
         }
 
         const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
+        let targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
             ? (formData.get("locationId") as string)
             : session.user.locationId
+
+        let purchaseOrderId = (formData.get("purchaseOrderId") as string) || null
+        let poItemId = (formData.get("poItemId") as string) || null
+
+        // PROTEKSI CABANG & ENFORCE PO: Pastikan lokasi selalu terkunci ke cabang PO asli
+        if (purchaseOrderId) {
+            const linkedPo = await prisma.purchaseOrder.findUnique({
+                where: { id: purchaseOrderId },
+                select: { id: true, locationId: true, items: { select: { id: true } } }
+            })
+            if (linkedPo) {
+                targetLocationId = linkedPo.locationId
+                if (!poItemId && linkedPo.items.length === 1) {
+                    poItemId = linkedPo.items[0].id
+                }
+            }
+        }
 
         const rawData = {
             date: formData.get("date"),
@@ -139,8 +180,8 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
             total_price: formData.get("total_price") || 0,
             purchase_unit: formData.get("purchase_unit") || "KG",
             purchase_qty: formData.get("purchase_qty") || null,
-            purchaseOrderId: formData.get("purchaseOrderId") || null,
-            poItemId: formData.get("poItemId") || null,
+            purchaseOrderId: purchaseOrderId,
+            poItemId: poItemId,
         }
 
         const data = incomingSchema.parse(rawData)
@@ -211,6 +252,14 @@ export async function getApprovedBpCementPOs(targetLocationId?: string) {
             companyGroup: true,
             category: true,
             location: true,
+            materialIncomings: {
+                select: {
+                    id: true,
+                    tonnage: true,
+                    purchase_qty: true,
+                    poItemId: true,
+                }
+            },
             items: {
                 include: {
                     masterItem: {
@@ -240,6 +289,36 @@ export async function getApprovedBpCementPOs(targetLocationId?: string) {
 
     return cementFiltered.map(po => {
         const supplierName = po.items[0]?.masterItem?.supplier?.name || "Distributor"
+        const unfulfilledItems = po.items.map(i => {
+            const itemIncomings = i.materialIncomings || []
+            const poIncomings = (po.materialIncomings || []).filter(inc => 
+                inc.poItemId === i.id || (!inc.poItemId && po.items.length === 1)
+            )
+
+            const allMap = new Map<string, any>()
+            itemIncomings.forEach(inc => allMap.set(inc.id, inc))
+            poIncomings.forEach(inc => allMap.set(inc.id, inc))
+            const uniqueIncomings = Array.from(allMap.values())
+
+            const totalReceivedKg = uniqueIncomings.reduce((sum, inc) => sum + (inc.tonnage || 0), 0)
+            const totalReceivedQty = uniqueIncomings.reduce((sum, inc) => sum + (inc.purchase_qty || 0), 0)
+            const remainingQty = Math.max(0, i.quantity - totalReceivedQty)
+
+            return {
+                id: i.id,
+                masterItemId: i.masterItemId,
+                itemName: i.masterItem?.name || "Semen",
+                satuan: i.masterItem?.satuan || "zak",
+                quantity: i.quantity,
+                harga_satuan: i.harga_satuan,
+                subtotal: i.subtotal,
+                supplierName: i.masterItem?.supplier?.name || supplierName,
+                totalReceivedKg,
+                totalReceivedQty,
+                remainingQty,
+            }
+        }).filter(i => i.remainingQty > 0)
+
         return {
             id: po.id,
             po_number: po.po_number,
@@ -248,27 +327,9 @@ export async function getApprovedBpCementPOs(targetLocationId?: string) {
             supplierName,
             locationId: po.locationId,
             locationName: po.location?.name || "-",
-            items: po.items.map(i => {
-                const totalReceivedKg = i.materialIncomings.reduce((sum, inc) => sum + (inc.tonnage || 0), 0)
-                const totalReceivedQty = i.materialIncomings.reduce((sum, inc) => sum + (inc.purchase_qty || 0), 0)
-                const remainingQty = Math.max(0, i.quantity - totalReceivedQty)
-
-                return {
-                    id: i.id,
-                    masterItemId: i.masterItemId,
-                    itemName: i.masterItem?.name || "Semen",
-                    satuan: i.masterItem?.satuan || "zak",
-                    quantity: i.quantity,
-                    harga_satuan: i.harga_satuan,
-                    subtotal: i.subtotal,
-                    supplierName: i.masterItem?.supplier?.name || supplierName,
-                    totalReceivedKg,
-                    totalReceivedQty,
-                    remainingQty,
-                }
-            })
+            items: unfulfilledItems,
         }
-    })
+    }).filter(po => po.items.length > 0)
 }
 
 // THE STOCK LEDGER ENGINE

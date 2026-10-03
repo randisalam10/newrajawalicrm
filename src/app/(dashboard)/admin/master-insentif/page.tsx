@@ -42,6 +42,8 @@ export default async function MasterInsentifPage() {
                 locations={locations}
                 canManage={canManage}
                 isCorporate={isCorporate}
+                userRole={role}
+                userLocationId={session.user.locationId || null}
             />
         </div>
     )

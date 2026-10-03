@@ -30,7 +30,9 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import {
-    Loader2
+    Loader2,
+    Building2,
+    CheckCircle2
 } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
@@ -58,16 +60,22 @@ export function MasterInsentifClient({
     locations,
     canManage = true,
     isCorporate = false,
+    userRole,
+    userLocationId,
 }: {
     initialRates: any[]
     locations: any[]
     canManage?: boolean
     isCorporate?: boolean
+    userRole?: string
+    userLocationId?: string | null
 }) {
+    const initialBranch = (!isCorporate && userLocationId) ? userLocationId : "ALL"
+
     const [rates, setRates] = useState<any[]>(initialRates)
     const [searchQuery, setSearchQuery] = useState("")
     const [filterRole, setFilterRole] = useState("ALL")
-    const [filterBranch, setFilterBranch] = useState("ALL")
+    const [filterBranch, setFilterBranch] = useState(initialBranch)
 
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [editingItem, setEditingItem] = useState<any>(null)
@@ -82,7 +90,7 @@ export function MasterInsentifClient({
         formula_type: "PER_M3",
         tarif_utama: "1500",
         tarif_sekunder: "0",
-        locationId: "ALL",
+        locationId: initialBranch !== "ALL" ? initialBranch : "ALL",
         effective_date: format(new Date(), "yyyy-MM-dd"),
         keterangan: "",
         isActive: true,
@@ -90,13 +98,17 @@ export function MasterInsentifClient({
 
     const [, startTransition] = useTransition()
 
-    // Filtered data
+    // Filtered data: when viewing a specific branch, show branch-specific rates + company global rates!
     const filteredRates = useMemo(() => {
         return rates.filter(item => {
             if (filterRole !== "ALL" && item.kategori_peran !== filterRole) return false
             if (filterBranch !== "ALL") {
-                if (filterBranch === "GLOBAL" && item.locationId !== null) return false
-                if (filterBranch !== "GLOBAL" && item.locationId !== filterBranch) return false
+                if (filterBranch === "GLOBAL") {
+                    if (item.locationId !== null) return false
+                } else {
+                    // Specific plant selected: keep rates belonging to this plant OR company global fallback rates!
+                    if (item.locationId !== filterBranch && item.locationId !== null) return false
+                }
             }
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase()
@@ -141,13 +153,17 @@ export function MasterInsentifClient({
 
     const handleOpenAdd = () => {
         setEditingItem(null)
+        const defaultLoc = !isCorporate
+            ? (userLocationId || "ALL")
+            : (filterBranch !== "ALL" && filterBranch !== "GLOBAL" ? filterBranch : "ALL")
+
         setFormData({
             nama_insentif: "",
-            kategori_peran: "OPERATOR_BP",
+            kategori_peran: filterRole !== "ALL" ? filterRole : "OPERATOR_BP",
             formula_type: "PER_M3",
             tarif_utama: "1500",
             tarif_sekunder: "0",
-            locationId: isCorporate ? "ALL" : (locations[0]?.id || "ALL"),
+            locationId: defaultLoc,
             effective_date: format(new Date(), "yyyy-MM-dd"),
             keterangan: "",
             isActive: true,
@@ -243,14 +259,82 @@ export function MasterInsentifClient({
                 <div>
                     <h1 className="text-xl font-bold text-slate-900 tracking-tight">Master Tarif Insentif</h1>
                     <p className="text-xs text-slate-500 mt-0.5">
-                        Kelola parameter tarif dan rumus insentif untuk operator BP, operator CP, alat berat, dan supir.
+                        Kelola parameter tarif dan rumus insentif untuk operator BP, operator CP, alat berat, dan supir per batching plant.
                     </p>
                 </div>
                 {canManage && (
-                    <Button onClick={handleOpenAdd} size="sm" className="h-8 text-xs font-medium cursor-pointer">
+                    <Button onClick={handleOpenAdd} size="sm" className="h-8 text-xs font-medium cursor-pointer bg-blue-600 hover:bg-blue-700 text-white">
                         Tambah Tarif
                     </Button>
                 )}
+            </div>
+
+            {/* Batching Plant Navigation Selector */}
+            <div className="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 mr-1">
+                        <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Batching Plant:</span>
+                    </span>
+
+                    {isCorporate ? (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                                type="button"
+                                onClick={() => setFilterBranch("ALL")}
+                                className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                                    filterBranch === "ALL"
+                                        ? "bg-slate-900 text-white shadow-2xs font-semibold"
+                                        : "bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200 font-medium"
+                                }`}
+                            >
+                                Semua Cabang
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setFilterBranch("GLOBAL")}
+                                className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                                    filterBranch === "GLOBAL"
+                                        ? "bg-slate-900 text-white shadow-2xs font-semibold"
+                                        : "bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200 font-medium"
+                                }`}
+                            >
+                                Standar Global Saja
+                            </button>
+                            {locations.map((loc: any) => (
+                                <button
+                                    key={loc.id}
+                                    type="button"
+                                    onClick={() => setFilterBranch(loc.id)}
+                                    className={`px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer ${
+                                        filterBranch === loc.id
+                                            ? "bg-blue-600 text-white shadow-2xs font-semibold"
+                                            : "bg-white text-slate-600 hover:bg-slate-200/70 border border-slate-200 font-medium"
+                                    }`}
+                                >
+                                    {loc.name}
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                            <span>{locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"}</span>
+                            <Badge variant="outline" className="text-[9px] bg-white text-blue-700 border-blue-200 ml-1 py-0 px-1">
+                                Terkunci Cabang
+                            </Badge>
+                        </div>
+                    )}
+                </div>
+
+                <div className="text-[11px] text-slate-500 font-medium">
+                    {filterBranch === "ALL" ? (
+                        <span>Menampilkan seluruh daftar tarif dan insentif</span>
+                    ) : filterBranch === "GLOBAL" ? (
+                        <span>Menampilkan tarif standar perusahaan berlaku global</span>
+                    ) : (
+                        <span>Menampilkan struktur tarif untuk plant: <strong className="text-slate-800">{locations.find((l: any) => l.id === filterBranch)?.name || "Cabang"}</strong></span>
+                    )}
+                </div>
             </div>
 
             {/* Filter Toolbar */}
@@ -260,7 +344,7 @@ export function MasterInsentifClient({
                         <div className="flex flex-wrap items-center gap-2">
                             {/* Search */}
                             <Input
-                                placeholder="Cari tarif / peran / cabang..."
+                                placeholder="Cari tarif / peran / keterangan..."
                                 value={searchQuery}
                                 onChange={e => setSearchQuery(e.target.value)}
                                 className="h-8 text-xs bg-white w-52 sm:w-60"
@@ -278,26 +362,10 @@ export function MasterInsentifClient({
                                     ))}
                                 </SelectContent>
                             </Select>
-
-                            {/* Filter Cabang */}
-                            {isCorporate && (
-                                <Select value={filterBranch} onValueChange={setFilterBranch}>
-                                    <SelectTrigger className="h-8 w-40 text-xs bg-white">
-                                        <SelectValue placeholder="Semua Cabang" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ALL">Semua Cabang</SelectItem>
-                                        <SelectItem value="GLOBAL">Berlaku Global (Semua)</SelectItem>
-                                        {locations.map((loc: any) => (
-                                            <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            )}
                         </div>
 
                         <span className="text-xs text-slate-500 font-mono">
-                            {filteredRates.length} tarif terdaftar
+                            {filteredRates.length} tarif aktif ditampilkan
                         </span>
                     </div>
                 </CardContent>
@@ -357,10 +425,22 @@ export function MasterInsentifClient({
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-slate-600">
-                                                {item.location?.name ? (
-                                                    <span>{item.location.name}</span>
+                                                {filterBranch !== "ALL" && filterBranch !== "GLOBAL" ? (
+                                                    item.locationId ? (
+                                                        <Badge variant="default" className="text-[10px] bg-blue-600 text-white font-medium">
+                                                            Khusus {item.location?.name || "Cabang"}
+                                                        </Badge>
+                                                    ) : (
+                                                        <Badge variant="outline" className="text-[10px] text-slate-600 border-slate-300 font-normal">
+                                                            Standar Global (Berlaku di Plant Ini)
+                                                        </Badge>
+                                                    )
                                                 ) : (
-                                                    <span className="text-slate-400">Semua Cabang</span>
+                                                    item.location?.name ? (
+                                                        <span className="font-medium text-slate-800">{item.location.name}</span>
+                                                    ) : (
+                                                        <span className="text-slate-400">Semua Cabang (Global)</span>
+                                                    )
                                                 )}
                                             </TableCell>
                                             <TableCell className="whitespace-nowrap font-mono text-slate-600">
@@ -527,20 +607,26 @@ export function MasterInsentifClient({
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
                                 <Label className="text-xs font-semibold text-slate-700">Penempatan Cabang</Label>
-                                <Select
-                                    value={formData.locationId}
-                                    onValueChange={v => setFormData(f => ({ ...f, locationId: v }))}
-                                >
-                                    <SelectTrigger className="h-8 text-xs bg-white">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ALL">Semua Cabang (Global)</SelectItem>
-                                        {locations.map((loc: any) => (
-                                            <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                {isCorporate ? (
+                                    <Select
+                                        value={formData.locationId}
+                                        onValueChange={v => setFormData(f => ({ ...f, locationId: v }))}
+                                    >
+                                        <SelectTrigger className="h-8 text-xs bg-white">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="ALL">Semua Cabang (Global)</SelectItem>
+                                            {locations.map((loc: any) => (
+                                                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <div className="h-8 px-3 rounded-md bg-slate-100 border border-slate-200 text-xs flex items-center font-medium text-slate-700">
+                                        {locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-1">

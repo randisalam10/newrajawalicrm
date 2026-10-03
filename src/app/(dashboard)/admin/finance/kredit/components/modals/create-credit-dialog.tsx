@@ -20,6 +20,7 @@ interface CreateCreditDialogProps {
     setCreateForm: React.Dispatch<React.SetStateAction<CreateCreditFormState>>
     companies: Array<{ id: string; name: string }>
     locations: Array<{ id: string; name: string }>
+    projects: Array<{ id: string; name: string }>
     onSubmit: () => void
     isPending: boolean
 }
@@ -31,6 +32,7 @@ export function CreateCreditDialog({
     setCreateForm,
     companies,
     locations,
+    projects,
     onSubmit,
     isPending,
 }: CreateCreditDialogProps) {
@@ -109,24 +111,68 @@ export function CreateCreditDialog({
                         </div>
                     </div>
 
-                    {/* Cabang (Opsional) */}
+                    {/* Peruntukan Alokasi Beban */}
                     <div>
-                        <Label className="text-xs font-semibold">Cabang / Proyek Terkait (Opsional)</Label>
+                        <Label className="text-xs font-semibold">Peruntukan Alokasi Beban *</Label>
                         <Select
-                            value={createForm.locationId}
-                            onValueChange={v => setCreateForm(prev => ({ ...prev, locationId: v }))}
+                            value={createForm.allocationType}
+                            onValueChange={v => setCreateForm(prev => ({
+                                ...prev,
+                                allocationType: v as any,
+                                locationId: v === "BATCHING_PLANT" ? prev.locationId : "",
+                                companyProjectId: v === "PROJECT" ? prev.companyProjectId : "",
+                            }))}
                         >
                             <SelectTrigger className="mt-1 h-9 text-xs bg-white">
-                                <SelectValue placeholder="Pilih Cabang (Opsional)" />
+                                <SelectValue placeholder="Pilih Jenis Alokasi" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="">-- Konsolidasi Pusat / Semua Cabang --</SelectItem>
-                                {locations.map(loc => (
-                                    <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
-                                ))}
+                                <SelectItem value="BATCHING_PLANT">🏭 Operasional Batching Plant</SelectItem>
+                                <SelectItem value="PROJECT">🏗️ Proyek Konstruksi</SelectItem>
+                                <SelectItem value="HOLDING">🏢 Kantor Pusat / Beban Umum Holding</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {/* Cabang (jika Batching Plant) */}
+                    {createForm.allocationType === "BATCHING_PLANT" && (
+                        <div>
+                            <Label className="text-xs font-semibold">Cabang Batching Plant Terkait *</Label>
+                            <Select
+                                value={createForm.locationId}
+                                onValueChange={v => setCreateForm(prev => ({ ...prev, locationId: v }))}
+                            >
+                                <SelectTrigger className="mt-1 h-9 text-xs bg-white">
+                                    <SelectValue placeholder="Pilih Cabang Batching Plant" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {locations.map(loc => (
+                                        <SelectItem key={loc.id} value={loc.id}>BP {loc.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
+
+                    {/* Proyek (jika Proyek Konstruksi) */}
+                    {createForm.allocationType === "PROJECT" && (
+                        <div>
+                            <Label className="text-xs font-semibold">Proyek Konstruksi Terkait *</Label>
+                            <Select
+                                value={createForm.companyProjectId}
+                                onValueChange={v => setCreateForm(prev => ({ ...prev, companyProjectId: v }))}
+                            >
+                                <SelectTrigger className="mt-1 h-9 text-xs bg-white">
+                                    <SelectValue placeholder="Pilih Proyek" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {projects.map(proj => (
+                                        <SelectItem key={proj.id} value={proj.id}>{proj.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     {/* Catatan */}
                     <div>

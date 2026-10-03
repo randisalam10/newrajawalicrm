@@ -22,9 +22,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { FileText, Edit3, Calculator, AlertCircle, Building2, CheckCircle2 } from "lucide-react"
+import { FileText, Edit3, Calculator, AlertCircle, Building2, CheckCircle2, Lock } from "lucide-react"
 import { createIncomingMaterial, updateIncomingMaterial } from "./actions"
-import { MaterialInRow } from "./columns"
+import { MaterialInRow } from "./types"
+import { SearchablePoSelector } from "./components/searchable-po-selector"
+import { toast } from "sonner"
 
 const formSchema = z.object({
     date: z.string().min(1, "Tanggal wajib diisi"),
@@ -83,10 +85,14 @@ export function MaterialInForm({
         } as any,
     })
 
-    // Filter POs relevant to this location
+    const [branchFilter, setBranchFilter] = useState<string>("ALL")
+
+    // Filter POs relevant to this user / role
     const availablePos = useMemo(() => {
-        if (!userLocationId || userRole === "SuperAdminBP") return approvedPos
-        return approvedPos.filter((p: any) => !p.locationId || p.locationId === userLocationId)
+        if (userLocationId && userRole !== "SuperAdminBP") {
+            return approvedPos.filter((p: any) => !p.locationId || p.locationId === userLocationId)
+        }
+        return approvedPos
     }, [approvedPos, userLocationId, userRole])
 
     const selectedPo = useMemo(() => {
@@ -105,6 +111,7 @@ export function MaterialInForm({
             setMode(hasPo ? "PO" : "MANUAL")
             setSelectedPoId(initialData.purchaseOrderId || "")
             setSelectedPoItemId(initialData.poItemId || "")
+            setBranchFilter(initialData.locationId || "ALL")
 
             const rawTonnage = initialData.tonnage || 0
             let defaultUnit = initialData.purchase_unit || "KG"
@@ -148,6 +155,7 @@ export function MaterialInForm({
             setMode(defaultMode)
             setSelectedPoId("")
             setSelectedPoItemId("")
+            setBranchFilter(userLocationId || "ALL")
 
             form.reset({
                 date: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16),
@@ -292,14 +300,27 @@ export function MaterialInForm({
         form.setValue("supplier", item.supplierName || po.supplierName || "Distributor Semen")
         form.setValue("unit_price", item.harga_satuan || 0)
 
+        // Enforce Cabang mengikuti lokasi PO
+        if (po.locationId) {
+            form.setValue("locationId", po.locationId)
+            setBranchFilter(po.locationId)
+        }
+
         // Detect unit
         const rawUnit = (item.satuan || "").toLowerCase()
+        const rawName = (item.itemName || "").toLowerCase()
         let pUnit = "TON"
-        if (rawUnit.includes("kapsul")) pUnit = "KAPSUL"
-        else if (rawUnit.includes("ton")) pUnit = "TON"
-        else if (rawUnit.includes("40")) pUnit = "ZAK_40"
-        else if (rawUnit.includes("sak") || rawUnit.includes("zak")) pUnit = "ZAK_50"
-        else if (rawUnit.includes("kg")) pUnit = "KG"
+        if (rawUnit.includes("kapsul") || rawName.includes("kapsul") || rawName.includes("curah")) {
+            pUnit = "KAPSUL"
+        } else if (rawUnit.includes("ton") || rawName.includes("1 ton") || rawName.includes("jumbo") || rawName.includes("bag")) {
+            pUnit = "TON"
+        } else if (rawUnit.includes("40") || rawName.includes("40kg") || rawName.includes("40 kg")) {
+            pUnit = "ZAK_40"
+        } else if (rawUnit.includes("sak") || rawUnit.includes("zak") || rawName.includes("50kg") || rawName.includes("50 kg")) {
+            pUnit = "ZAK_50"
+        } else if (rawUnit.includes("kg")) {
+            pUnit = "KG"
+        }
 
         const defaultQty = item.remainingQty > 0 ? item.remainingQty : item.quantity
         form.setValue("purchase_unit", pUnit)
@@ -320,6 +341,20 @@ export function MaterialInForm({
             form.setValue("tonnage", defaultQty)
             form.setValue("total_price", Math.round(defaultQty * (item.harga_satuan || 0)))
         }
+    }
+
+    const handleSelectPo = (po: any, item: any) => {
+        setSelectedPoId(po.id)
+        setSelectedPoItemId(item.id)
+        form.setValue("purchaseOrderId", po.id)
+        applyPoItem(po, item)
+    }
+
+    const handleClearPo = () => {
+        setSelectedPoId("")
+        setSelectedPoItemId("")
+        form.setValue("purchaseOrderId", null)
+        form.setValue("poItemId", null)
     }
 
     async function onSubmit(values: z.infer<typeof formSchema>) {
@@ -361,8 +396,9 @@ export function MaterialInForm({
 
         setIsLoading(false)
         if (result?.error) {
-            alert(result.error)
+            toast.error(result.error)
         } else {
+            toast.success(initialData ? "Data semen masuk berhasil diperbarui" : "Data semen masuk berhasil dicatat")
             onSuccess()
         }
     }
@@ -421,52 +457,22 @@ export function MaterialInForm({
                     <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-1">
                         {/* PO Selection Card (Jika Mode PO) */}
                         {mode === "PO" && (
-                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-2">
-                                <label className="text-xs font-semibold text-slate-700">Pilih Purchase Order (PO Semen Approved)</label>
-                                {availablePos.length === 0 ? (
-                                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
-                                        Belum ada PO Semen Approved untuk cabang ini. Silakan gunakan <strong>Input Manual Bebas</strong>.
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <Select value={selectedPoId} onValueChange={handlePoChange}>
-                                            <SelectTrigger className="w-full bg-white h-8 text-xs">
-                                                <SelectValue placeholder="Pilih Nomor PO Semen..." />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {availablePos.map((po: any) => (
-                                                    <SelectItem key={po.id} value={po.id} className="text-xs">
-                                                        <span className="font-mono font-bold mr-2">{po.po_number}</span>
-                                                        <span>· {po.supplierName}</span>
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-
-                                        {selectedPo && selectedPo.items.length > 1 && (
-                                            <Select
-                                                value={selectedPoItemId}
-                                                onValueChange={(itId) => {
-                                                    setSelectedPoItemId(itId)
-                                                    const item = selectedPo.items.find((i: any) => i.id === itId)
-                                                    if (item) applyPoItem(selectedPo, item)
-                                                }}
-                                            >
-                                                <SelectTrigger className="w-full bg-white h-8 text-xs">
-                                                    <SelectValue placeholder="Pilih Item Semen..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {selectedPo.items.map((it: any) => (
-                                                        <SelectItem key={it.id} value={it.id} className="text-xs">
-                                                            {it.itemName} ({it.quantity} {it.satuan}) · Sisa: {it.remainingQty} {it.satuan}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            <SearchablePoSelector
+                                availablePos={availablePos}
+                                selectedPoId={selectedPoId}
+                                selectedPoItemId={selectedPoItemId}
+                                onSelectPo={handleSelectPo}
+                                onClearPo={handleClearPo}
+                                locations={locations}
+                                branchFilter={branchFilter}
+                                onBranchFilterChange={(b) => {
+                                    setBranchFilter(b)
+                                    if (b !== "ALL") {
+                                        form.setValue("locationId", b)
+                                    }
+                                }}
+                                isSuperAdmin={userRole === "SuperAdminBP"}
+                            />
                         )}
 
                         {/* Baris 1: Merek Semen & Distributor */}
@@ -654,14 +660,39 @@ export function MaterialInForm({
                                 )}
                             />
 
-                            {userRole === "SuperAdminBP" ? (
+                            {mode === "PO" && selectedPo ? (
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
+                                        <span>Cabang Penerima</span>
+                                        <span className="text-[10px] text-blue-700 font-medium bg-blue-50 px-2 py-0.5 rounded border border-blue-200 flex items-center gap-1">
+                                            <Lock className="h-2.5 w-2.5" />
+                                            Terkunci Sesuai PO
+                                        </span>
+                                    </label>
+                                    <div className="h-8 px-3 bg-blue-50/60 border border-blue-200 rounded-md text-xs font-semibold text-blue-900 flex items-center justify-between">
+                                        <div className="flex items-center gap-1.5">
+                                            <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                                            <span>{selectedPo.locationName}</span>
+                                        </div>
+                                        <span className="text-[10px] text-slate-500 font-mono">
+                                            PO: {selectedPo.po_number}
+                                        </span>
+                                    </div>
+                                </div>
+                            ) : userRole === "SuperAdminBP" ? (
                                 <FormField
                                     control={form.control}
                                     name="locationId"
                                     render={({ field }) => (
                                         <FormItem>
                                             <FormLabel className="text-xs font-medium">Pilih Cabang (Hak SuperAdmin)</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <Select
+                                                onValueChange={(val) => {
+                                                    field.onChange(val)
+                                                    setBranchFilter(val)
+                                                }}
+                                                value={field.value}
+                                            >
                                                 <FormControl>
                                                     <SelectTrigger className="h-8 text-xs bg-white">
                                                         <SelectValue placeholder="Pilih Cabang" />

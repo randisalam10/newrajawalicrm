@@ -50,6 +50,8 @@ export default async function UsersPage() {
         locationId: user.employee?.locationId || "N/A",
         locationName: user.employee?.location?.name || "-",
         join_date: user.employee?.join_date ? user.employee.join_date.toISOString().split('T')[0] : "-",
+        isPoApprover: Boolean(user.isPoApprover),
+        poApproverRole: user.poApproverRole || "FVP",
     }))
 
     return (

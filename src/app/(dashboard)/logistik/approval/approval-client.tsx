@@ -214,15 +214,18 @@ export function ApprovalClient({
         if (!selectedPo) return
 
         let finalSigUrl = modalSigUrl || userSig || null
+        const isDesignatedSigner = Boolean(
+            selectedPo.fvpId === currentUser.id || selectedPo.ceoId === currentUser.id
+        )
 
-        // Approver non-admin wajib memiliki TTD PNG
-        if (!isAdmin && !finalSigUrl) {
-            alert("Harap upload tanda tangan PNG terlebih dahulu sebelum menyetujui PO.")
+        // Approver non-admin ATAU admin yang ditunjuk sebagai penandatangan resmi wajib memiliki TTD PNG
+        if ((!isAdmin || isDesignatedSigner) && !finalSigUrl) {
+            alert("Harap upload tanda tangan PNG terlebih dahulu sebelum menyetujui PO sebagai penandatangan resmi.")
             return
         }
 
         // Simpan sebagai default jika dicentang
-        if (!isAdmin && modalSaveAsDefault && finalSigUrl) {
+        if (modalSaveAsDefault && finalSigUrl) {
             await updateUserSignature(finalSigUrl)
             setUserSig(finalSigUrl)
         }
@@ -789,7 +792,13 @@ export function ApprovalClient({
                             ) : selectedPo.status === "SUBMITTED" ? (
                                 /* Section: Tanda Tangan & Catatan Approval */
                                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-                                    {isAdmin ? (
+                                    {selectedPo && (selectedPo.fvpId === currentUser.id || selectedPo.ceoId === currentUser.id) && (
+                                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded text-emerald-900 text-xs">
+                                            Anda ditunjuk sebagai <strong>Penandatangan Resmi ({selectedPo.ceoId === currentUser.id ? 'Pimpinan/CEO' : 'Yang Mengajukan/Approver'})</strong> pada PO ini. Tanda tangan digital Anda akan tertera pada dokumen cetak PO.
+                                        </div>
+                                    )}
+
+                                    {isAdmin && !(selectedPo.fvpId === currentUser.id || selectedPo.ceoId === currentUser.id) ? (
                                         <div className="p-2.5 bg-blue-50 border border-blue-200 rounded text-blue-900 text-xs">
                                             Persetujuan Anda sebagai <strong>Administrator</strong> bersifat bypass administratif (tanpa lampiran tanda tangan gambar).
                                         </div>

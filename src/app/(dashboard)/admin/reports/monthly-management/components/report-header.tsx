@@ -11,34 +11,7 @@ interface ReportHeaderProps {
 
 export function ReportHeader({ selectedPeriodLabel, onPrint }: ReportHeaderProps) {
     return (
-        <>
-            {/* ── KOP SURAT PRINT RESMI (Hanya muncul saat cetak PDF) ── */}
-            <div className="hidden print:block border-b-2 border-slate-900 pb-4 mb-6">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
-                            PT. RAJAWALI PERKASA MANDIRI
-                        </h1>
-                        <p className="text-xs text-slate-600 font-medium">
-                            Batching Plant & Ready-Mix Concrete Industry • Papua
-                        </p>
-                        <p className="text-[11px] text-slate-500">
-                            Jl. Raya Abepura - Sentani, Jayapura | Email: rsi.rajawali@gmail.com
-                        </p>
-                    </div>
-                    <div className="text-right">
-                        <div className="inline-block border border-slate-900 px-3 py-1 font-bold text-xs uppercase tracking-wider">
-                            DOKUMEN RAHASIA MANAJEMEN
-                        </div>
-                        <p className="text-xs text-slate-700 mt-1 font-semibold">
-                            Periode: {selectedPeriodLabel}
-                        </p>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── TOP HEADER (Screen Only) ── */}
-            <div className="print:hidden">
+        <div className="print:hidden">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 p-6 rounded-2xl text-white shadow-lg border border-slate-700/50">
                     <div className="space-y-1.5">
                         <div className="flex items-center gap-2">
@@ -66,7 +39,7 @@ export function ReportHeader({ selectedPeriodLabel, onPrint }: ReportHeaderProps
                         </Button>
                     </div>
                 </div>
-            </div>
-        </>
+        </div>
     )
 }
+

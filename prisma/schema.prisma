@@ -139,6 +139,8 @@ model User {
   auditLogs  AuditLog[]
 
   signatureUrl        String?          // URL / path TTD tersimpan approver
+  isPoApprover        Boolean          @default(false)
+  poApproverRole      String?          @default("FVP") // "FVP" | "CEO" | "BOTH"
   poSubmitted         PurchaseOrder[]  @relation("PoSubmittedBy")
   poRejected          PurchaseOrder[]  @relation("PoRejectedBy")
 
@@ -170,6 +172,10 @@ model User {
   creditsCreated          CreditObligation[] @relation("CreditCreatedBy")
   creditPaymentsRecorded  CreditPayment[]    @relation("CreditPaymentRecordedBy")
   creditPaymentsCancelled CreditPayment[]    @relation("CreditPaymentCancelledBy")
+
+  // Monthly Closing Relations
+  monthlyClosingsClosed   MonthlyClosing[]   @relation("MonthlyClosedBy")
+  monthlyClosingsReopened MonthlyClosing[]   @relation("MonthlyReopenedBy")
 }
 
 model WebPushSubscription {
@@ -234,6 +240,7 @@ model Location {
   materialPriceHistories MaterialPriceHistory[]
   fixedCostContracts     FixedCostContract[]
   operationalTargetSettings OperationalTargetSetting[]
+  monthlyClosings           MonthlyClosing[]
 }
 
 model Vehicle {
@@ -1392,3 +1399,60 @@ model CreditAuditLog {
   @@index([createdAt])
 }
 
+
+
+// ─── MODUL FINANCE: TUTUP BUKU & REPORT SNAPSHOT (PERIOD CLOSING) ───────────
+
+enum ClosingStatus {
+  OPEN
+  CLOSED
+}
+
+model MonthlyClosing {
+  id               String        @id @default(uuid())
+  closingKey       String        @unique // e.g. "2026-09__ALL" atau "2026-09__<locationId>"
+  period           String        // "YYYY-MM", misal: "2026-09"
+  year             Int           // 2026
+  month            Int           // 9
+  locationId       String?       // null = Konsolidasi Semua Cabang (Pusat)
+  location         Location?     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  status           ClosingStatus @default(CLOSED)
+  closedAt         DateTime      @default(now())
+  closedById       String
+  closedBy         User          @relation("MonthlyClosedBy", fields: [closedById], references: [id])
+
+  // Ringkasan Finansial Pokok (Denormalized)
+  totalVolume      Float         @default(0) // Total m³ beton
+  totalRevenue     Float         @default(0) // Total DPP (Rp)
+  totalCogs        Float         @default(0) // Total HPP (Rp)
+  totalGrossProfit Float         @default(0) // Laba Kotor (Rp)
+  totalOverhead    Float         @default(0) // Beban Usaha / RBL (Rp)
+  totalNetProfit   Float         @default(0) // Laba Bersih (Rp)
+
+  // Rincian Biaya Pokok Langsung
+  semenCost        Float         @default(0)
+  pasirCost        Float         @default(0)
+  split12Cost      Float         @default(0)
+  split23Cost      Float         @default(0)
+  solarCost        Float         @default(0)
+  retaseCost       Float         @default(0)
+  maintenanceCost  Float         @default(0)
+
+  // Full Immutable Snapshot (JSON)
+  snapshotData     Json          // Menyimpan seluruh payload data MonthlyManagementReportResult
+  notes            String?       // Catatan auditor / finance
+
+  // Opsi Buka Kembali (Reopen) jika ada koreksi darurat
+  reopenedAt       DateTime?
+  reopenedById     String?
+  reopenedBy       User?         @relation("MonthlyReopenedBy", fields: [reopenedById], references: [id])
+  reopenReason     String?
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([period])
+  @@index([locationId])
+  @@index([status])
+}

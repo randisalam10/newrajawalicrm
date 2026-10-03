@@ -21,6 +21,7 @@ export function KreditClient({
     companies,
     suppliers,
     locations,
+    projects,
     userRole,
     userPermissions,
 }: KreditClientProps) {
@@ -76,6 +77,17 @@ export function KreditClient({
         refreshData(filters)
     }
 
+    const handleAllocationQuickSwitch = (alloc: typeof filters.allocationType) => {
+        const nextFilters = {
+            ...filters,
+            allocationType: alloc,
+            companyProjectId: alloc === "BATCHING_PLANT" || alloc === "HOLDING" ? "ALL" : filters.companyProjectId,
+            locationId: alloc === "PROJECT" || alloc === "HOLDING" ? "ALL" : filters.locationId,
+        }
+        setFilters(nextFilters)
+        refreshData(nextFilters)
+    }
+
     return (
         <div className="space-y-4 w-full pb-12">
             {/* Page Header */}
@@ -104,6 +116,7 @@ export function KreditClient({
                 companies={companies}
                 suppliers={suppliers}
                 locations={locations}
+                projects={projects}
                 onApply={handleApplyFilters}
                 onSyncPos={handleSyncPos}
                 onOpenCreateModal={() => setIsCreateModalOpen(true)}
@@ -134,6 +147,8 @@ export function KreditClient({
                         onOpenDetail={openDetail}
                         onOpenPayment={openRecordPayment}
                         canManage={canManage}
+                        currentAllocation={filters.allocationType}
+                        onAllocationChange={handleAllocationQuickSwitch}
                     />
                 </TabsContent>
 
@@ -181,6 +196,7 @@ export function KreditClient({
                 setCreateForm={setCreateForm}
                 companies={companies}
                 locations={locations}
+                projects={projects}
                 onSubmit={handleCreateCreditSubmit}
                 isPending={isPending}
             />

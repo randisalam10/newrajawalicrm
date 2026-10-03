@@ -218,12 +218,65 @@ CREATE INDEX IF NOT EXISTS "CreditAuditLog_createdAt_idx" ON "CreditAuditLog"("c
 DO $$ BEGIN ALTER TABLE "CreditAuditLog" ADD CONSTRAINT "CreditAuditLog_creditId_fkey" FOREIGN KEY ("creditId") REFERENCES "CreditObligation"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN ALTER TABLE "CreditAuditLog" ADD CONSTRAINT "CreditAuditLog_paymentId_fkey" FOREIGN KEY ("paymentId") REFERENCES "CreditPayment"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- 9b. User: PO Approver Fields
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isPoApprover" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "poApproverRole" TEXT DEFAULT 'FVP';
+
+-- 9c. ClosingStatus Enum & MonthlyClosing Table
+DO $$ BEGIN
+    CREATE TYPE "ClosingStatus" AS ENUM ('OPEN', 'CLOSED');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS "MonthlyClosing" (
+    "id" TEXT NOT NULL,
+    "closingKey" TEXT NOT NULL,
+    "period" TEXT NOT NULL,
+    "year" INTEGER NOT NULL,
+    "month" INTEGER NOT NULL,
+    "locationId" TEXT,
+    "status" "ClosingStatus" NOT NULL DEFAULT 'CLOSED',
+    "closedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "closedById" TEXT NOT NULL,
+    "totalVolume" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalRevenue" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalCogs" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalGrossProfit" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalOverhead" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalNetProfit" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "semenCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "pasirCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "split12Cost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "split23Cost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "solarCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "retaseCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "maintenanceCost" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "snapshotData" JSONB NOT NULL,
+    "notes" TEXT,
+    "reopenedAt" TIMESTAMP(3),
+    "reopenedById" TEXT,
+    "reopenReason" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT "MonthlyClosing_pkey" PRIMARY KEY ("id")
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "MonthlyClosing_closingKey_key" ON "MonthlyClosing"("closingKey");
+CREATE INDEX IF NOT EXISTS "MonthlyClosing_period_idx" ON "MonthlyClosing"("period");
+CREATE INDEX IF NOT EXISTS "MonthlyClosing_locationId_idx" ON "MonthlyClosing"("locationId");
+CREATE INDEX IF NOT EXISTS "MonthlyClosing_status_idx" ON "MonthlyClosing"("status");
+
+DO $$ BEGIN ALTER TABLE "MonthlyClosing" ADD CONSTRAINT "MonthlyClosing_locationId_fkey" FOREIGN KEY ("locationId") REFERENCES "Location"("id") ON DELETE CASCADE ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MonthlyClosing" ADD CONSTRAINT "MonthlyClosing_closedById_fkey" FOREIGN KEY ("closedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN ALTER TABLE "MonthlyClosing" ADD CONSTRAINT "MonthlyClosing_reopenedById_fkey" FOREIGN KEY ("reopenedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE; EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- 10. Catat status migrasi di _prisma_migrations agar prisma migrate deploy aman
 INSERT INTO "_prisma_migrations" (id, checksum, finished_at, migration_name, logs, rolled_back_at, started_at, applied_steps_count)
 VALUES 
     (gen_random_uuid()::text, 'applied-manual-fix', now(), '20260929000000_add_ppn_mode_to_project_price', NULL, NULL, now(), 1),
     (gen_random_uuid()::text, 'applied-manual-fix', now(), '20260930000000_add_custom_material_name', NULL, NULL, now(), 1),
-    (gen_random_uuid()::text, 'applied-manual-fix', now(), '20261003000000_add_missing_models_and_columns', NULL, NULL, now(), 1)
+    (gen_random_uuid()::text, 'applied-manual-fix', now(), '20261003000000_add_missing_models_and_columns', NULL, NULL, now(), 1),
+    (gen_random_uuid()::text, 'applied-manual-fix', now(), '20261003160000_add_user_po_approver_and_monthly_closing', NULL, NULL, now(), 1)
 ON CONFLICT (migration_name) DO UPDATE 
 SET finished_at = now(), rolled_back_at = NULL, applied_steps_count = 1;
 

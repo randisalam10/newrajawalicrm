@@ -2,6 +2,7 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { getMasterMaterialsData } from "./actions"
 import { MasterMaterialClient } from "./master-material-client"
+import { isCorporateUser } from "@/lib/rbac"
 
 export const metadata = {
     title: "Master Harga Material | RajawaliMix",
@@ -14,6 +15,7 @@ export default async function MasterMaterialPage() {
         redirect("/login")
     }
 
+    const isCorporate = isCorporateUser(session.user)
     const { materials, histories, locations } = await getMasterMaterialsData()
 
     return (
@@ -23,6 +25,7 @@ export default async function MasterMaterialPage() {
             locations={locations}
             userRole={session.user.role || ""}
             userLocationId={session.user.locationId || null}
+            isCorporate={isCorporate}
         />
     )
 }

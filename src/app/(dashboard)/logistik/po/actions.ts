@@ -24,7 +24,7 @@ const poSchema = z.object({
     categoryId: z.string().min(1, "Kategori wajib dipilih"),
     supplierId: z.string().min(1, "Supplier wajib dipilih"),
     pimpinan: z.string().min(1, "Pimpinan wajib diisi"),
-    kepala_peralatan: z.string().min(1, "Kepala Peralatan wajib diisi"),
+    kepala_peralatan: z.string().optional().default("-"),
     jabatan_kepala: z.string().optional(),
     metode_pembayaran: z.nativeEnum(PoPaymentMethod).default("CREDIT"),
     km_hm_kendaraan: z.string().optional(),
@@ -441,7 +441,7 @@ export async function createPurchaseOrder(data: {
                     categoryId: data.categoryId,
                     supplierId: data.supplierId,
                     pimpinan: data.pimpinan,
-                    kepala_peralatan: data.kepala_peralatan,
+                    kepala_peralatan: data.kepala_peralatan || "-",
                     pembuat_admin: data.pembuat_admin,
                     metode_pembayaran: data.metode_pembayaran,
                     companyProjectId,
@@ -558,7 +558,7 @@ export async function createPurchaseOrder(data: {
             revalidatePath("/logistik/po")
             revalidatePath("/logistik/po/create")
             revalidatePath("/logistik/master-barang")
-            return { success: true, po_number }
+            return { success: true, po_number, id: created.id }
         } catch (e: any) {
             lastError = e
             // Check for Prisma unique constraint violation (code P2002) specifically on po_number
@@ -849,6 +849,38 @@ export async function deletePurchaseOrder(id: string) {
     }
 }
 
+export async function fetchSignersSafe() {
+    try {
+        return await prisma.user.findMany({ 
+            where: { 
+                OR: [
+                    { role: { in: ['CEO', 'FVP', 'Approver'] } },
+                    { isPoApprover: true }
+                ]
+            }, 
+            select: { 
+                id: true, 
+                username: true, 
+                role: true,
+                isPoApprover: true,
+                poApproverRole: true,
+                employee: { select: { name: true } }
+            }, 
+            orderBy: { username: 'asc' } 
+        })
+    } catch {
+        const rows = await prisma.$queryRaw<any[]>`
+            SELECT u.id, u.username, u.role, u."isPoApprover", u."poApproverRole",
+                   json_build_object('name', e.name) as employee
+            FROM "User" u
+            LEFT JOIN "Employee" e ON e.id = u."employeeId"
+            WHERE u.role IN ('CEO', 'FVP', 'Approver') OR u."isPoApprover" = true
+            ORDER BY u.username ASC
+        `
+        return rows
+    }
+}
+
 // For PO Create form: load master data
 export async function getPoFormData() {
     const [companies, categories, suppliers, items, signers, vehicles, locations] = await Promise.all([
@@ -856,16 +888,7 @@ export async function getPoFormData() {
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
         prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
         prisma.masterItem.findMany({ include: { supplier: true }, orderBy: { name: 'asc' } }),
-        prisma.user.findMany({ 
-            where: { role: { in: ['CEO', 'FVP', 'Approver'] } }, 
-            select: { 
-                id: true, 
-                username: true, 
-                role: true,
-                employee: { select: { name: true } }
-            }, 
-            orderBy: { username: 'asc' } 
-        }),
+        fetchSignersSafe(),
         prisma.vehicle.findMany({
             include: {
                 category: true,
@@ -1148,6 +1171,7 @@ export async function updatePurchaseOrder(poId: string, data: {
                 where: { id: poId },
                 data: {
                     ...poData,
+                    kepala_peralatan: poData.kepala_peralatan || "-",
                     is_for_bp: poData.is_for_bp ?? false,
                     km_hm_kendaraan: resolvedKmHm,
                     companyProjectId: poData.companyProjectId || null,

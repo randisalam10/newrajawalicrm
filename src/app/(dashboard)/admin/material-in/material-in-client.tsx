@@ -1,25 +1,32 @@
 "use client"
 
-import { useMemo, useState } from "react"
-
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table"
-import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
+import { useMemo, useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { getIncomingColumns, getLedgerColumns, MaterialInRow, LedgerRow } from "./columns"
-import { Plus, PackagePlus, ClipboardList, Edit, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Plus, PackagePlus, ClipboardList } from "lucide-react"
+import { toast } from "sonner"
+
+import { MaterialInRow, LedgerRow, MaterialInStats } from "./types"
+import { MaterialInStatsCards } from "./components/material-in-stats"
+import { MaterialInTable } from "./components/material-in-table"
+import { MaterialInLedgerTable } from "./components/material-in-ledger-table"
+import { MaterialInDetailDialog } from "./components/material-in-detail-dialog"
+import { MaterialInDeleteDialog } from "./components/material-in-delete-dialog"
 import { MaterialInForm } from "./material-in-form"
+import { deleteIncomingMaterial } from "./actions"
+
+interface MaterialInClientProps {
+    initialData: any[]
+    initialLedger: any[]
+    locations: any[]
+    approvedCementPos?: any[]
+    userRole: string
+    userLocationId?: string | null
+    isCorporate?: boolean
+    canManage?: boolean
+    isReadOnly?: boolean
+}
 
 export function MaterialInClient({
     initialData,
@@ -31,47 +38,105 @@ export function MaterialInClient({
     isCorporate = false,
     canManage = true,
     isReadOnly = false,
-}: {
-    initialData: any[]
-    initialLedger: any[]
-    locations: any[]
-    approvedCementPos?: any[]
-    userRole: string
-    userLocationId?: string | null
-    isCorporate?: boolean
-    canManage?: boolean
-    isReadOnly?: boolean
-}) {
-    // ----------------------------------------------------
-    // STATE: Semen Masuk
-    // ----------------------------------------------------
+}: MaterialInClientProps) {
     const [isFormOpen, setIsFormOpen] = useState(false)
     const [editingData, setEditingData] = useState<MaterialInRow | null>(null)
+    const [detailItem, setDetailItem] = useState<MaterialInRow | null>(null)
+    const [deleteItem, setDeleteItem] = useState<MaterialInRow | null>(null)
+    const [isDeleting, startDeleteTransition] = useTransition()
 
-    // Format IN Data
+    // Format Material Incoming Rows
     const formattedInData: MaterialInRow[] = useMemo(() => {
-        return initialData.map((t: any) => ({
-            id: t.id,
-            date: new Date(t.date).toISOString().split('T')[0],
-            name: t.name,
-            supplier: t.supplier,
-            tonnage: t.tonnage,
-            delivery_note: t.delivery_note,
-            locationName: t.location?.name || 'N/A',
-            locationId: t.locationId,
-            unit_price: t.unit_price || 0,
-            total_price: t.total_price || 0,
-            purchase_unit: t.purchase_unit || "KG",
-            purchase_qty: t.purchase_qty,
-            purchaseOrderId: t.purchaseOrderId,
-            poNumber: t.purchaseOrder?.po_number || null,
-            poItemId: t.poItemId,
-        }))
+        return initialData.map((t: any) => {
+            const dateObj = new Date(t.date)
+            const formattedDate = dateObj.toLocaleDateString("id-ID", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+            })
+            const formattedTime = dateObj.toLocaleTimeString("id-ID", {
+                hour: "2-digit",
+                minute: "2-digit",
+            })
+
+            const tonnage = t.tonnage || 0
+            const totalPrice = t.total_price || 0
+            const effectivePricePerKg = tonnage > 0 && totalPrice > 0 ? totalPrice / tonnage : null
+
+            return {
+                id: t.id,
+                date: dateObj.toISOString().split("T")[0],
+                formattedDate,
+                formattedTime,
+                name: t.name,
+                supplier: t.supplier,
+                tonnage,
+                delivery_note: t.delivery_note,
+                locationName: t.location?.name || "N/A",
+                locationId: t.locationId,
+                unit_price: t.unit_price || 0,
+                total_price: totalPrice,
+                purchase_unit: t.purchase_unit || "KG",
+                purchase_qty: t.purchase_qty ?? null,
+                purchaseOrderId: t.purchaseOrderId || null,
+                poNumber: t.purchaseOrder?.po_number || null,
+                poStatus: t.purchaseOrder?.status || null,
+                poDate: t.purchaseOrder?.tanggal_terbit
+                    ? new Date(t.purchaseOrder.tanggal_terbit).toLocaleDateString("id-ID", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                      })
+                    : null,
+                poCompany: t.purchaseOrder?.companyGroup?.name || null,
+                poItemId: t.poItemId || null,
+                poItemName: t.poItem?.masterItem?.name || null,
+                poItemQty: t.poItem?.quantity ?? null,
+                poItemUnitPrice: t.poItem?.harga_satuan ?? null,
+                effectivePricePerKg,
+            }
+        })
     }, [initialData])
+
+    // Calculate KPI Stats
+    const stats: MaterialInStats = useMemo(() => {
+        let totalKg = 0
+        let totalNilai = 0
+        let poLinkedCount = 0
+
+        formattedInData.forEach((item) => {
+            totalKg += item.tonnage || 0
+            totalNilai += item.total_price || 0
+            if (item.purchaseOrderId || item.poNumber) {
+                poLinkedCount++
+            }
+        })
+
+        const totalTon = totalKg / 1000
+        const totalTransactions = formattedInData.length
+        const avgPricePerKg = totalKg > 0 && totalNilai > 0 ? totalNilai / totalKg : 0
+        const manualCount = Math.max(0, totalTransactions - poLinkedCount)
+
+        return {
+            totalTon,
+            totalKg,
+            totalNilai,
+            avgPricePerKg,
+            totalTransactions,
+            poLinkedCount,
+            manualCount,
+        }
+    }, [formattedInData])
 
     const formattedLedger: LedgerRow[] = useMemo(() => {
         return initialLedger as LedgerRow[]
     }, [initialLedger])
+
+    // Handlers
+    const handleOpenCreate = () => {
+        setEditingData(null)
+        setIsFormOpen(true)
+    }
 
     const handleEdit = (row: MaterialInRow) => {
         if (!canManage) return
@@ -79,210 +144,93 @@ export function MaterialInClient({
         setIsFormOpen(true)
     }
 
-    const handleDelete = async (row: MaterialInRow) => {
-        if (!canManage) return
-        if (confirm(`Apakah Anda yakin ingin menghapus data Semen Masuk "${row.name}" dari ${row.supplier}?`)) {
+    const handleDeleteConfirm = (item: MaterialInRow) => {
+        startDeleteTransition(async () => {
             try {
-                await import('./actions').then(m => m.deleteIncomingMaterial(row.id))
-            } catch (e) {
-                console.error(e)
+                const res = await deleteIncomingMaterial(item.id)
+                if (res?.error) {
+                    toast.error(res.error)
+                } else {
+                    toast.success(`Data semen masuk ${item.delivery_note} berhasil dihapus`)
+                    setDeleteItem(null)
+                }
+            } catch (err: any) {
+                toast.error(err.message || "Gagal menghapus data semen masuk")
             }
-        }
+        })
     }
 
     const showCabang = userRole === "SuperAdminBP" || isCorporate
 
     return (
-        <div className="space-y-4">
-            <div className="flex justify-between items-center gap-2">
-                <div className="flex items-center gap-2">
+        <div className="space-y-4 w-full">
+            {/* Header & Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                    <h1 className="text-xl font-bold tracking-tight text-slate-900">
+                        Semen Masuk & Stok Silo
+                    </h1>
+                    <p className="text-xs text-slate-500">
+                        Pencatatan penerimaan semen, verifikasi PO vendor, audit harga, dan kartu stok silo BP.
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 self-start sm:self-auto">
                     {isReadOnly && (
-                        <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
+                        <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800 text-xs px-2.5 py-1">
                             Mode Pemantauan (Hanya Lihat)
                         </Badge>
                     )}
+                    {canManage && (
+                        <Button
+                            onClick={handleOpenCreate}
+                            size="sm"
+                            className="h-9 gap-1.5 text-xs bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
+                        >
+                            <Plus className="h-4 w-4" />
+                            Tambah Data
+                        </Button>
+                    )}
                 </div>
-                {canManage && (
-                    <Button onClick={() => { setEditingData(null); setIsFormOpen(true) }} size="sm" className="h-8 gap-1.5 text-xs">
-                        <Plus className="h-4 w-4" />
-                        Tambah Data
-                    </Button>
-                )}
             </div>
 
-            <Tabs defaultValue="masuk" className="space-y-4">
-                <TabsList className="grid w-full grid-cols-2 lg:w-[400px]">
-                    <TabsTrigger value="masuk" className="gap-2"><PackagePlus className="h-4 w-4" /> Data Semen Masuk</TabsTrigger>
-                    <TabsTrigger value="stok" className="gap-2"><ClipboardList className="h-4 w-4" /> Kartu Stok (Ledger)</TabsTrigger>
+            {/* KPI Summary Cards */}
+            <MaterialInStatsCards stats={stats} />
+
+            {/* Tabs & Content */}
+            <Tabs defaultValue="masuk" className="space-y-3">
+                <TabsList className="grid w-full grid-cols-2 lg:w-[380px] bg-slate-100/90 p-1">
+                    <TabsTrigger value="masuk" className="gap-2 text-xs font-medium">
+                        <PackagePlus className="h-4 w-4" />
+                        Data Semen Masuk
+                    </TabsTrigger>
+                    <TabsTrigger value="stok" className="gap-2 text-xs font-medium">
+                        <ClipboardList className="h-4 w-4" />
+                        Kartu Stok (Ledger)
+                    </TabsTrigger>
                 </TabsList>
 
                 {/* TAB 1: DATA SEMEN MASUK */}
-                <TabsContent value="masuk">
-                    <Card className="border-none shadow-md overflow-hidden bg-white">
-                        <SimpleDataTable<MaterialInRow>
-                            data={formattedInData}
-                            searchKeys={["supplier", "name", "delivery_note"]}
-                            searchPlaceholder="Cari distributor, semen, atau bon..."
-                        >
-                            {(items, sortConfig, toggleSort) => (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-slate-50/50">
-                                            <TableHead>
-                                                <SortableHeader<MaterialInRow> label="Tanggal" sortKey="date" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            {showCabang && (
-                                                <TableHead>
-                                                    <SortableHeader<MaterialInRow> label="Cabang" sortKey="locationName" sortConfig={sortConfig} onSort={toggleSort} />
-                                                </TableHead>
-                                            )}
-                                            <TableHead>
-                                                <SortableHeader<MaterialInRow> label="Nama Semen" sortKey="name" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader<MaterialInRow> label="Distributor" sortKey="supplier" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader<MaterialInRow> label="Jumlah (KG)" sortKey="tonnage" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader<MaterialInRow> label="No Bon" sortKey="delivery_note" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            {canManage && (
-                                                <TableHead className="w-[100px] text-right text-xs uppercase font-semibold">Aksi</TableHead>
-                                            )}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {items.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={showCabang ? (canManage ? 7 : 6) : (canManage ? 6 : 5)} className="h-24 text-center text-muted-foreground">
-                                                    Belum ada data Semen Masuk.
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                        {items.map((item) => (
-                                            <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <TableCell className="text-sm">{item.date}</TableCell>
-                                                {showCabang && (
-                                                    <TableCell>
-                                                        <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
-                                                            {item.locationName}
-                                                        </span>
-                                                    </TableCell>
-                                                )}
-                                                <TableCell className="font-medium text-sm text-slate-800">{item.name}</TableCell>
-                                                <TableCell className="text-sm">{item.supplier}</TableCell>
-                                                <TableCell className="font-bold text-sm">{item.tonnage.toLocaleString('id-ID')}</TableCell>
-                                                <TableCell className="text-sm text-slate-500">{item.delivery_note}</TableCell>
-                                                {canManage && (
-                                                    <TableCell>
-                                                        <div className="flex items-center justify-end gap-1">
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(item)}>
-                                                                <Edit className="h-4 w-4 text-slate-500" />
-                                                            </Button>
-                                                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(item)}>
-                                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                                            </Button>
-                                                        </div>
-                                                    </TableCell>
-                                                )}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </SimpleDataTable>
-                    </Card>
+                <TabsContent value="masuk" className="space-y-3 outline-hidden">
+                    <MaterialInTable
+                        data={formattedInData}
+                        showCabang={showCabang}
+                        canManage={canManage}
+                        onViewDetail={(item) => setDetailItem(item)}
+                        onEdit={(item) => handleEdit(item)}
+                        onDelete={(item) => setDeleteItem(item)}
+                    />
                 </TabsContent>
 
                 {/* TAB 2: KARTU STOK (LEDGER) */}
-                <TabsContent value="stok">
-                    <Card className="border-none shadow-md overflow-hidden bg-white">
-                        <SimpleDataTable<LedgerRow>
-                            data={formattedLedger}
-                            searchKeys={["description", "reference"]}
-                            searchPlaceholder="Cari keterangan atau referensi..."
-                        >
-                            {(items, sortConfig, toggleSort) => (
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow className="bg-slate-50/50">
-                                            <TableHead>
-                                                <SortableHeader label="Tanggal / Jam" sortKey="formattedDate" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            {showCabang && (
-                                                <TableHead>
-                                                    <SortableHeader label="Cabang" sortKey="locationName" sortConfig={sortConfig} onSort={toggleSort} />
-                                                </TableHead>
-                                            )}
-                                            <TableHead>
-                                                <SortableHeader label="Tipe" sortKey="type" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader label="Keterangan" sortKey="description" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader label="Referensi" sortKey="reference" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader label="Masuk (KG)" sortKey="qty_in" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader label="Keluar (KG)" sortKey="qty_out" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                            <TableHead>
-                                                <SortableHeader label="Stok (KG)" sortKey="balance" sortConfig={sortConfig} onSort={toggleSort} />
-                                            </TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {items.length === 0 && (
-                                            <TableRow>
-                                                <TableCell colSpan={showCabang ? 8 : 7} className="h-24 text-center text-muted-foreground">
-                                                    Belum ada rincian mutasi stok.
-                                                </TableCell>
-                                            </TableRow>
-                                        )}
-                                        {items.map((item) => {
-                                            const isOut = item.type === "OUT"
-                                            return (
-                                                <TableRow key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                                                    <TableCell className="text-xs whitespace-nowrap">{item.formattedDate}</TableCell>
-                                                    {showCabang && (
-                                                        <TableCell>
-                                                            <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10 uppercase">
-                                                                {item.locationName}
-                                                            </span>
-                                                        </TableCell>
-                                                    )}
-                                                    <TableCell>
-                                                        <Badge variant={isOut ? "destructive" : "default"} className="text-[10px] uppercase font-bold py-0 h-5">
-                                                            {isOut ? "OUT" : "IN"}
-                                                        </Badge>
-                                                    </TableCell>
-                                                    <TableCell className="font-medium text-sm max-w-[200px] truncate">{item.description}</TableCell>
-                                                    <TableCell className="text-xs text-muted-foreground">{item.reference}</TableCell>
-                                                    <TableCell className="text-sm">
-                                                        {item.qty_in > 0 ? <span className="font-bold text-green-600">+{item.qty_in.toLocaleString('id-ID')}</span> : <span className="text-slate-300">-</span>}
-                                                    </TableCell>
-                                                    <TableCell className="text-sm">
-                                                        {item.qty_out > 0 ? <span className="font-bold text-red-600">-{item.qty_out.toLocaleString('id-ID', { maximumFractionDigits: 1 })}</span> : <span className="text-slate-300">-</span>}
-                                                    </TableCell>
-                                                    <TableCell className="font-bold text-sm text-slate-900 border-l border-slate-100 pl-4 bg-slate-50/30">
-                                                        {item.balance.toLocaleString('id-ID', { maximumFractionDigits: 1 })}
-                                                    </TableCell>
-                                                </TableRow>
-                                            )
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            )}
-                        </SimpleDataTable>
-                    </Card>
+                <TabsContent value="stok" className="space-y-3 outline-hidden">
+                    <MaterialInLedgerTable
+                        data={formattedLedger}
+                        showCabang={showCabang}
+                    />
                 </TabsContent>
             </Tabs>
 
+            {/* Form Modal (Add / Edit) */}
             <MaterialInForm
                 isOpen={isFormOpen}
                 initialData={editingData}
@@ -292,6 +240,24 @@ export function MaterialInClient({
                 userLocationId={userLocationId}
                 onSuccess={() => setIsFormOpen(false)}
                 onCancel={() => setIsFormOpen(false)}
+            />
+
+            {/* Detail Tracing Dialog */}
+            <MaterialInDetailDialog
+                isOpen={Boolean(detailItem)}
+                onClose={() => setDetailItem(null)}
+                item={detailItem}
+                onEdit={(item) => handleEdit(item)}
+                canManage={canManage}
+            />
+
+            {/* Delete Confirmation Dialog */}
+            <MaterialInDeleteDialog
+                isOpen={Boolean(deleteItem)}
+                onClose={() => setDeleteItem(null)}
+                item={deleteItem}
+                onConfirm={handleDeleteConfirm}
+                isDeleting={isDeleting}
             />
         </div>
     )

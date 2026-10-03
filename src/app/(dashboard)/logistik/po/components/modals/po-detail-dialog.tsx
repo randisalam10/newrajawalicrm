@@ -239,16 +239,18 @@ export function PODetailDialog({
                                     </div>
                                     <div className="space-y-1.5 pt-0.5">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 text-[11px]">Admin Pembuat:</span>
+                                            <span className="text-slate-500 text-[11px]">1. Menyetujui (Kiri):</span>
+                                            <span className="font-medium text-slate-800">{detailPo.pimpinan || "-"}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 text-[11px] truncate max-w-[130px]">2. Mengetahui (Tengah):</span>
+                                            <span className="font-medium text-slate-800">
+                                                {detailPo.kepala_peralatan && detailPo.kepala_peralatan !== "-" ? detailPo.kepala_peralatan : "— (Kosong)"}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-slate-500 text-[11px]">3. Yang Mengajukan (Kanan):</span>
                                             <span className="font-medium text-slate-800">{detailPo.pembuat_admin}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 text-[11px] truncate max-w-[110px]">{detailPo.jabatan_kepala || "Kepala Alat"}:</span>
-                                            <span className="font-medium text-slate-800">{detailPo.kepala_peralatan}</span>
-                                        </div>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-slate-500 text-[11px]">Pimpinan:</span>
-                                            <span className="font-medium text-slate-800">{detailPo.pimpinan}</span>
                                         </div>
                                         {/* Status Approval Section */}
                                         {detailPo.status === 'APPROVED' ? (
