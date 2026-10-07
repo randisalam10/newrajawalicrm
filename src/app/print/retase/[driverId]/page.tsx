@@ -150,23 +150,46 @@ export default async function PrintRetasePage({
             }
         }
 
-        const dtRecords = await prisma.aggregateIncoming.findMany({
-            where: {
-                source_type: "Internal",
-                retase_amount: { gt: 0 },
-                date: { gte: startDate, lte: endDate },
-                ...(locationId ? { locationId } : {}),
-                OR: [
-                    { driverId: resolvedDriverId },
-                    { driver_name: driverName },
-                ]
-            },
-            include: {
-                location: true,
-                vehicle: true,
-            },
-            orderBy: { date: "asc" }
-        })
+        const driverConditions = [
+            ...(resolvedDriverId && !resolvedDriverId.startsWith("name_") ? [{ driverId: resolvedDriverId }] : []),
+            ...(driverName ? [{ driver_name: driverName }] : []),
+        ]
+
+        const [dtIncomingRecords, dtOutgoingRecords] = await Promise.all([
+            prisma.aggregateIncoming.findMany({
+                where: {
+                    source_type: "Internal",
+                    retase_amount: { gt: 0 },
+                    date: { gte: startDate, lte: endDate },
+                    ...(locationId ? { locationId } : {}),
+                    ...(driverConditions.length > 0 ? { OR: driverConditions } : {}),
+                },
+                include: {
+                    location: true,
+                    vehicle: true,
+                },
+                orderBy: { date: "asc" }
+            }),
+            prisma.aggregateOutgoing.findMany({
+                where: {
+                    transport_mode: "INTERNAL_DT",
+                    retase_amount: { gt: 0 },
+                    date: { gte: startDate, lte: endDate },
+                    ...(locationId ? { locationId } : {}),
+                    ...(driverConditions.length > 0 ? { OR: driverConditions } : {}),
+                },
+                include: {
+                    location: true,
+                    vehicle: true,
+                },
+                orderBy: { date: "asc" }
+            }),
+        ])
+
+        const dtRecords = [
+            ...dtIncomingRecords.map(tx => ({ ...tx, movement_type: "INCOMING" as const })),
+            ...dtOutgoingRecords.map(tx => ({ ...tx, movement_type: "OUTGOING" as const })),
+        ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
         if (dtRecords.length === 0 && !driverName) return notFound()
 
@@ -175,19 +198,26 @@ export default async function PrintRetasePage({
         const totalKm = dtRecords.reduce((s, t) => s + (t.distance_km ?? 0), 0)
         const totalIncome = dtRecords.reduce((s, t) => s + (t.retase_amount ?? 0), 0)
 
-        const records = dtRecords.map(tx => ({
-            id: tx.id,
-            date: tx.date.toISOString(),
-            volume_cubic: tx.volume_cubic,
-            no_bon: tx.no_bon,
-            aggregate_type: tx.aggregate_type,
-            dump_truck_size: tx.dump_truck_size,
-            plate_number: tx.plate_number || tx.vehicle?.plate_number,
-            vehicleCode: tx.vehicle?.code || "DT",
-            distance_km: tx.distance_km,
-            rate_price: tx.rate_price,
-            retase_amount: tx.retase_amount,
-        }))
+        const records = dtRecords.map(tx => {
+            const rawType = tx.aggregate_type
+            const label = rawType === "Other" && tx.custom_material_name
+                ? tx.custom_material_name
+                : rawType
+            const tag = tx.movement_type === "OUTGOING" ? " (Keluar)" : ""
+            return {
+                id: tx.id,
+                date: tx.date.toISOString(),
+                volume_cubic: tx.volume_cubic,
+                no_bon: tx.no_bon || "-",
+                aggregate_type: `${label}${tag}`,
+                dump_truck_size: tx.dump_truck_size ?? undefined,
+                plate_number: tx.plate_number || tx.vehicle?.plate_number || undefined,
+                vehicleCode: tx.vehicle?.code || "DT",
+                distance_km: tx.distance_km ?? undefined,
+                rate_price: tx.rate_price ?? undefined,
+                retase_amount: tx.retase_amount ?? undefined,
+            }
+        })
 
         const driverData = {
             driverId: resolvedDriverId,

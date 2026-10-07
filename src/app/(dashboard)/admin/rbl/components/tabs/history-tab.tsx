@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Eye, Printer } from "lucide-react"
+import { Search, Eye, Printer, Pencil } from "lucide-react"
 import { fmt, fmtShortDate, MONTH_NAMES } from "../../utils/rbl-helpers"
 
 interface HistoryTabProps {
@@ -22,6 +22,8 @@ interface HistoryTabProps {
     setHistoryYearFilter: (year: string) => void
     historyAvailableYears: number[]
     onOpenDetail: (budgetId: string) => void
+    onOpenEditBudget?: (budget: any) => void
+    canEdit?: boolean
 }
 
 export function HistoryTab({
@@ -35,6 +37,8 @@ export function HistoryTab({
     setHistoryYearFilter,
     historyAvailableYears,
     onOpenDetail,
+    onOpenEditBudget,
+    canEdit = true,
 }: HistoryTabProps) {
     return (
         <Card className="border shadow-xs">
@@ -151,6 +155,17 @@ export function HistoryTab({
                                     </TableCell>
                                     <TableCell className="text-right">
                                         <div className="flex items-center justify-end gap-1">
+                                            {b.status === "OPEN" && canEdit && onOpenEditBudget && (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => onOpenEditBudget(b)}
+                                                    className="h-7 text-xs gap-1 text-slate-700 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
+                                                >
+                                                    <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                                                    Edit
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="ghost"
                                                 size="sm"

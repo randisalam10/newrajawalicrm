@@ -643,33 +643,72 @@ export async function getAggregateRetaseTransactions() {
     const session = await auth()
     if (!session?.user) return []
 
-    let filter: any = { source_type: "Internal" }
+    let inFilter: any = { source_type: "Internal" }
+    let outFilter: any = { transport_mode: "INTERNAL_DT" }
     if (!isCorporate(session) && session.user.locationId) {
-        filter.locationId = session.user.locationId
+        inFilter.locationId = session.user.locationId
+        outFilter.locationId = session.user.locationId
     }
 
-    return await prisma.aggregateIncoming.findMany({
-        where: filter,
-        include: {
-            location: true,
-            vehicle: true,
-            driver: true,
-        },
-        orderBy: { date: "desc" }
-    })
+    const [incomings, outgoings] = await Promise.all([
+        prisma.aggregateIncoming.findMany({
+            where: inFilter,
+            include: {
+                location: true,
+                vehicle: true,
+                driver: true,
+            },
+            orderBy: { date: "desc" }
+        }),
+        prisma.aggregateOutgoing.findMany({
+            where: outFilter,
+            include: {
+                location: true,
+                vehicle: true,
+                driver: true,
+            },
+            orderBy: { date: "desc" }
+        })
+    ])
+
+    return [
+        ...incomings.map(i => ({ ...i, direction: "INCOMING" as const })),
+        ...outgoings.map(o => ({ ...o, direction: "OUTGOING" as const }))
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 }
 
-export async function toggleAggregateRetasePaid(id: string, isPaid: boolean) {
+export async function toggleAggregateRetasePaid(id: string, isPaid: boolean, type?: "incoming" | "outgoing") {
     const session = await auth()
     if (!session?.user) return { error: "Unauthorized" }
     if (!canManageRetase(session)) return { error: "Akses ditolak." }
 
     try {
-        await prisma.aggregateIncoming.update({
-            where: { id },
-            data: { is_retase_paid: isPaid }
-        })
+        if (type === "outgoing") {
+            await prisma.aggregateOutgoing.update({
+                where: { id },
+                data: { is_retase_paid: isPaid }
+            })
+        } else if (type === "incoming") {
+            await prisma.aggregateIncoming.update({
+                where: { id },
+                data: { is_retase_paid: isPaid }
+            })
+        } else {
+            const incoming = await prisma.aggregateIncoming.findUnique({ where: { id } })
+            if (incoming) {
+                await prisma.aggregateIncoming.update({
+                    where: { id },
+                    data: { is_retase_paid: isPaid }
+                })
+            } else {
+                await prisma.aggregateOutgoing.update({
+                    where: { id },
+                    data: { is_retase_paid: isPaid }
+                })
+            }
+        }
         revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
         return { success: true }
     } catch (e: any) {
         return { error: e.message }

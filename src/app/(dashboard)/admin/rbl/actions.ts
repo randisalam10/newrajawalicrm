@@ -129,6 +129,45 @@ export async function getRblVehicles() {
     })
 }
 
+async function fetchBudgetAuditLogs(budgetId: string) {
+    try {
+        const logs = await prisma.auditLog.findMany({
+            where: {
+                entity: "RblBudget",
+                recordId: budgetId,
+            },
+            include: {
+                user: {
+                    select: {
+                        username: true,
+                        employee: { select: { name: true } }
+                    }
+                }
+            },
+            orderBy: { timestamp: "desc" }
+        })
+
+        return logs.map(log => {
+            let oldVals: any = null
+            let newVals: any = null
+            try { oldVals = log.old_values ? JSON.parse(log.old_values) : null } catch {}
+            try { newVals = log.new_values ? JSON.parse(log.new_values) : null } catch {}
+            return {
+                id: log.id,
+                action: log.action,
+                timestamp: log.timestamp,
+                userName: log.user?.employee?.name || log.user?.username || "Admin",
+                oldValues: oldVals,
+                newValues: newVals,
+                editReason: newVals?.editReason || null,
+            }
+        })
+    } catch (e) {
+        console.error("Failed to fetch audit logs for budget:", budgetId, e)
+        return []
+    }
+}
+
 export async function getActiveBudget(locationId?: string) {
     const session = await auth()
     if (!session?.user) return null
@@ -172,11 +211,13 @@ export async function getActiveBudget(locationId?: string) {
 
     const totalExpense = budget.expenses.reduce((sum, exp) => sum + exp.amount, 0)
     const remainingBalance = budget.amount - totalExpense
+    const auditLogs = await fetchBudgetAuditLogs(budget.id)
 
     return {
         ...budget,
         totalExpense,
         remainingBalance,
+        auditLogs,
     }
 }
 
@@ -262,11 +303,13 @@ export async function getBudgetDetail(budgetId: string) {
 
     const totalExpense = budget.expenses.reduce((sum, exp) => sum + exp.amount, 0)
     const remainingBalance = budget.amount - totalExpense
+    const auditLogs = await fetchBudgetAuditLogs(budget.id)
 
     return {
         ...budget,
         totalExpense,
         remainingBalance,
+        auditLogs,
     }
 }
 
@@ -391,6 +434,99 @@ export async function closeBudget(budgetId: string, closeNotes?: string, closedA
     } catch (e: any) {
         return { success: false, error: e.message || "Gagal menutup budget RBL." }
     }
+}
+
+export async function updateBudget(
+    budgetId: string,
+    data: {
+        amount: number
+        receivedDate: string
+        notes?: string
+        editReason: string
+    }
+) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: "Unauthorized" }
+
+    if (!data.amount || data.amount <= 0) {
+        return { success: false, error: "Nominal budget harus lebih dari 0." }
+    }
+    if (!data.receivedDate) {
+        return { success: false, error: "Tanggal penerimaan dana wajib diisi." }
+    }
+    if (!data.editReason || !data.editReason.trim()) {
+        return { success: false, error: "Alasan perubahan budget wajib diisi untuk catatan riwayat audit." }
+    }
+
+    try {
+        const budget = await prisma.rblBudget.findUnique({
+            where: { id: budgetId },
+            include: { location: true }
+        })
+
+        if (!budget) return { success: false, error: "Budget RBL tidak ditemukan." }
+
+        // Enforce branch isolation
+        const isCorp = isCorporateOrSuperAdmin(session)
+        if (!isCorp && budget.locationId !== session.user.locationId) {
+            return { success: false, error: "Akses ditolak: Anda tidak dapat mengedit budget cabang lain." }
+        }
+
+        // Strict rule: CLOSED budget cannot be edited
+        if (budget.status === "CLOSED") {
+            return {
+                success: false,
+                error: "Budget RBL ini sudah DITUTUP (CLOSED). Budget yang telah ditutup tidak dapat diedit kembali."
+            }
+        }
+
+        const oldValues = {
+            amount: budget.amount,
+            receivedDate: budget.receivedDate ? budget.receivedDate.toISOString() : null,
+            notes: budget.notes || "",
+        }
+
+        const newReceivedDate = new Date(data.receivedDate)
+        const newValues = {
+            amount: Number(data.amount),
+            receivedDate: newReceivedDate.toISOString(),
+            notes: data.notes ? data.notes.trim() : "",
+            editReason: data.editReason.trim(),
+        }
+
+        // Simpan snapshot perubahan ke AuditLog
+        await prisma.auditLog.create({
+            data: {
+                action: "EDIT",
+                entity: "RblBudget",
+                recordId: budget.id,
+                old_values: JSON.stringify(oldValues),
+                new_values: JSON.stringify(newValues),
+                userId: session.user.id,
+            }
+        })
+
+        // Update record budget
+        const updated = await prisma.rblBudget.update({
+            where: { id: budgetId },
+            data: {
+                amount: Number(data.amount),
+                receivedDate: newReceivedDate,
+                notes: data.notes ? data.notes.trim() : null,
+            }
+        })
+
+        revalidatePath("/admin/rbl")
+        return { success: true, budget: updated }
+    } catch (e: any) {
+        return { success: false, error: e.message || "Gagal mengupdate budget RBL." }
+    }
+}
+
+export async function getBudgetAuditHistory(budgetId: string) {
+    const session = await auth()
+    if (!session?.user) return []
+    return fetchBudgetAuditLogs(budgetId)
 }
 
 export async function addExpenseBatch(budgetId: string, items: Array<{

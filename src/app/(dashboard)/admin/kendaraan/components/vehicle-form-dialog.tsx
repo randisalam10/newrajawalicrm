@@ -59,6 +59,7 @@ interface VehicleFormDialogProps {
     onKirExpiryDateChange: (val: string) => void
     kirPeriodMonths: string
     onKirPeriodMonthsChange: (val: string) => void
+    isSubmitting?: boolean
     onSubmit: (formData: FormData) => Promise<void>
 }
 
@@ -99,6 +100,7 @@ export function VehicleFormDialog({
     onKirExpiryDateChange,
     kirPeriodMonths,
     onKirPeriodMonthsChange,
+    isSubmitting = false,
     onSubmit,
 }: VehicleFormDialogProps) {
     const activeCat = categories.find(c => c.id === selectedCategoryId)
@@ -132,6 +134,9 @@ export function VehicleFormDialog({
                                 required
                                 className="h-8 text-xs font-mono font-bold"
                             />
+                            <p className="text-[10px] text-slate-400">
+                                Kode internal armada (wajib unik per cabang).
+                            </p>
                         </div>
                         <div className="space-y-1">
                             <Label htmlFor="plate_number" className="text-xs font-semibold text-slate-700">Plat Nomor / No. Seri *</Label>
@@ -143,6 +148,9 @@ export function VehicleFormDialog({
                                 required
                                 className="h-8 text-xs font-mono uppercase"
                             />
+                            <p className="text-[10px] text-slate-400">
+                                Plat polisi resmi. Untuk alat berat / mesin tanpa plat, gunakan No. Seri unik.
+                            </p>
                         </div>
                     </div>
 
@@ -454,11 +462,11 @@ export function VehicleFormDialog({
                     </div>
 
                     <DialogFooter className="pt-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} className="text-xs h-8">
+                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)} disabled={isSubmitting} className="text-xs h-8">
                             Batal
                         </Button>
-                        <Button type="submit" size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8">
-                            Simpan Kendaraan
+                        <Button type="submit" size="sm" disabled={isSubmitting} className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-8 disabled:opacity-50">
+                            {isSubmitting ? "Menyimpan..." : (editData ? "Perbarui Unit" : "Simpan Kendaraan")}
                         </Button>
                     </DialogFooter>
                 </form>

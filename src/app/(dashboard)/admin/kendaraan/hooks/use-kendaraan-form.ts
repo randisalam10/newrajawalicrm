@@ -96,69 +96,79 @@ export function useKendaraanForm(categories: VehicleCategory[] = []) {
         setOpen(true)
     }
 
-    async function handleSubmit(formData: FormData) {
-        formData.set("meter_type", meterType)
-        if (merkModel.trim()) {
-            formData.set("merk_model", merkModel.trim())
-        } else {
-            formData.delete("merk_model")
-        }
+    const [isSubmitting, setIsSubmitting] = useState(false)
 
-        formData.set("is_for_rent", isForRent ? "true" : "false")
-        if (isForRent) {
-            formData.set("default_day_rate", defaultDayRate || "0")
-            formData.set("rental_status", rentalStatus || "Tersedia")
-            if (rentalNotes.trim()) {
-                formData.set("rental_notes", rentalNotes.trim())
+    async function handleSubmit(formData: FormData) {
+        if (isSubmitting) return
+        setIsSubmitting(true)
+
+        try {
+            formData.set("meter_type", meterType)
+            if (merkModel.trim()) {
+                formData.set("merk_model", merkModel.trim())
             } else {
+                formData.delete("merk_model")
+            }
+
+            formData.set("is_for_rent", isForRent ? "true" : "false")
+            if (isForRent) {
+                formData.set("default_day_rate", defaultDayRate || "0")
+                formData.set("rental_status", rentalStatus || "Tersedia")
+                if (rentalNotes.trim()) {
+                    formData.set("rental_notes", rentalNotes.trim())
+                } else {
+                    formData.delete("rental_notes")
+                }
+            } else {
+                formData.set("default_day_rate", "0")
                 formData.delete("rental_notes")
             }
-        } else {
-            formData.set("default_day_rate", "0")
-            formData.delete("rental_notes")
-        }
 
-        formData.set("annual_tax_cost", annualTaxCost || "0")
-        if (taxExpiryDate) {
-            formData.set("tax_expiry_date", taxExpiryDate)
-        } else {
-            formData.delete("tax_expiry_date")
-        }
-        formData.set("kir_cost", kirCost || "0")
-        if (kirExpiryDate) {
-            formData.set("kir_expiry_date", kirExpiryDate)
-        } else {
-            formData.delete("kir_expiry_date")
-        }
-        formData.set("kir_period_months", kirPeriodMonths || "6")
+            formData.set("annual_tax_cost", annualTaxCost || "0")
+            if (taxExpiryDate) {
+                formData.set("tax_expiry_date", taxExpiryDate)
+            } else {
+                formData.delete("tax_expiry_date")
+            }
+            formData.set("kir_cost", kirCost || "0")
+            if (kirExpiryDate) {
+                formData.set("kir_expiry_date", kirExpiryDate)
+            } else {
+                formData.delete("kir_expiry_date")
+            }
+            formData.set("kir_period_months", kirPeriodMonths || "6")
 
-        if (selectedCategoryId) {
-            formData.set("categoryId", selectedCategoryId)
-            const activeCat = categories.find(c => c.id === selectedCategoryId)
-            const isDT = activeCat?.name?.toLowerCase().includes("dump") || (editData && editData.dump_truck_size != null)
-            if (isDT) {
-                formData.set("dump_truck_size", dumpTruckSize)
-                if (capacityCubic) {
-                    formData.set("capacity_cubic", capacityCubic)
-                } else {
-                    formData.delete("capacity_cubic")
+            if (selectedCategoryId) {
+                formData.set("categoryId", selectedCategoryId)
+                const activeCat = categories.find(c => c.id === selectedCategoryId)
+                const isDT = activeCat?.name?.toLowerCase().includes("dump") || (editData && editData.dump_truck_size != null)
+                if (isDT) {
+                    formData.set("dump_truck_size", dumpTruckSize)
+                    if (capacityCubic) {
+                        formData.set("capacity_cubic", capacityCubic)
+                    } else {
+                        formData.delete("capacity_cubic")
+                    }
                 }
             }
-        }
 
-        let result: any
-        if (editData) {
-            result = await updateKendaraan(editData.id, formData)
-        } else {
-            result = await createKendaraan(formData)
-        }
+            let result: any
+            if (editData) {
+                result = await updateKendaraan(editData.id, formData)
+            } else {
+                result = await createKendaraan(formData)
+            }
 
-        if (result.success) {
-            toast.success(editData ? "Data unit berhasil diperbarui" : "Unit kendaraan / alat baru berhasil ditambahkan")
-            setOpen(false)
-            setEditData(null)
-        } else {
-            toast.error("Error: " + (typeof result.error === "object" ? JSON.stringify(result.error) : result.error))
+            if (result.success) {
+                toast.success(editData ? "Data unit berhasil diperbarui" : "Unit kendaraan / alat baru berhasil ditambahkan")
+                setOpen(false)
+                setEditData(null)
+            } else {
+                const errMsg = typeof result.error === "object" ? JSON.stringify(result.error) : result.error
+                toast.error(errMsg || "Gagal menyimpan data kendaraan")
+            }
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
@@ -209,6 +219,7 @@ export function useKendaraanForm(categories: VehicleCategory[] = []) {
         handleOpenNew,
         handleOpenEdit,
         handleSubmit,
-        handleDelete
+        handleDelete,
+        isSubmitting
     }
 }

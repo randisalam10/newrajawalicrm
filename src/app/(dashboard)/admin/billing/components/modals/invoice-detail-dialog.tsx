@@ -94,8 +94,21 @@ export function InvoiceDetailDialog({
                     <div className="p-5 space-y-4">
                         {/* Summary per item type: ReadyMix vs Sewa */}
                         {(() => {
-                            const sewaItems = invoiceDetail.items.filter((i: any) => i.item_type === "SEWA" || i.sewaTransaction != null)
-                            const rmItems = invoiceDetail.items.filter((i: any) => i.item_type !== "SEWA" && i.sewaTransaction == null)
+                            const sewaItems = invoiceDetail.items
+                                .filter((i: any) => i.item_type === "SEWA" || i.sewaTransaction != null)
+                                .sort((a: any, b: any) => {
+                                    const dateA = new Date(a.sewaTransaction?.start_date || a.sewaTransaction?.date || invoiceDetail.issue_date).getTime()
+                                    const dateB = new Date(b.sewaTransaction?.start_date || b.sewaTransaction?.date || invoiceDetail.issue_date).getTime()
+                                    return dateA - dateB
+                                })
+                            const rmItems = invoiceDetail.items
+                                .filter((i: any) => i.item_type !== "SEWA" && i.sewaTransaction == null)
+                                .sort((a: any, b: any) => {
+                                    const dateA = new Date(a.transaction?.date || invoiceDetail.issue_date).getTime()
+                                    const dateB = new Date(b.transaction?.date || invoiceDetail.issue_date).getTime()
+                                    if (dateA !== dateB) return dateA - dateB
+                                    return (a.transaction?.trip_sequence ?? 0) - (b.transaction?.trip_sequence ?? 0)
+                                })
                             const isCombined = sewaItems.length > 0 && rmItems.length > 0
 
                             // Group ready-mix by date & quality
@@ -152,7 +165,9 @@ export function InvoiceDetailDialog({
                                                         </TableRow>
                                                     </TableHeader>
                                                     <TableBody>
-                                                        {Array.from(rmByDate.entries()).map(([key, d]) => {
+                                                        {Array.from(rmByDate.entries())
+                                                            .sort(([, a], [, b]) => new Date(a.date).getTime() - new Date(b.date).getTime())
+                                                            .map(([key, d]) => {
                                                             const unitPrice = d.volume > 0 ? Math.round(d.nilai / d.volume) : 0
                                                             return (
                                                                 <TableRow key={key} className="text-xs hover:bg-slate-50/70">

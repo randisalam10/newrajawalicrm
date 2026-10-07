@@ -47,3 +47,30 @@ export interface BudgetDateRange {
     start?: Date | null
     end?: Date | null
 }
+
+export interface BudgetAuditLogDTO {
+    id: string
+    action: string
+    timestamp: Date | string
+    userName: string
+    oldValues?: {
+        amount?: number
+        receivedDate?: string | null
+        notes?: string | null
+    } | null
+    newValues?: {
+        amount?: number
+        receivedDate?: string | null
+        notes?: string | null
+        editReason?: string | null
+    } | null
+    editReason?: string | null
+}
+
+export interface BudgetUpdatePayload {
+    amount: number
+    receivedDate: string
+    notes?: string
+    editReason: string
+}
+

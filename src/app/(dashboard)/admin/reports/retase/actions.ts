@@ -36,6 +36,12 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         date: { gte: monthStart, lte: monthEnd }
     }
 
+    const outgoingAggregateWhere: any = {
+        transport_mode: "INTERNAL_DT",
+        retase_amount: { gt: 0 },
+        date: { gte: monthStart, lte: monthEnd }
+    }
+
     const opWhere: any = {
         status: "Confirmed",
         date: { gte: monthStart, lte: monthEnd }
@@ -45,14 +51,16 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
     if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
         where.locationId = session.user.locationId
         aggregateWhere.locationId = session.user.locationId
+        outgoingAggregateWhere.locationId = session.user.locationId
         opWhere.locationId = session.user.locationId
     } else if (filter.locationId) {
         where.locationId = filter.locationId
         aggregateWhere.locationId = filter.locationId
+        outgoingAggregateWhere.locationId = filter.locationId
         opWhere.locationId = filter.locationId
     }
 
-    const [transactions, dumpTruckIncomings, opTransactions, branchOperators, retaseSettings, masterIncentives] = await Promise.all([
+    const [transactions, dumpTruckIncomings, dumpTruckOutgoings, opTransactions, branchOperators, retaseSettings, masterIncentives] = await Promise.all([
         (prisma as any).productionTransaction.findMany({
             where,
             include: {
@@ -67,6 +75,15 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         }),
         prisma.aggregateIncoming.findMany({
             where: aggregateWhere,
+            include: {
+                driver: true,
+                location: true,
+                vehicle: true,
+            },
+            orderBy: [{ driver_name: 'asc' }, { date: 'asc' }]
+        }),
+        prisma.aggregateOutgoing.findMany({
+            where: outgoingAggregateWhere,
             include: {
                 driver: true,
                 location: true,
@@ -180,9 +197,14 @@ export async function getRetaseReportByMonth(filter: RetaseMonthFilter) {
         })
     })
 
+    const allDumpTruck = [
+        ...dumpTruckIncomings.map((tx: any) => ({ ...tx, movement_type: "INCOMING" as const })),
+        ...dumpTruckOutgoings.map((tx: any) => ({ ...tx, movement_type: "OUTGOING" as const })),
+    ].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+
     return {
         mixer: transactions,
-        dumpTruck: dumpTruckIncomings,
+        dumpTruck: allDumpTruck,
         operatorBP: operatorRecords
     }
 }
@@ -196,12 +218,14 @@ export async function getRetaseAvailableYears() {
 
     const where: any = { status: "Confirmed", retase: { isNot: null } }
     const aggWhere: any = { source_type: "Internal", retase_amount: { gt: 0 } }
+    const aggOutWhere: any = { transport_mode: "INTERNAL_DT", retase_amount: { gt: 0 } }
     if (session.user.role !== 'SuperAdminBP' && session.user.locationId) {
         where.locationId = session.user.locationId
         aggWhere.locationId = session.user.locationId
+        aggOutWhere.locationId = session.user.locationId
     }
 
-    const [txs, aggTxs] = await Promise.all([
+    const [txs, aggTxs, aggOutTxs] = await Promise.all([
         prisma.productionTransaction.findMany({
             where,
             select: { date: true },
@@ -211,10 +235,15 @@ export async function getRetaseAvailableYears() {
             where: aggWhere,
             select: { date: true },
             orderBy: { date: 'asc' }
+        }),
+        prisma.aggregateOutgoing.findMany({
+            where: aggOutWhere,
+            select: { date: true },
+            orderBy: { date: 'asc' }
         })
     ])
 
-    const allDates = [...txs.map(t => t.date), ...aggTxs.map(t => t.date)]
+    const allDates = [...txs.map(t => t.date), ...aggTxs.map(t => t.date), ...aggOutTxs.map(t => t.date)]
     const years = [...new Set(allDates.map(d => new Date(d).getFullYear()))].sort((a, b) => b - a)
     // Pastikan tahun sekarang selalu ada
     const currentYear = new Date().getFullYear()

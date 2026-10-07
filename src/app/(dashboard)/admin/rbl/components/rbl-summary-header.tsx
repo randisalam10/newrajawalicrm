@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { WalletCards, Plus, CheckCircle2, Building2, Printer, Fuel } from "lucide-react"
+import { WalletCards, Plus, CheckCircle2, Building2, Printer, Fuel, Pencil } from "lucide-react"
 import { fmt, fmtShortDate, MONTH_NAMES } from "../utils/rbl-helpers"
 
 interface RblSummaryHeaderProps {
@@ -13,11 +13,13 @@ interface RblSummaryHeaderProps {
     adminBranchName: string
     isSuperAdmin: boolean
     canCreate?: boolean
+    canEdit?: boolean
     canClose?: boolean
     locations: any[]
     selectedLocation: string
     onSelectLocation: (locId: string) => void
     onOpenCreateBudget: () => void
+    onOpenEditBudget?: () => void
     onOpenCloseBudget: () => void
     onOpenCategoryReport: () => void
     activeTab: string
@@ -30,11 +32,13 @@ export function RblSummaryHeader({
     adminBranchName,
     isSuperAdmin,
     canCreate,
+    canEdit = true,
     canClose,
     locations,
     selectedLocation,
     onSelectLocation,
     onOpenCreateBudget,
+    onOpenEditBudget,
     onOpenCloseBudget,
     onOpenCategoryReport,
     activeTab,
@@ -144,9 +148,26 @@ export function RblSummaryHeader({
                             <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
                                 Diterima: {fmtShortDate(activeBudget.receivedDate)}
                             </span>
+                            {activeBudget.auditLogs?.length > 0 && (
+                                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-medium">
+                                    Revisi {activeBudget.auditLogs.length}x
+                                </Badge>
+                            )}
                         </div>
 
                         <div className="flex items-center gap-2">
+                            {activeBudget.status === "OPEN" && canEdit && onOpenEditBudget && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={onOpenEditBudget}
+                                    className="h-7 text-xs gap-1.5 bg-white text-slate-700 hover:text-blue-600 hover:bg-blue-50 border-slate-200 shadow-2xs cursor-pointer"
+                                >
+                                    <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                                    <span>Edit Budget</span>
+                                </Button>
+                            )}
                             <Button asChild variant="outline" size="sm" className="h-7 text-xs gap-1.5 bg-white text-slate-700 hover:bg-slate-50 border-slate-200 shadow-2xs cursor-pointer">
                                 <Link href={`/admin/rbl/print/${activeBudget.id}`} target="_blank">
                                     <Printer className="h-3.5 w-3.5 text-slate-500" />

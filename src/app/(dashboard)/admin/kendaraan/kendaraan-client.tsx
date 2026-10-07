@@ -87,6 +87,7 @@ export function KendaraanClient({
         handleOpenEdit,
         handleSubmit,
         handleDelete,
+        isSubmitting,
     } = useKendaraanForm(categories)
 
     // 3. Vehicle Compliance Hook
@@ -218,6 +219,7 @@ export function KendaraanClient({
                 onKirExpiryDateChange={setKirExpiryDate}
                 kirPeriodMonths={kirPeriodMonths}
                 onKirPeriodMonthsChange={setKirPeriodMonths}
+                isSubmitting={isSubmitting}
                 onSubmit={handleSubmit}
             />
 

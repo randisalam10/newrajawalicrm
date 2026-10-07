@@ -108,8 +108,25 @@ const s = StyleSheet.create({
 
 // ─── Document ─────────────────────────────────────────────────────────────────
 export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
-    const readyMixItems = invoice.items.filter(item => item.item_type !== "SEWA" && item.transaction)
-    const sewaItems = invoice.items.filter(item => item.item_type === "SEWA" || item.sewaTransaction)
+    const readyMixItems = invoice.items
+        .filter(item => item.item_type !== "SEWA" && item.transaction)
+        .sort((a, b) => {
+            const tA = a.transaction?.date ? new Date(a.transaction.date).getTime() : 0
+            const tB = b.transaction?.date ? new Date(b.transaction.date).getTime() : 0
+            if (tA !== tB) return tA - tB
+            return (a.transaction?.trip_sequence ?? 0) - (b.transaction?.trip_sequence ?? 0)
+        })
+    const sewaItems = invoice.items
+        .filter(item => item.item_type === "SEWA" || item.sewaTransaction)
+        .sort((a, b) => {
+            const tA = a.sewaTransaction?.start_date
+                ? new Date(a.sewaTransaction.start_date).getTime()
+                : (a.sewaTransaction?.date ? new Date(a.sewaTransaction.date).getTime() : 0)
+            const tB = b.sewaTransaction?.start_date
+                ? new Date(b.sewaTransaction.start_date).getTime()
+                : (b.sewaTransaction?.date ? new Date(b.sewaTransaction.date).getTime() : 0)
+            return tA - tB
+        })
 
     // Group readyMix items by date
     const byDate = new Map<string, { date: Date; tms: number; volume: number; nilai: number; mutu: string[] }>()
@@ -124,7 +141,9 @@ export function InvoiceDocument({ invoice }: { invoice: InvoiceData }) {
         const qName = item.transaction.concreteQuality?.name ?? "-"
         if (!d.mutu.includes(qName)) d.mutu.push(qName)
     }
-    const dateRows = Array.from(byDate.values())
+    const dateRows = Array.from(byDate.values()).sort(
+        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    )
     const activePayments = invoice.payments.filter(p => !p.is_cancelled)
     const totalVolume = readyMixItems.reduce((s, i) => s + i.quantity, 0)
 

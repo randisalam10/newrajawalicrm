@@ -31,6 +31,7 @@ import { RblCategoryReport } from "./rbl-category-report"
 
 // Modals
 import { CreateBudgetDialog } from "./components/modals/create-budget-dialog"
+import { EditBudgetDialog } from "./components/modals/edit-budget-dialog"
 import { CloseBudgetDialog } from "./components/modals/close-budget-dialog"
 import { EditExpenseDialog } from "./components/modals/edit-expense-dialog"
 import { CategoryModal } from "./components/modals/category-modal"
@@ -60,6 +61,7 @@ export function RblClient(props: RblClientProps) {
                 adminBranchName={rbl.adminBranchName}
                 isSuperAdmin={isSuperAdmin}
                 canCreate={canCreate}
+                canEdit={canEdit}
                 canClose={canClose}
                 locations={locations}
                 selectedLocation={rbl.selectedLocation}
@@ -74,6 +76,7 @@ export function RblClient(props: RblClientProps) {
                     }))
                     rbl.setIsCreateBudgetOpen(true)
                 }}
+                onOpenEditBudget={() => rbl.handleOpenEditBudget(rbl.activeBudget)}
                 onOpenCloseBudget={() => rbl.setIsCloseBudgetOpen(true)}
                 onOpenCategoryReport={() => rbl.setActiveTab("category-report")}
                 activeTab={rbl.activeTab}
@@ -228,6 +231,8 @@ export function RblClient(props: RblClientProps) {
                         setHistoryYearFilter={rbl.setHistoryYearFilter}
                         historyAvailableYears={rbl.historyAvailableYears}
                         onOpenDetail={rbl.handleOpenDetail}
+                        onOpenEditBudget={(b) => rbl.handleOpenEditBudget(b)}
+                        canEdit={canEdit}
                     />
                 </TabsContent>
 
@@ -310,6 +315,16 @@ export function RblClient(props: RblClientProps) {
                 budget={rbl.selectedDetailBudget}
                 isLoading={rbl.isLoadingDetail}
                 onPreviewImage={rbl.setPreviewImage}
+                onEditBudget={(b) => rbl.handleOpenEditBudget(b)}
+                canEdit={canEdit}
+            />
+
+            <EditBudgetDialog
+                isOpen={rbl.isEditBudgetOpen}
+                onOpenChange={rbl.setIsEditBudgetOpen}
+                budget={rbl.editingBudget}
+                onSubmit={rbl.handleUpdateBudgetSubmit}
+                isPending={rbl.isPending}
             />
 
             <ImagePreviewDialog

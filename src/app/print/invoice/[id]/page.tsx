@@ -32,6 +32,22 @@ export default async function PrintInvoicePage({
 
     if (!invoice) notFound()
 
+    // Urutkan item invoice ascending berdasarkan tanggal transaksi
+    const sortedItems = [...invoice.items].sort((a, b) => {
+        const dateA = a.transaction?.date
+            ? new Date(a.transaction.date).getTime()
+            : (a.sewaTransaction?.start_date
+                ? new Date(a.sewaTransaction.start_date).getTime()
+                : (a.sewaTransaction?.date ? new Date(a.sewaTransaction.date).getTime() : 0))
+        const dateB = b.transaction?.date
+            ? new Date(b.transaction.date).getTime()
+            : (b.sewaTransaction?.start_date
+                ? new Date(b.sewaTransaction.start_date).getTime()
+                : (b.sewaTransaction?.date ? new Date(b.sewaTransaction.date).getTime() : 0))
+        if (dateA !== dateB) return dateA - dateB
+        return (a.transaction?.trip_sequence ?? 0) - (b.transaction?.trip_sequence ?? 0)
+    })
+
     // Serialize all dates for client component
     const data = {
         ...invoice,
@@ -39,7 +55,7 @@ export default async function PrintInvoicePage({
         due_date: invoice.due_date?.toISOString() ?? null,
         createdAt: invoice.createdAt.toISOString(),
         cancelled_at: invoice.cancelled_at?.toISOString() ?? null,
-        items: invoice.items.map(item => ({
+        items: sortedItems.map(item => ({
             ...item,
             transaction: item.transaction ? {
                 ...item.transaction,

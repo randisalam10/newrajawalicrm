@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Loader2, Printer, Fuel, Gauge } from "lucide-react"
+import { Loader2, Printer, Fuel, Gauge, Pencil, History, ArrowRight } from "lucide-react"
 import { fmt, fmtDate, MONTH_NAMES } from "../../utils/rbl-helpers"
 
 interface BudgetDetailDialogProps {
@@ -17,6 +17,8 @@ interface BudgetDetailDialogProps {
     budget: any
     isLoading: boolean
     onPreviewImage: (image: { url: string; name: string }) => void
+    onEditBudget?: (budget: any) => void
+    canEdit?: boolean
 }
 
 export function BudgetDetailDialog({
@@ -25,6 +27,8 @@ export function BudgetDetailDialog({
     budget,
     isLoading,
     onPreviewImage,
+    onEditBudget,
+    canEdit = true,
 }: BudgetDetailDialogProps) {
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -51,12 +55,26 @@ export function BudgetDetailDialog({
                                 )}
                             </div>
                             {budget && (
-                                <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1.5 self-start sm:self-auto bg-white">
-                                    <Link href={`/admin/rbl/print/${budget.id}`} target="_blank">
-                                        <Printer className="h-3.5 w-3.5" />
-                                        Cetak PDF
-                                    </Link>
-                                </Button>
+                                <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                                    {budget.status === "OPEN" && canEdit && onEditBudget && (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => onEditBudget(budget)}
+                                            className="h-7 text-xs gap-1.5 bg-white text-slate-700 hover:text-blue-600 hover:bg-blue-50 border-slate-200 cursor-pointer shadow-2xs"
+                                        >
+                                            <Pencil className="h-3.5 w-3.5 text-blue-600" />
+                                            Edit Budget
+                                        </Button>
+                                    )}
+                                    <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1.5 bg-white shadow-2xs">
+                                        <Link href={`/admin/rbl/print/${budget.id}`} target="_blank">
+                                            <Printer className="h-3.5 w-3.5" />
+                                            Cetak PDF
+                                        </Link>
+                                    </Button>
+                                </div>
                             )}
                         </div>
                         <DialogDescription className="text-xs text-slate-500">
@@ -146,7 +164,7 @@ export function BudgetDetailDialog({
                             </div>
                         )}
 
-                        {/* Tabs in Modal: Expenses vs Attachments */}
+                        {/* Tabs in Modal: Expenses vs Attachments vs History */}
                         <Tabs defaultValue="expenses" className="space-y-3">
                             <TabsList className="bg-slate-100 p-1 h-8 rounded-lg">
                                 <TabsTrigger value="expenses" className="text-xs h-6 px-3">
@@ -154,6 +172,9 @@ export function BudgetDetailDialog({
                                 </TabsTrigger>
                                 <TabsTrigger value="attachments" className="text-xs h-6 px-3">
                                     Bukti Foto Nota ({budget.attachments?.length || 0})
+                                </TabsTrigger>
+                                <TabsTrigger value="history" className="text-xs h-6 px-3">
+                                    Riwayat Revisi ({budget.auditLogs?.length || 0})
                                 </TabsTrigger>
                             </TabsList>
 
@@ -235,6 +256,67 @@ export function BudgetDetailDialog({
                                                 <div className="p-1.5 text-[10px] truncate text-slate-700 font-medium" title={att.fileName}>
                                                     {att.fileName}
                                                 </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </TabsContent>
+
+                            <TabsContent value="history">
+                                {(!budget.auditLogs || budget.auditLogs.length === 0) ? (
+                                    <div className="p-8 text-center text-xs text-slate-400 border rounded-lg bg-slate-50 space-y-1">
+                                        <History className="h-6 w-6 mx-auto text-slate-300 mb-1" />
+                                        <p className="font-semibold text-slate-600">Belum Ada Riwayat Perubahan</p>
+                                        <p className="text-[11px]">Budget ini belum pernah mengalami revisi setelah pertama kali dibuat.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+                                        {budget.auditLogs.map((log: any, i: number) => (
+                                            <div key={log.id || i} className="border rounded-lg p-3 bg-white shadow-2xs space-y-2">
+                                                <div className="flex items-center justify-between border-b pb-2 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <Badge variant="outline" className="text-[10px] bg-slate-50 font-mono">
+                                                            Revisi #{budget.auditLogs.length - i}
+                                                        </Badge>
+                                                        <span className="font-semibold text-slate-800">
+                                                            {log.userName}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-[11px] text-slate-500 font-mono">
+                                                        {format(new Date(log.timestamp), "dd/MM/yyyy HH:mm")}
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                                    {log.oldValues?.amount !== undefined && log.newValues?.amount !== undefined && (
+                                                        <div className="p-2 bg-slate-50 rounded border text-[11px] space-y-0.5">
+                                                            <span className="text-slate-400 block text-[10px] font-semibold uppercase">Nominal Plafon</span>
+                                                            <div className="flex items-center gap-1.5 font-mono">
+                                                                <span className="line-through text-slate-400">{fmt(log.oldValues.amount)}</span>
+                                                                <ArrowRight className="h-3 w-3 text-slate-400" />
+                                                                <span className="font-bold text-blue-700">{fmt(log.newValues.amount)}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {log.oldValues?.receivedDate && log.newValues?.receivedDate && log.oldValues.receivedDate !== log.newValues.receivedDate && (
+                                                        <div className="p-2 bg-slate-50 rounded border text-[11px] space-y-0.5">
+                                                            <span className="text-slate-400 block text-[10px] font-semibold uppercase">Tgl Terima Dana</span>
+                                                            <div className="flex items-center gap-1.5 font-mono">
+                                                                <span className="line-through text-slate-400">{fmtDate(log.oldValues.receivedDate)}</span>
+                                                                <ArrowRight className="h-3 w-3 text-slate-400" />
+                                                                <span className="font-bold text-slate-800">{fmtDate(log.newValues.receivedDate)}</span>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {log.editReason && (
+                                                    <div className="p-2 bg-amber-50/70 border border-amber-200/80 rounded text-xs text-amber-950">
+                                                        <span className="font-bold text-[11px]">Alasan Perubahan: </span>
+                                                        <span className="italic">{log.editReason}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         ))}
                                     </div>

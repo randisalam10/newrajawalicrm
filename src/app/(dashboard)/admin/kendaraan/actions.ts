@@ -8,10 +8,16 @@ import { isCorporateUser } from "@/lib/rbac"
 
 const kendaraanSchema = z.object({
     id: z.string().optional(),
-    plate_number: z.string().min(1, "Plat Nomor / No. Seri required"),
+    plate_number: z.preprocess(
+        val => (typeof val === "string" ? val.trim().toUpperCase().replace(/\s+/g, " ") : val),
+        z.string().min(1, "Plat Nomor / No. Seri wajib diisi")
+    ),
     vehicle_type: z.enum(["Mixer", "Loader"]).optional(),
     categoryId: z.string().optional().nullable(),
-    code: z.string().min(1, "Kode Unit required"),
+    code: z.preprocess(
+        val => (typeof val === "string" ? val.trim().toUpperCase().replace(/\s+/g, " ") : val),
+        z.string().min(1, "Kode Unit wajib diisi")
+    ),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment
     dump_truck_size: z.preprocess(val => (val === "" || val === "NONE" ? null : val), z.enum(["BESAR", "KECIL"]).nullable().optional()),
     capacity_cubic: z.preprocess(val => (val === "" || val === undefined || val === null ? null : Number(val)), z.number().nullable().optional()),
@@ -273,6 +279,53 @@ export async function createKendaraan(formData: FormData) {
 
         const { locationId, categoryId, vehicle_type, ...insertData } = parsed.data
 
+        const cleanPlate = parsed.data.plate_number
+        const cleanCode = parsed.data.code
+
+        // Validasi placeholder umum yang akan bertabrakan di database jika diinput lebih dari 1 unit
+        if (["-", "--", "---", "N/A", "NA", "TIDAK ADA", "NONE", "0"].includes(cleanPlate)) {
+            return {
+                success: false,
+                error: `Plat Nomor / No. Seri tidak boleh berupa "${cleanPlate}". Untuk alat berat atau mesin tanpa plat nomor polisi, mohon gunakan Nomor Seri Rangka/Mesin yang unik atau gunakan format unik (misal: SN-${cleanCode}).`
+            }
+        }
+
+        // 1. Validasi keunikan Plat Nomor / No. Seri secara global di sistem
+        const existingPlate = await prisma.vehicle.findFirst({
+            where: {
+                plate_number: {
+                    equals: cleanPlate,
+                    mode: "insensitive"
+                }
+            },
+            include: { location: true }
+        })
+
+        if (existingPlate) {
+            return {
+                success: false,
+                error: `Plat Nomor / No. Seri "${cleanPlate}" sudah terdaftar pada unit "${existingPlate.code}" di Cabang ${existingPlate.location?.name || "Lain"}. Pastikan setiap unit memiliki nomor plat atau nomor seri yang unik.`
+            }
+        }
+
+        // 2. Validasi keunikan Kode Unit di cabang yang sama
+        const existingCode = await prisma.vehicle.findFirst({
+            where: {
+                code: {
+                    equals: cleanCode,
+                    mode: "insensitive"
+                },
+                locationId: finalLocationId
+            }
+        })
+
+        if (existingCode) {
+            return {
+                success: false,
+                error: `Kode Unit "${cleanCode}" sudah digunakan di cabang ini (${existingCode.plate_number}). Mohon gunakan Kode Unit yang berbeda.`
+            }
+        }
+
         // Auto determine vehicle_type for backward compatibility with Produksi
         let resolvedType = vehicle_type || "Mixer"
         let finalCategoryId = categoryId || null
@@ -287,6 +340,8 @@ export async function createKendaraan(formData: FormData) {
         const createdVeh = await prisma.vehicle.create({
             data: {
                 ...insertData,
+                plate_number: cleanPlate,
+                code: cleanCode,
                 vehicle_type: resolvedType,
                 categoryId: finalCategoryId,
                 locationId: finalLocationId
@@ -329,7 +384,26 @@ export async function createKendaraan(formData: FormData) {
         revalidatePath("/admin/sewa")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        if (e?.code === "P2002" || e?.message?.includes("Unique constraint")) {
+            const target = Array.isArray(e?.meta?.target) ? e.meta.target.join(", ") : String(e?.meta?.target || "")
+            if (target.includes("plate_number") || e?.message?.includes("plate_number")) {
+                return {
+                    success: false,
+                    error: `Plat Nomor / No. Seri "${parsed.data.plate_number}" sudah terdaftar di sistem. Mohon gunakan nomor plat atau nomor seri yang unik.`
+                }
+            }
+            if (target.includes("code") || target.includes("kode_alat") || e?.message?.includes("kode_alat")) {
+                return {
+                    success: false,
+                    error: `Kode Unit "${parsed.data.code}" sudah terdaftar di sistem sewa alat. Mohon gunakan kode unit yang berbeda.`
+                }
+            }
+            return {
+                success: false,
+                error: "Terdapat data duplikat yang melanggar aturan keunikan sistem (Unique Constraint)."
+            }
+        }
+        return { success: false, error: e?.message || "Terjadi kesalahan saat menyimpan data kendaraan." }
     }
 }
 
@@ -362,6 +436,55 @@ export async function updateKendaraan(id: string, formData: FormData) {
 
         if (!finalLocationId) return { success: false, error: "Cabang pangkalan wajib dipilih." }
 
+        const cleanPlate = parsed.data.plate_number
+        const cleanCode = parsed.data.code
+
+        // Validasi placeholder umum
+        if (["-", "--", "---", "N/A", "NA", "TIDAK ADA", "NONE", "0"].includes(cleanPlate)) {
+            return {
+                success: false,
+                error: `Plat Nomor / No. Seri tidak boleh berupa "${cleanPlate}". Untuk alat berat atau mesin tanpa plat nomor polisi, mohon gunakan Nomor Seri Rangka/Mesin yang unik atau gunakan format unik (misal: SN-${cleanCode}).`
+            }
+        }
+
+        // 1. Validasi keunikan Plat Nomor / No. Seri pada unit lain
+        const duplicatePlate = await prisma.vehicle.findFirst({
+            where: {
+                plate_number: {
+                    equals: cleanPlate,
+                    mode: "insensitive"
+                },
+                id: { not: id }
+            },
+            include: { location: true }
+        })
+
+        if (duplicatePlate) {
+            return {
+                success: false,
+                error: `Plat Nomor / No. Seri "${cleanPlate}" sudah digunakan oleh unit "${duplicatePlate.code}" di Cabang ${duplicatePlate.location?.name || "Lain"}.`
+            }
+        }
+
+        // 2. Validasi keunikan Kode Unit pada unit lain di cabang yang sama
+        const duplicateCode = await prisma.vehicle.findFirst({
+            where: {
+                code: {
+                    equals: cleanCode,
+                    mode: "insensitive"
+                },
+                locationId: finalLocationId,
+                id: { not: id }
+            }
+        })
+
+        if (duplicateCode) {
+            return {
+                success: false,
+                error: `Kode Unit "${cleanCode}" sudah digunakan oleh unit lain di cabang ini. Mohon gunakan Kode Unit yang berbeda.`
+            }
+        }
+
         const { locationId, categoryId, vehicle_type, ...updateData } = parsed.data
 
         let resolvedType = vehicle_type || existing?.vehicle_type || "Mixer"
@@ -378,6 +501,8 @@ export async function updateKendaraan(id: string, formData: FormData) {
             where: { id },
             data: {
                 ...updateData,
+                plate_number: cleanPlate,
+                code: cleanCode,
                 vehicle_type: resolvedType,
                 categoryId: finalCategoryId,
                 locationId: finalLocationId
@@ -420,7 +545,26 @@ export async function updateKendaraan(id: string, formData: FormData) {
         revalidatePath("/admin/sewa")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        if (e?.code === "P2002" || e?.message?.includes("Unique constraint")) {
+            const target = Array.isArray(e?.meta?.target) ? e.meta.target.join(", ") : String(e?.meta?.target || "")
+            if (target.includes("plate_number") || e?.message?.includes("plate_number")) {
+                return {
+                    success: false,
+                    error: `Plat Nomor / No. Seri "${parsed.data.plate_number}" sudah digunakan oleh unit lain di sistem.`
+                }
+            }
+            if (target.includes("code") || target.includes("kode_alat") || e?.message?.includes("kode_alat")) {
+                return {
+                    success: false,
+                    error: `Kode Unit "${parsed.data.code}" sudah terdaftar pada Master Sewa Alat. Mohon gunakan kode unit yang berbeda.`
+                }
+            }
+            return {
+                success: false,
+                error: "Terdapat data duplikat yang melanggar aturan keunikan sistem (Unique Constraint)."
+            }
+        }
+        return { success: false, error: e?.message || "Terjadi kesalahan saat memperbarui data kendaraan." }
     }
 }
 

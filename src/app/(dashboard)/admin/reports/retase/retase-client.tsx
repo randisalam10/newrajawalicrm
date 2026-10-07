@@ -792,7 +792,23 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                                                         <div>{format(new Date(tx.date), "dd MMM yyyy", { locale: idLocale })}</div>
                                                     </TableCell>
                                                     <TableCell className="py-2 font-mono font-bold text-slate-800">
-                                                        {tx.no_bon}
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span>{tx.no_bon || "-"}</span>
+                                                            {tx.movement_type === "OUTGOING" ? (
+                                                                <span className="inline-flex items-center px-1 py-0.2 rounded text-[9px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+                                                                    Keluar
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-1 py-0.2 rounded text-[9px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                                    Masuk
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {tx.recipient && (
+                                                            <div className="text-[10px] text-slate-500 font-normal font-sans">
+                                                                Tujuan: {tx.recipient}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="py-2 font-mono">
                                                         <div className="font-semibold text-slate-900">{tx.vehicle?.code || "DT"}</div>
@@ -812,7 +828,9 @@ export function RetaseReportClient({ locations, availableYears, userRole, userLo
                                                     </TableCell>
                                                     <TableCell className="py-2">
                                                         <Badge variant="secondary" className="text-[10px]">
-                                                            {tx.aggregate_type}
+                                                            {tx.aggregate_type === "Other" && tx.custom_material_name
+                                                                ? tx.custom_material_name
+                                                                : tx.aggregate_type}
                                                         </Badge>
                                                     </TableCell>
                                                     <TableCell className="py-2 text-right font-mono font-semibold">

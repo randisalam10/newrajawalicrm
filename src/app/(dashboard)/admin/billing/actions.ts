@@ -303,7 +303,7 @@ export async function getInvoicesGroupedByCustomer(filters: {
 }
 
 export async function getInvoiceDetail(invoiceId: string) {
-    return prisma.invoice.findUnique({
+    const invoice = await prisma.invoice.findUnique({
         where: { id: invoiceId },
         include: {
             project: { include: { customer: true } },
@@ -325,6 +325,25 @@ export async function getInvoiceDetail(invoiceId: string) {
             billingLogs: { orderBy: { createdAt: "asc" } },
         },
     })
+
+    if (invoice && invoice.items) {
+        invoice.items.sort((a, b) => {
+            const dateA = a.transaction?.date
+                ? new Date(a.transaction.date).getTime()
+                : (a.sewaTransaction?.start_date
+                    ? new Date(a.sewaTransaction.start_date).getTime()
+                    : (a.sewaTransaction?.date ? new Date(a.sewaTransaction.date).getTime() : 0))
+            const dateB = b.transaction?.date
+                ? new Date(b.transaction.date).getTime()
+                : (b.sewaTransaction?.start_date
+                    ? new Date(b.sewaTransaction.start_date).getTime()
+                    : (b.sewaTransaction?.date ? new Date(b.sewaTransaction.date).getTime() : 0))
+            if (dateA !== dateB) return dateA - dateB
+            return (a.transaction?.trip_sequence ?? 0) - (b.transaction?.trip_sequence ?? 0)
+        })
+    }
+
+    return invoice
 }
 
 export async function getDepositSummary(filters: { locationId?: string }) {
@@ -375,11 +394,12 @@ export async function createInvoice(params: {
         return { success: false, error: "Akses ditolak" }
 
     try {
-        // Fetch both Sewa and Production transactions
+        // Fetch both Sewa and Production transactions (sorted ascending by date)
         const [sewaTransactions, prodTransactions] = await Promise.all([
             prisma.sewaTransaction.findMany({
                 where: { id: { in: params.transactionIds }, invoiceItem: null },
                 include: { customer: true, project: true, equipment: true, vehicle: { include: { category: true } }, operator: true },
+                orderBy: [{ start_date: "asc" }, { date: "asc" }],
             }),
             prisma.productionTransaction.findMany({
                 where: { id: { in: params.transactionIds }, invoiceItem: null },
@@ -387,6 +407,7 @@ export async function createInvoice(params: {
                     concreteQuality: true,
                     project: { include: { customer: true, prices: { include: { concreteQuality: true } } } },
                 },
+                orderBy: [{ date: "asc" }, { trip_sequence: "asc" }],
             }),
         ])
 

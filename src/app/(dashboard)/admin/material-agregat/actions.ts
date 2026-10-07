@@ -659,6 +659,7 @@ export async function createAggregateOutgoing(formData: FormData) {
 
         revalidatePath("/admin/material-agregat")
         revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
         return { success: true, data: newOut }
     } catch (error: any) {
         return { error: error.message || "Gagal menyimpan data pengeluaran material" }
@@ -807,6 +808,7 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
 
         revalidatePath("/admin/material-agregat")
         revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
         return { success: true, data: updated }
     } catch (error: any) {
         return { error: error.message || "Gagal memperbarui data" }
@@ -824,6 +826,8 @@ export async function deleteAggregateOutgoing(id: string) {
 
         await prisma.aggregateOutgoing.delete({ where: { id } })
         revalidatePath("/admin/material-agregat")
+        revalidatePath("/admin/retase")
+        revalidatePath("/admin/reports/retase")
         return { success: true }
     } catch (error: any) {
         return { error: error.message || "Gagal menghapus data" }

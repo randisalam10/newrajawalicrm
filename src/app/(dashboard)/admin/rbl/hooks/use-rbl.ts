@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import {
     createBudget,
+    updateBudget,
     closeBudget,
     updateExpense,
     deleteExpense,
@@ -12,7 +13,7 @@ import {
     getBudgetHistory,
     getBudgetDetail,
 } from "../actions"
-import { RblClientProps } from "../types"
+import { RblClientProps, BudgetUpdatePayload } from "../types"
 import { fmt, MONTH_NAMES } from "../utils/rbl-helpers"
 import { useRblCategories } from "./use-rbl-categories"
 import { useBatchExpenses } from "./use-batch-expenses"
@@ -53,6 +54,8 @@ export function useRbl({
 
     // Dialog & UI States
     const [isCreateBudgetOpen, setIsCreateBudgetOpen] = useState(false)
+    const [isEditBudgetOpen, setIsEditBudgetOpen] = useState(false)
+    const [editingBudget, setEditingBudget] = useState<any>(null)
     const [isCloseBudgetOpen, setIsCloseBudgetOpen] = useState(false)
     const [isEditExpenseOpen, setIsEditExpenseOpen] = useState(false)
     const [editingExpense, setEditingExpense] = useState<any>(null)
@@ -258,6 +261,35 @@ export function useRbl({
         })
     }
 
+    const handleOpenEditBudget = (target?: any) => {
+        const b = target || activeBudget
+        if (!b) return
+        if (b.status === "CLOSED") {
+            toast.error("Budget yang sudah ditutup (CLOSED) tidak dapat diedit.")
+            return
+        }
+        setEditingBudget(b)
+        setIsEditBudgetOpen(true)
+    }
+
+    const handleUpdateBudgetSubmit = async (budgetId: string, payload: BudgetUpdatePayload) => {
+        startTransition(async () => {
+            const res = await updateBudget(budgetId, payload)
+            if (res.success) {
+                toast.success("Budget RBL berhasil diperbarui!")
+                setIsEditBudgetOpen(false)
+                setEditingBudget(null)
+                reloadData(selectedLocation)
+                if (isDetailOpen && selectedDetailBudget?.id === budgetId) {
+                    const updatedDetail = await getBudgetDetail(budgetId)
+                    setSelectedDetailBudget(updatedDetail)
+                }
+            } else {
+                toast.error(res.error || "Gagal memperbarui budget.")
+            }
+        })
+    }
+
     const handleCloseBudgetSubmit = async () => {
         if (!activeBudget) return
         startTransition(async () => {
@@ -347,6 +379,10 @@ export function useRbl({
         // Dialog states
         isCreateBudgetOpen,
         setIsCreateBudgetOpen,
+        isEditBudgetOpen,
+        setIsEditBudgetOpen,
+        editingBudget,
+        setEditingBudget,
         isCloseBudgetOpen,
         setIsCloseBudgetOpen,
         isEditExpenseOpen,
@@ -376,6 +412,8 @@ export function useRbl({
         setCloseDate,
         // Handlers
         handleOpenDetail,
+        handleOpenEditBudget,
+        handleUpdateBudgetSubmit,
         handleCreateBudgetSubmit,
         handleCloseBudgetSubmit,
         handleDeleteExpense,
