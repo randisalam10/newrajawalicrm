@@ -28,16 +28,22 @@ export function BillingClient({
     const isCorporate = userRole === "SuperAdminBP" || ["CEO", "FVP", "Approver"].includes(userRole)
     const isSuperAdmin = userRole === "SuperAdminBP" || ["CEO", "FVP"].includes(userRole)
 
-    // 1. Invoices List Hook (initialized early for cancelled invoice flag sync)
-    const invoicesHook = useInvoicesList(initialData?.grouped ?? [])
+    const [showCancelledInvoices, setShowCancelledInvoices] = useState(false)
 
-    // 2. Billing Filter & Data Synchronization Hook
+    // 1. Billing Filter & Data Synchronization Hook
     const filter = useBillingFilter({
         initialData,
         isCorporate,
         userLocationId,
-        showCancelledInvoices: invoicesHook.showCancelledInvoices,
+        showCancelledInvoices,
     })
+
+    // 2. Invoices List Hook (receives live filter.data.grouped)
+    const invoicesHook = useInvoicesList(
+        filter.data?.grouped ?? initialData?.grouped ?? [],
+        showCancelledInvoices,
+        setShowCancelledInvoices
+    )
 
     // 3. Unbilled Pool Selection Hook
     const unbilledHook = useUnbilledPool(filter.data?.unbilled ?? [])
@@ -206,17 +212,29 @@ export function BillingClient({
                         setStatusFilter={invoicesHook.setStatusFilter}
                         ppnFilter={invoicesHook.ppnFilter}
                         setPpnFilter={invoicesHook.setPpnFilter}
-                        showCancelledInvoices={invoicesHook.showCancelledInvoices}
+                        showCancelledInvoices={showCancelledInvoices}
                         onToggleShowCancelled={() => {
-                            const next = !invoicesHook.showCancelledInvoices
-                            invoicesHook.setShowCancelledInvoices(next)
-                            filter.reload(filter.selectedLocation, filter.startDate, filter.endDate, filter.selectedCustomerId)
+                            const next = !showCancelledInvoices
+                            setShowCancelledInvoices(next)
+                            filter.reload(filter.selectedLocation, filter.startDate, filter.endDate, filter.selectedCustomerId, next)
                         }}
                         filteredFlatInvoices={invoicesHook.filteredFlatInvoices}
+                        filteredCustomerHierarchy={invoicesHook.filteredCustomerHierarchy}
+                        viewMode={invoicesHook.viewMode}
+                        setViewMode={invoicesHook.setViewMode}
+                        isCustomerExpanded={invoicesHook.isCustomerExpanded}
+                        toggleCustomer={invoicesHook.toggleCustomer}
+                        isProjectExpanded={invoicesHook.isProjectExpanded}
+                        toggleProject={invoicesHook.toggleProject}
+                        expandAll={invoicesHook.expandAll}
+                        collapseAll={invoicesHook.collapseAll}
                         invoicePage={invoicesHook.invoicePage}
                         setInvoicePage={invoicesHook.setInvoicePage}
+                        customerPage={invoicesHook.customerPage}
+                        setCustomerPage={invoicesHook.setCustomerPage}
                         onOpenInvoice={modals.openInvoice}
                         PAGE_SIZE={invoicesHook.INVOICE_PAGE_SIZE}
+                        CUSTOMER_PAGE_SIZE={invoicesHook.CUSTOMER_PAGE_SIZE}
                     />
                 </TabsContent>
 

@@ -110,6 +110,8 @@ export function resetRateLimit(key: string): void {
 export async function getClientIp(): Promise<string> {
     try {
         const headerList = await headers()
+        const cfConnectingIp = headerList.get("cf-connecting-ip")
+        if (cfConnectingIp) return cfConnectingIp.trim()
         const forwardedFor = headerList.get("x-forwarded-for")
         if (forwardedFor) {
             // First IP in list is the original client
@@ -117,8 +119,6 @@ export async function getClientIp(): Promise<string> {
         }
         const realIp = headerList.get("x-real-ip")
         if (realIp) return realIp.trim()
-        const cfConnectingIp = headerList.get("cf-connecting-ip")
-        if (cfConnectingIp) return cfConnectingIp.trim()
     } catch {
         // Headers might not be accessible outside of request context
     }
@@ -129,13 +129,14 @@ export async function getClientIp(): Promise<string> {
  * Helper to extract client IP from a NextRequest / Request object directly.
  */
 export function getRequestIp(req: Request): string {
+    const cfConnectingIp = req.headers.get("cf-connecting-ip")
+    if (cfConnectingIp) return cfConnectingIp.trim()
     const forwardedFor = req.headers.get("x-forwarded-for")
     if (forwardedFor) {
         return forwardedFor.split(",")[0].trim()
     }
     const realIp = req.headers.get("x-real-ip")
     if (realIp) return realIp.trim()
-    const cfConnectingIp = req.headers.get("cf-connecting-ip")
-    if (cfConnectingIp) return cfConnectingIp.trim()
     return "127.0.0.1"
 }
+

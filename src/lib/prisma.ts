@@ -10,13 +10,12 @@ function createPrismaClient() {
   let url = dbUrl
   if (url && !url.includes("connection_limit")) {
     const separator = url.includes("?") ? "&" : "?"
-    url = `${url}${separator}connection_limit=5&pool_timeout=20`
+    url = `${url}${separator}connection_limit=15&pool_timeout=30`
   }
 
   let ClientConstructor: any = PrismaClient
   try {
-    const probe = new PrismaClient() as any
-    if (!probe.creditObligation) {
+    if (!(PrismaClient.prototype as any)?.creditObligation) {
       const { createRequire } = require("module")
       const nativeRequire = createRequire(process.cwd() + "/package.json")
       const { PrismaClient: FreshClient } = nativeRequire("@prisma/client")
@@ -48,8 +47,8 @@ if (globalForPrisma.prisma) {
 export const prisma: PrismaClient =
   globalForPrisma.prisma ?? createPrismaClient()
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
-}
+// Always cache prisma singleton in memory across all environments
+globalForPrisma.prisma = prisma
 
 export default prisma
+

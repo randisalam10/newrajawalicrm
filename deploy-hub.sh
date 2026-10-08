@@ -17,8 +17,9 @@ NC='\033[0m'
 
 APP_NAME="rajawali-app"
 IMAGE_REPO="randisalam1007/rajawali-bp-erp"
-IMAGE_TAG="${1:-v2.5.1}"
+IMAGE_TAG="${1:-v2.5.2}"
 IMAGE_NAME="$IMAGE_REPO:$IMAGE_TAG"
+
 
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE} Deploying via Docker Hub${NC}"

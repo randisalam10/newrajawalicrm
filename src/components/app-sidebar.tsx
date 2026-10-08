@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 
 import {
     Sidebar,
@@ -16,11 +16,12 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Landmark, BookLock } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Landmark, BookLock, Loader2 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { logout } from "@/app/login/actions"
 
 type AppSidebarProps = {
     user: {
@@ -35,6 +36,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
     const [mounted, setMounted] = useState(false)
     const [openGroup, setOpenGroup] = useState<string | null>("Operasional & Transaksi")
+    const [isLoggingOut, startTransition] = useTransition()
+
+    const handleLogout = () => {
+        startTransition(async () => {
+            await logout()
+        })
+    }
 
     useEffect(() => {
         setMounted(true)
@@ -353,9 +361,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
                             </div>
                         </div>
                         <div className="flex items-center shrink-0">
-                            <Link href="/api/auth/signout" title="Sign Out">
-                                <LogOut className="h-4 w-4 text-slate-400 hover:text-red-500 transition-colors" />
-                            </Link>
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                disabled={isLoggingOut}
+                                title="Sign Out"
+                                className="cursor-pointer p-1 rounded hover:bg-slate-200/60 transition-colors disabled:opacity-50"
+                            >
+                                {isLoggingOut ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                ) : (
+                                    <LogOut className="h-4 w-4 text-slate-400 hover:text-red-500 transition-colors" />
+                                )}
+                            </button>
                         </div>
                     </div>
                 ) : (
@@ -368,9 +386,19 @@ export function AppSidebar({ user }: AppSidebarProps) {
                             <span className="truncate text-[11px] font-medium text-slate-500 uppercase tracking-wider">{user?.role}</span>
                         </div>
                         <div className="flex items-center">
-                            <Link href="/api/auth/signout" title="Sign Out">
-                                <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
-                            </Link>
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                disabled={isLoggingOut}
+                                title="Sign Out"
+                                className="cursor-pointer p-1 rounded hover:bg-slate-200/60 transition-colors disabled:opacity-50"
+                            >
+                                {isLoggingOut ? (
+                                    <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                                ) : (
+                                    <LogOut className="h-5 w-5 text-slate-400 hover:text-red-500 transition-colors" />
+                                )}
+                            </button>
                         </div>
                     </div>
                 )}

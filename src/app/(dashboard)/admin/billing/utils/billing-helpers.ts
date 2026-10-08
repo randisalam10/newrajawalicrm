@@ -11,5 +11,5 @@ export const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
     ISSUED: { label: "Terbit", color: "bg-blue-100 text-blue-700" },
     PARTIAL: { label: "Sebagian", color: "bg-amber-100 text-amber-700" },
     PAID: { label: "Lunas", color: "bg-green-100 text-green-700" },
-    CANCELLED: { label: "Batalkan", color: "bg-red-100 text-red-700" },
+    CANCELLED: { label: "Dibatalkan", color: "bg-red-100 text-red-700" },
 }

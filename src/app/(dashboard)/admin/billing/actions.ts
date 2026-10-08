@@ -217,8 +217,8 @@ export async function getInvoicesGroupedByCustomer(filters: {
     const invoices = await prisma.invoice.findMany({
         where: {
             ...locationFilter,
-            // Hide cancelled by default unless showCancelled flag is set
-            ...(filters.showCancelled ? {} : { NOT: { status: "CANCELLED" } }),
+            // Hide cancelled by default unless showCancelled flag is set or status filter is explicitly CANCELLED
+            ...((filters.showCancelled || filters.status === "CANCELLED") ? {} : { NOT: { status: "CANCELLED" } }),
             ...(filters.status && filters.status !== "all" ? { status: filters.status as any } : {}),
             ...(filters.customerId ? {
                 OR: [
@@ -502,6 +502,7 @@ export async function createInvoice(params: {
                     quantity: tx.volume_cubic,
                     unit_price: dppPrice,
                     subtotal: lineTotal,
+                    description: tx.concreteQuality?.name || "ReadyMix",
                 })
             }
         }
@@ -716,29 +717,144 @@ export async function cancelInvoice(invoiceId: string, reason: string) {
     if (!reason.trim()) return { success: false, error: "Alasan cancel wajib diisi" }
 
     try {
-        const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } })
-        if (!invoice) return { success: false, error: "Invoice tidak ditemukan" }
-
-        await prisma.invoice.update({
+        const invoice = await prisma.invoice.findUnique({
             where: { id: invoiceId },
-            data: {
-                status: "CANCELLED",
-                cancel_reason: reason.trim(),
-                cancelled_at: new Date(),
+            include: {
+                project: { include: { customer: true } },
+                customer: true,
+                items: {
+                    include: {
+                        transaction: {
+                            include: { concreteQuality: true, vehicle: true, driver: true }
+                        },
+                        sewaTransaction: {
+                            include: { equipment: true, operator: true, vehicle: true }
+                        }
+                    }
+                },
+                payments: true,
+            }
+        })
+        if (!invoice) return { success: false, error: "Invoice tidak ditemukan" }
+        if (invoice.status === "CANCELLED") return { success: false, error: "Invoice sudah dibatalkan sebelumnya" }
+
+        // Validasi pembayaran aktif
+        const activePayments = invoice.payments.filter(p => !p.is_cancelled)
+        if (activePayments.length > 0) {
+            return {
+                success: false,
+                error: `Invoice memiliki ${activePayments.length} pembayaran aktif. Batalkan pembayaran terlebih dahulu sebelum membatalkan invoice.`
+            }
+        }
+
+        // Siapkan snapshot item yang akan dilepas ke Unbilled Pool
+        const releasedItems: any[] = []
+        for (const item of invoice.items) {
+            if (item.transaction) {
+                releasedItems.push({
+                    type: "READYMIX",
+                    transactionId: item.transactionId,
+                    date: item.transaction.date,
+                    tripSequence: item.transaction.trip_sequence,
+                    quality: item.transaction.concreteQuality?.name || "ReadyMix",
+                    volume: item.quantity,
+                    price: item.unit_price,
+                    subtotal: item.subtotal,
+                    vehicle: item.transaction.vehicle?.code || "-",
+                    driver: item.transaction.driver?.name || "-",
+                })
+            } else if (item.sewaTransaction) {
+                releasedItems.push({
+                    type: "SEWA",
+                    sewaTransactionId: item.sewaTransactionId,
+                    sewaNumber: item.sewaTransaction.sewa_number,
+                    date: item.sewaTransaction.date,
+                    equipment: item.sewaTransaction.equipment?.nama_alat || item.sewaTransaction.vehicle?.code || "Alat Sewa",
+                    operator: item.sewaTransaction.operator?.name || "-",
+                    days: item.quantity,
+                    price: item.unit_price,
+                    subtotal: item.subtotal,
+                })
+            } else {
+                releasedItems.push({
+                    type: item.item_type,
+                    description: item.description,
+                    quantity: item.quantity,
+                    price: item.unit_price,
+                    subtotal: item.subtotal,
+                })
+            }
+        }
+
+        const customerName = invoice.customer?.customer_name || invoice.project?.customer?.customer_name || "-"
+        const projectName = invoice.project?.name || "Penyewaan Alat & Kendaraan"
+        const actorName = `${session.user.username || "Admin"} (${session.user.role})`
+
+        const logMetadata = {
+            invoiceNumber: invoice.invoice_number,
+            customerName,
+            projectName,
+            cancelledBy: actorName,
+            cancelledAt: new Date().toISOString(),
+            reason: reason.trim(),
+            financialSnapshot: {
+                subtotal: invoice.subtotal,
+                taxAmount: invoice.tax_amount,
+                totalAmount: invoice.total_amount,
             },
+            releasedItems,
+            returnedToUnbilledCount: releasedItems.length,
+        }
+
+        // Jalankan transaksi atomik:
+        // 1. Simpan snapshot deskripsi pada InvoiceItem dan set transactionId / sewaTransactionId ke null (melepaskan transaksi ke unbilled)
+        // 2. Update status invoice menjadi CANCELLED
+        await prisma.$transaction(async (tx) => {
+            for (const item of invoice.items) {
+                let snapshotDesc = item.description
+                if (!snapshotDesc) {
+                    if (item.transaction) {
+                        snapshotDesc = `${item.transaction.concreteQuality?.name || "ReadyMix"} (${item.quantity} m³) - ${item.transaction.vehicle?.code || "TM"} - Trip #${item.transaction.trip_sequence}`
+                    } else if (item.sewaTransaction) {
+                        snapshotDesc = `${item.sewaTransaction.equipment?.nama_alat || item.sewaTransaction.vehicle?.code || "Sewa"} (${item.quantity} hari) - No. ${item.sewaTransaction.sewa_number}`
+                    }
+                }
+
+                await tx.invoiceItem.update({
+                    where: { id: item.id },
+                    data: {
+                        transactionId: null,
+                        sewaTransactionId: null,
+                        description: snapshotDesc,
+                    }
+                })
+            }
+
+            await tx.invoice.update({
+                where: { id: invoiceId },
+                data: {
+                    status: "CANCELLED",
+                    cancel_reason: reason.trim(),
+                    cancelled_at: new Date(),
+                },
+            })
         })
 
+        // Tulis log audit ke BillingLog
         await writeBillingLog({
             action: "INVOICE_CANCELLED",
             invoiceId,
-            description: `Invoice ${invoice.invoice_number} dibatalkan. Alasan: ${reason.trim()}`,
-            metadata: { invoiceNumber: invoice.invoice_number, reason },
+            description: `Invoice ${invoice.invoice_number} dibatalkan oleh ${actorName}. Alasan: ${reason.trim()}. ${releasedItems.length} transaksi dikembalikan ke Unbilled Pool.`,
+            metadata: logMetadata,
         })
 
         revalidatePath("/admin/billing")
-        return { success: true }
+        revalidatePath("/admin/sewa")
+        revalidatePath("/admin")
+        return { success: true, releasedCount: releasedItems.length }
     } catch (e: any) {
-        return { success: false, error: e.message }
+        console.error("Error cancelling invoice:", e)
+        return { success: false, error: e.message || "Gagal membatalkan invoice" }
     }
 }
 

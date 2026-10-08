@@ -44,17 +44,16 @@ export function RetaseClient({
         <div className="space-y-6">
             <Tabs defaultValue="pending">
                 <TabsList
-                    className={`grid w-full ${
-                        canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"
-                    } mb-6`}
+                    className={`grid w-full ${canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"
+                        } mb-6`}
                 >
                     <TabsTrigger value="pending" className="flex items-center gap-1.5 text-xs">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Retase Mixer ({pendingTransactions.length})</span>
+                        <span>Surat Jalan Masuk ({pendingTransactions.length})</span>
                     </TabsTrigger>
                     <TabsTrigger value="confirmed" className="flex items-center gap-1.5 text-xs">
                         <Printer className="w-3.5 h-3.5" />
-                        <span>Surat Jalan Mixer</span>
+                        <span>Surat Jalan Terkonfirmasi</span>
                     </TabsTrigger>
                     <TabsTrigger value="laporan" className="flex items-center gap-1.5 text-xs">
                         <Calculator className="w-3.5 h-3.5" />

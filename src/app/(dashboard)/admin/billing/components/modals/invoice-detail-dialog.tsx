@@ -9,7 +9,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
 import {
-    FileText, Loader2, Percent, Paperclip, Upload, X, Plus, Printer, Eye, Truck, Wrench
+    FileText, Loader2, Percent, Paperclip, Upload, X, Plus, Printer, Eye, Truck, Wrench, XCircle, History
 } from "lucide-react"
 import { fmt, fmtDate, fmtDateTime, STATUS_CONFIG } from "../../utils/billing-helpers"
 import { format } from "date-fns"
@@ -92,6 +92,24 @@ export function InvoiceDetailDialog({
                     </div>
                 ) : invoiceDetail ? (
                     <div className="p-5 space-y-4">
+                        {/* Status Batal Banner */}
+                        {invoiceDetail.status === "CANCELLED" && (
+                            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3 text-xs text-rose-900 space-y-1.5">
+                                <div className="font-bold flex items-center gap-1.5 text-rose-700">
+                                    <XCircle className="w-4 h-4 text-rose-600" />
+                                    <span>Invoice ini telah Dibatalkan {invoiceDetail.cancelled_at && `pada ${fmtDateTime(invoiceDetail.cancelled_at)}`}</span>
+                                </div>
+                                {invoiceDetail.cancel_reason && (
+                                    <div className="text-rose-800">
+                                        <strong>Alasan Pembatalan:</strong> {invoiceDetail.cancel_reason}
+                                    </div>
+                                )}
+                                <div className="text-[11px] text-rose-600 font-medium">
+                                    * Seluruh surat jalan / tiket pengiriman terkait invoice ini telah dikembalikan ke antrean <strong>Unbilled Pool</strong> dan dapat ditagihkan kembali.
+                                </div>
+                            </div>
+                        )}
+
                         {/* Summary per item type: ReadyMix vs Sewa */}
                         {(() => {
                             const sewaItems = invoiceDetail.items
@@ -115,7 +133,7 @@ export function InvoiceDetailDialog({
                             const rmByDate = new Map<string, { tms: number; volume: number; nilai: number; quality: string; date: string }>()
                             for (const item of rmItems) {
                                 const itemDate = item.transaction?.date || invoiceDetail.issue_date
-                                const quality = item.transaction?.concreteQuality?.name || "ReadyMix"
+                                const quality = item.transaction?.concreteQuality?.name || item.description || "ReadyMix"
                                 const dateKey = itemDate ? format(new Date(itemDate), "yyyy-MM-dd") : "Lainnya"
                                 const key = `${dateKey}__${quality}`
                                 if (!rmByDate.has(key)) {
@@ -402,6 +420,27 @@ export function InvoiceDetailDialog({
                                                 </div>
                                             </div>
                                         ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Riwayat Log Audit Billing */}
+                        {invoiceDetail.billingLogs && invoiceDetail.billingLogs.length > 0 && (
+                            <div className="border border-slate-200 rounded-lg p-3 bg-slate-50/50 space-y-2 text-xs">
+                                <div className="font-bold text-slate-700 flex items-center gap-1.5">
+                                    <History className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>Riwayat Aktivitas &amp; Log Audit</span>
+                                </div>
+                                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                                    {invoiceDetail.billingLogs.map((log: any) => (
+                                        <div key={log.id} className="bg-white p-2 rounded border border-slate-100 text-[11px] space-y-0.5">
+                                            <div className="flex items-center justify-between text-slate-500">
+                                                <span className="font-semibold text-slate-700">{log.action}</span>
+                                                <span className="text-[10px]">{fmtDateTime(log.createdAt)}</span>
+                                            </div>
+                                            <div className="text-slate-600">{log.description}</div>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}

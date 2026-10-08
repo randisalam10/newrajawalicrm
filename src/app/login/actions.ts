@@ -1,8 +1,12 @@
 "use server"
 
-import { signIn } from "@/auth"
+import { signIn, signOut } from "@/auth"
 import { AuthError } from "next-auth"
 import { checkRateLimit, recordFailedAttempt, resetRateLimit, getClientIp } from "@/lib/rate-limiter"
+
+export async function logout() {
+    await signOut({ redirectTo: "/login" })
+}
 
 export async function authenticate(
     prevState: string | undefined,
@@ -70,7 +74,9 @@ export async function authenticate(
                     return "Terjadi kendala pada sistem autentikasi."
             }
         }
-        throw error
+        console.error("Login unexpected error:", error)
+        return "Gagal terhubung ke server atau database. Silakan periksa koneksi dan coba beberapa saat lagi."
     }
 }
+
 

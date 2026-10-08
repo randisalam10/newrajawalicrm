@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react"
 import { format } from "date-fns"
+import { toast } from "sonner"
 import {
     createInvoice, recordPayment, updatePaymentProof,
     cancelInvoice, cancelPayment, addDeposit,
@@ -259,12 +260,17 @@ export function useBillingModals({
     const handleCancelInvoice = useCallback(async () => {
         if (!invoiceDetail || !cancelInvoiceReason.trim()) return
         setCancelInvoiceLoading(true)
-        await cancelInvoice(invoiceDetail.id, cancelInvoiceReason.trim())
+        const res = await cancelInvoice(invoiceDetail.id, cancelInvoiceReason.trim())
         setCancelInvoiceLoading(false)
         setShowCancelInvoiceDialog(false)
         setCancelInvoiceReason("")
-        setSelectedInvoice(null)
-        await reload()
+        if (res.success) {
+            toast.success(`Invoice berhasil dibatalkan. ${res.releasedCount ?? 0} transaksi dikembalikan ke Unbilled Pool.`)
+            setSelectedInvoice(null)
+            await reload()
+        } else {
+            toast.error(res.error || "Gagal membatalkan invoice")
+        }
     }, [invoiceDetail, cancelInvoiceReason, reload])
 
     const handleCancelPayment = useCallback(async () => {

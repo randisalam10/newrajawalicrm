@@ -237,7 +237,8 @@ async function sendTelegramNotification(tx: any) {
         return
     }
 
-    const message = `
+    try {
+        const message = `
 🔔 *PRODUKSI BARU* 🔔
 
 📋 *No Transaksi:* \`${tx.id.substring(0, 8).toUpperCase()}\`
@@ -260,15 +261,20 @@ Mixer: ${tx.vehicle.code}
 ⏰ *Waktu:* ${new Date(tx.date).toLocaleString('id-ID')}
   `.trim()
 
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`
+        const url = `https://api.telegram.org/bot${botToken}/sendMessage`
 
-    await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            chat_id: chatId,
-            text: message,
-            parse_mode: "Markdown"
+        await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: message,
+                parse_mode: "Markdown"
+            }),
+            signal: AbortSignal.timeout(5000)
         })
-    })
+    } catch (err: any) {
+        console.warn("[Telegram] Gagal mengirim notifikasi:", err.message)
+    }
 }
+

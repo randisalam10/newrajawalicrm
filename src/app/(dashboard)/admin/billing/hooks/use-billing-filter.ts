@@ -44,12 +44,13 @@ export function useBillingFilter({
             .sort((a, b) => a.label.localeCompare(b.label))
     }, [data])
 
-    const reload = useCallback(async (locId?: string, sDate?: string, eDate?: string, custId?: string) => {
+    const reload = useCallback(async (locId?: string, sDate?: string, eDate?: string, custId?: string, showCancelled?: boolean) => {
         setIsLoading(true)
         const effectiveLocId = locId !== undefined ? locId : (selectedLocation === "all" ? undefined : selectedLocation)
         const effectiveStartDate = sDate !== undefined ? sDate : (startDate || undefined)
         const effectiveEndDate = eDate !== undefined ? eDate : (endDate || undefined)
         const effectiveCustId = custId !== undefined ? custId : (selectedCustomerId === "all" ? undefined : selectedCustomerId)
+        const effectiveShowCancelled = showCancelled !== undefined ? showCancelled : showCancelledInvoices
 
         try {
             const [unbilled, grouped, deposits] = await Promise.all([
@@ -61,7 +62,7 @@ export function useBillingFilter({
                 }),
                 getInvoicesGroupedByCustomer({
                     locationId: effectiveLocId,
-                    showCancelled: showCancelledInvoices,
+                    showCancelled: effectiveShowCancelled,
                     startDate: effectiveStartDate,
                     endDate: effectiveEndDate,
                     customerId: effectiveCustId,
