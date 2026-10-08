@@ -96,12 +96,24 @@ export async function getUnbilledTransactions(filters: {
     const startDateObj = filters.startDate ? new Date(filters.startDate.includes("T") ? filters.startDate : `${filters.startDate}T00:00:00.000+07:00`) : undefined
     const endDateObj = filters.endDate ? new Date(filters.endDate.includes("T") ? filters.endDate : `${filters.endDate}T23:59:59.999+07:00`) : undefined
 
+    // Pastikan transaksi yang sempat terkunci di invoice CANCELLED (versi lama) dilepaskan secara otomatis
+    await prisma.$executeRawUnsafe(`
+        UPDATE "InvoiceItem"
+        SET "transactionId" = NULL, "sewaTransactionId" = NULL
+        WHERE "invoiceId" IN (
+            SELECT id FROM "Invoice" WHERE status = 'CANCELLED'
+        ) AND ("transactionId" IS NOT NULL OR "sewaTransactionId" IS NOT NULL);
+    `).catch(() => null)
+
     const [prodTxs, sewaTxs] = await Promise.all([
         prisma.productionTransaction.findMany({
             where: {
                 ...locationFilter,
                 status: "Confirmed",
-                invoiceItem: null, // no InvoiceItem = unbilled
+                OR: [
+                    { invoiceItem: null },
+                    { invoiceItem: { invoice: { status: "CANCELLED" } } },
+                ],
                 ...(filters.projectId ? { projectId: filters.projectId } : {}),
                 ...(filters.customerId ? { project: { customerId: filters.customerId } } : {}),
                 ...(startDateObj || endDateObj ? {
@@ -124,8 +136,11 @@ export async function getUnbilledTransactions(filters: {
         prisma.sewaTransaction.findMany({
             where: {
                 ...locationFilter,
-                invoiceItem: null,
                 status: { not: "Cancelled" },
+                OR: [
+                    { invoiceItem: null },
+                    { invoiceItem: { invoice: { status: "CANCELLED" } } },
+                ],
                 ...(filters.projectId ? { projectId: filters.projectId } : {}),
                 ...(filters.customerId ? { customerId: filters.customerId } : {}),
                 ...(startDateObj || endDateObj ? {
@@ -135,6 +150,7 @@ export async function getUnbilledTransactions(filters: {
                     }
                 } : {}),
             },
+
             include: {
                 customer: true,
                 project: { include: { customer: true } },
