@@ -214,3 +214,69 @@ export async function updateRolePermissions(roleId: string, permissionCodes: str
         return { success: false, error: error.message || "Gagal memperbarui hak akses role" }
     }
 }
+
+export async function duplicateRole(sourceRoleId: string, formData: FormData) {
+    const session = await auth()
+    if (session?.user?.role !== "SuperAdminBP") return { success: false, error: "Unauthorized" }
+
+    const rawData = {
+        name: formData.get("name"),
+        label: formData.get("label"),
+        description: formData.get("description") || undefined,
+        scope: formData.get("scope"),
+    }
+
+    const parsed = roleSchema.safeParse(rawData)
+    if (!parsed.success) {
+        return { success: false, error: parsed.error.issues[0]?.message || "Validasi gagal" }
+    }
+
+    try {
+        const existing = await prisma.role.findUnique({ where: { name: parsed.data.name } })
+        if (existing) {
+            return { success: false, error: "Kode role sudah digunakan. Gunakan kode lain." }
+        }
+
+        const sourceRole = await prisma.role.findUnique({
+            where: { id: sourceRoleId },
+            include: { permissions: { select: { permissionId: true } } }
+        })
+
+        if (!sourceRole) {
+            return { success: false, error: "Role sumber tidak ditemukan" }
+        }
+
+        const newRole = await prisma.$transaction(async (tx) => {
+            const role = await tx.role.create({
+                data: {
+                    name: parsed.data.name,
+                    label: parsed.data.label,
+                    description: parsed.data.description,
+                    scope: parsed.data.scope,
+                    isSystem: false,
+                }
+            })
+
+            if (sourceRole.permissions.length > 0) {
+                await tx.rolePermission.createMany({
+                    data: sourceRole.permissions.map(p => ({
+                        roleId: role.id,
+                        permissionId: p.permissionId
+                    }))
+                })
+            }
+
+            return role
+        })
+
+        revalidatePath("/admin/roles")
+        return {
+            success: true,
+            role: newRole,
+            permissionCount: sourceRole.permissions.length
+        }
+    } catch (error: any) {
+        return { success: false, error: error.message || "Gagal menduplikasi role" }
+    }
+}
+

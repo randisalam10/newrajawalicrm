@@ -13,7 +13,7 @@ import {
 
 export default async function PoDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const session = await auth()
-    if (!session?.user?.employeeId) redirect("/login")
+    if (!session?.user) redirect("/login")
 
     const { id } = await params
     const res = await getPurchaseOrderById(id)
@@ -99,7 +99,11 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
                         </div>
                         <div>
                             <span className="text-slate-400 block text-[11px]">Proyek / Tujuan:</span>
-                            <span className="font-medium text-slate-700">{po.project?.name || "-"}</span>
+                            <span className="font-medium text-slate-700">
+                                {po.is_for_crusher
+                                    ? (po.location?.name ? `Stone Crusher • ${po.location.name}` : "Stone Crusher")
+                                    : (po.project?.name || (po.is_for_bp && po.location?.name ? `BP • ${po.location.name}` : "-"))}
+                            </span>
                         </div>
                         {po.is_for_bp && (
                             <div>
@@ -110,6 +114,19 @@ export default async function PoDetailPage({ params }: { params: Promise<{ id: s
                                     </Badge>
                                     {po.location?.name && (
                                         <span className="font-semibold text-slate-800 text-xs">🏢 {po.location.name}</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {po.is_for_crusher && (
+                            <div>
+                                <span className="text-slate-400 block text-[11px]">Peruntukan Stone Crusher:</span>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                    <Badge variant="outline" className="text-[11px] bg-amber-50 text-amber-700 border-amber-300 font-bold">
+                                        Stone Crusher
+                                    </Badge>
+                                    {po.location?.name && (
+                                        <span className="font-semibold text-slate-800 text-xs">⛰️ {po.location.name}</span>
                                     )}
                                 </div>
                             </div>

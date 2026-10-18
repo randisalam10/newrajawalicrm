@@ -83,6 +83,18 @@ export async function getMonthlyManagementReportData(
             console.warn("Notice: Failed checking monthly closing snapshot, continuing live calculation:", closeErr)
         }
 
+        // Deteksi: scope cabang dihitung LIVE padahal konsolidasi ALL sudah dikunci (snapshot).
+        // Menandai agar UI menampilkan badge "Perhitungan Live (Belum Dikunci)".
+        let isLiveUnlocked = false
+        if (selectedLocId) {
+            try {
+                const allClosed = await (prisma as any).monthlyClosing.findUnique({
+                    where: { closingKey: `${selectedPeriodStr}__ALL` }
+                })
+                if (allClosed && allClosed.status === "CLOSED") isLiveUnlocked = true
+            } catch { /* abaikan */ }
+        }
+
         // 3. Fetch Raw Data in Parallel Batches
         const raw = await fetchMonthlyReportRawData({
             monthStart,
@@ -142,6 +154,36 @@ export async function getMonthlyManagementReportData(
             activeFixedContracts: raw.activeFixedContracts
         })
 
+        // 5.1 Biaya langsung AKTUAL bulan sebelumnya (untuk MoM yang akurat, bukan estimasi)
+        let prevCogs: ReturnType<typeof calculateDirectCogs> | null = null
+        try {
+            const prevRaw = await fetchMonthlyReportRawData({
+                monthStart: prevMonthStart,
+                monthEnd: prevMonthEnd,
+                prevMonthStart: startOfMonth(subMonths(prevMonthDate, 1)),
+                prevMonthEnd: endOfMonth(subMonths(prevMonthDate, 1)),
+                selectedLocId,
+                targetMonthNum: prevMonthDate.getMonth() + 1,
+                targetYearNum: prevMonthDate.getFullYear()
+            })
+            prevCogs = calculateDirectCogs({
+                currentTxns: prevRaw.currentTxns,
+                activePrices: prevRaw.activePrices,
+                currentBbmExpenses: prevRaw.currentBbmExpenses,
+                mixerRetaseList: prevRaw.mixerRetaseList,
+                dtRetaseIncoming: prevRaw.dtRetaseIncoming,
+                dtRetaseOutgoing: prevRaw.dtRetaseOutgoing,
+                maintenancePoItems: prevRaw.maintenancePoItems,
+                rblMaintenance: prevRaw.rblMaintenance,
+                cementPoItems: prevRaw.cementPoItems,
+                cementIncomings: prevRaw.cementIncomings,
+                currentVolumeTotal: prevReadymix.volumeTotal,
+                activeFixedContracts: prevRaw.activeFixedContracts
+            })
+        } catch (prevErr) {
+            console.warn("Gagal menghitung COGS bulan sebelumnya untuk MoM:", prevErr)
+        }
+
         // 6. Gross Profit
         const grossProfit = totalDppRevenue - cogs.totalDirectCost
         const grossMarginPercent = totalDppRevenue > 0 ? ((grossProfit / totalDppRevenue) * 100) : 0
@@ -195,6 +237,8 @@ export async function getMonthlyManagementReportData(
             totalMaterialCost: cogs.totalMaterialCost,
             totalFuelCost: cogs.totalFuelCost,
             prevTotalFuelCost,
+            prevTotalDirectCost: prevCogs?.totalDirectCost ?? 0,
+            prevUnitDirectCostPerM3: prevCogs?.unitDirectCostPerM3 ?? 0,
             totalRetaseCost: cogs.totalRetaseCost,
             totalMaintenanceCost: cogs.totalMaintenanceCost,
             manualDirectCost: cogs.manualDirectCost,
@@ -219,8 +263,8 @@ export async function getMonthlyManagementReportData(
         let unbilledEstimatedValue = 0
         let unbilledUnpricedCount = 0
         raw.unbilledTxns.forEach((t: any) => {
-            const matched = t.project?.prices?.find((pr: any) => 
-                pr.qualityId === t.qualityId || 
+            const matched = t.project?.prices?.find((pr: any) =>
+                pr.qualityId === t.qualityId ||
                 (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
             )
             const p = matched?.price ?? 0
@@ -229,6 +273,18 @@ export async function getMonthlyManagementReportData(
             }
             unbilledEstimatedValue += (t.volume_cubic * p)
         })
+
+        // Backlog belum ditagih SELURUH PERIODE (konteks terpisah dari bulan terpilih)
+        const unbilledBacklogVolume = (raw.unbilledBacklogTxns || []).reduce((s: number, t: any) => s + (t.volume_cubic || 0), 0)
+        let unbilledBacklogEstimatedValue = 0
+            ; (raw.unbilledBacklogTxns || []).forEach((t: any) => {
+                const matched = t.project?.prices?.find((pr: any) =>
+                    pr.qualityId === t.qualityId ||
+                    (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
+                )
+                const p = matched?.price ?? 0
+                unbilledBacklogEstimatedValue += (t.volume_cubic * p)
+            })
 
         // Alerts untuk missing prices
         if (cogs.isSemenPriceMissing) {
@@ -281,6 +337,11 @@ export async function getMonthlyManagementReportData(
 
         const supplierMap = new Map(raw.allSuppliers.map(s => [s.id, s.name]))
 
+        // Gaji bulanan (dari kontrak kategori GAJI) — field gajiMonthly sebelumnya selalu 0
+        const gajiMonthly = (cogs.manualDirectContracts || [])
+            .filter((c: any) => (c.category || "").toUpperCase().includes("GAJI") || (c.name || "").toUpperCase().includes("GAJI"))
+            .reduce((s: number, c: any) => s + (c.monthly_amount || 0), 0)
+
         // 9.5 Unit Economics Targets (dari OperationalTargetSetting tanpa fallback angka fiktif)
         const unitEconomicsTargets = {
             asp: Number(targetSetting.target_asp || 0),
@@ -314,10 +375,16 @@ export async function getMonthlyManagementReportData(
             selectedLocId: selectedLocId || "all",
             activeLocationName,
             availableLocations: raw.allLocations,
-            availableMonths: [
-                "2026-10", "2026-09", "2026-08", "2026-07", "2026-06",
-                "2026-05", "2026-04", "2026-03", "2026-02", "2026-01"
-            ],
+            availableMonths: (() => {
+                const fromData = (raw.availableMonthsRaw || [])
+                    .map((r: any) => r.ym)
+                    .filter((m: any) => typeof m === "string" && /^\d{4}-\d{2}$/.test(m))
+                if (fromData.length > 0) {
+                    if (!fromData.includes(selectedPeriodStr)) fromData.unshift(selectedPeriodStr)
+                    return Array.from(new Set(fromData))
+                }
+                return [selectedPeriodStr]
+            })(),
             scorecard: {
                 productionVolumeM3: currentReadymix.volumeTotal,
                 productionTargetM3,
@@ -372,7 +439,7 @@ export async function getMonthlyManagementReportData(
                 totalFixedContractMonthly: overhead.totalFixedContractMonthly,
                 sewaTanahMonthly: overhead.totalSewaTanahCost,
                 sewaMessMonthly: overhead.totalSewaMessCost,
-                gajiMonthly: overhead.totalGajiCost,
+                gajiMonthly,
                 perizinanMonthly: overhead.totalPerizinanCost,
                 asuransiRetribusiMonthly: overhead.totalAsuransiRetribusiCost,
                 vehicleTaxMonthly: overhead.totalMonthlyVehicleTax,
@@ -403,16 +470,21 @@ export async function getMonthlyManagementReportData(
             mutuDistribution: analytics.mutuDistribution,
             topCustomers: analytics.topCustomers,
             fleetStats: analytics.fleetStats,
-            costComposition: [
-                { name: "Semen Curah & Zak", value: cogs.totalSemenCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalSemenCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Pasir Cor", value: cogs.totalPasirCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalPasirCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Batu Split (1/2 & 2/3)", value: cogs.totalSplitCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalSplitCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Retase Supir (Mixer & DT)", value: cogs.totalRetaseCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalRetaseCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "BBM Solar Armada", value: cogs.totalFuelCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalFuelCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Suku Cadang & Bengkel", value: cogs.totalMaintenanceCost, pct: cogs.totalDirectCost > 0 ? (cogs.totalMaintenanceCost / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Sewa Tanah & Mess (Amortisasi)", value: overhead.totalFixedContractMonthly, pct: cogs.totalDirectCost > 0 ? (overhead.totalFixedContractMonthly / cogs.totalDirectCost) * 100 : 0 },
-                { name: "Pajak & KIR Armada (Amortisasi)", value: overhead.totalVehicleComplianceMonthly, pct: cogs.totalDirectCost > 0 ? (overhead.totalVehicleComplianceMonthly / cogs.totalDirectCost) * 100 : 0 }
-            ],
+            costComposition: (() => {
+                // Penyebut mencakup biaya langsung + amortisasi agar persentase konsisten (menjumlah ~100%)
+                const compositionBase = cogs.totalDirectCost + overhead.totalAmortizationMonthly
+                const pct = (v: number) => compositionBase > 0 ? (v / compositionBase) * 100 : 0
+                return [
+                    { name: "Semen Curah & Zak", value: cogs.totalSemenCost, pct: pct(cogs.totalSemenCost) },
+                    { name: "Pasir Cor", value: cogs.totalPasirCost, pct: pct(cogs.totalPasirCost) },
+                    { name: "Batu Split (1/2 & 2/3)", value: cogs.totalSplitCost, pct: pct(cogs.totalSplitCost) },
+                    { name: "Retase Supir (Mixer & DT)", value: cogs.totalRetaseCost, pct: pct(cogs.totalRetaseCost) },
+                    { name: "BBM Solar Armada", value: cogs.totalFuelCost, pct: pct(cogs.totalFuelCost) },
+                    { name: "Suku Cadang & Bengkel", value: cogs.totalMaintenanceCost, pct: pct(cogs.totalMaintenanceCost) },
+                    { name: "Sewa Tanah & Mess (Amortisasi)", value: overhead.totalFixedContractMonthly, pct: pct(overhead.totalFixedContractMonthly) },
+                    { name: "Pajak & KIR Armada (Amortisasi)", value: overhead.totalVehicleComplianceMonthly, pct: pct(overhead.totalVehicleComplianceMonthly) }
+                ]
+            })(),
             drilldown: {
                 maintenanceDetail: {
                     fromPo: raw.maintenancePoItems.map(item => ({
@@ -622,12 +694,12 @@ export async function getMonthlyManagementReportData(
                     volume: t.volume_cubic,
                     plate: t.vehicle?.plate_number || t.vehicle?.code || "-",
                     driver: t.driver?.name || "-",
-                    price: t.project?.prices?.find((p: any) => 
-                        p.qualityId === t.qualityId || 
+                    price: t.project?.prices?.find((p: any) =>
+                        p.qualityId === t.qualityId ||
                         (p.concreteQuality?.name && t.concreteQuality?.name && p.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
                     )?.price || currentReadymix.asp,
-                    total: (t.volume_cubic || 0) * (t.project?.prices?.find((p: any) => 
-                        p.qualityId === t.qualityId || 
+                    total: (t.volume_cubic || 0) * (t.project?.prices?.find((p: any) =>
+                        p.qualityId === t.qualityId ||
                         (p.concreteQuality?.name && t.concreteQuality?.name && p.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
                     )?.price || currentReadymix.asp),
                     status: t.status
@@ -692,6 +764,9 @@ export async function getMonthlyManagementReportData(
                     unbilledCount: raw.unbilledTxns.length,
                     unbilledVolume,
                     unbilledEstimatedValue,
+                    unbilledBacklogCount: (raw.unbilledBacklogTxns || []).length,
+                    unbilledBacklogVolume,
+                    unbilledBacklogEstimatedValue,
                     arAging: analytics.arAging,
                     depositCount: raw.activeDeposits.length,
                     totalDepositAmount: raw.activeDeposits.reduce((s: number, d: any) => s + (d.amount || 0), 0),
@@ -708,6 +783,7 @@ export async function getMonthlyManagementReportData(
                 }
             },
             isClosed: false,
+            isLiveUnlocked,
             closingInfo: null
         }
     } catch (error: any) {

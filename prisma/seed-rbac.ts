@@ -92,6 +92,8 @@ export const PERMISSIONS = [
     { code: 'LOGISTIK_EDIT', module: 'LOGISTIK', action: 'edit', name: 'Ubah PO / Master Barang' },
     { code: 'LOGISTIK_DELETE', module: 'LOGISTIK', action: 'delete', name: 'Batalkan PO / Hapus Barang' },
     { code: 'LOGISTIK_APPROVE', module: 'LOGISTIK', action: 'approve', name: 'Approval PO' },
+    { code: 'LOGISTIK_PERUSAHAAN_VIEW', module: 'LOGISTIK', action: 'view', name: 'Lihat Daftar Perusahaan (KOP)' },
+    { code: 'LOGISTIK_PERUSAHAAN_MANAGE', module: 'LOGISTIK', action: 'edit', name: 'Kelola Perusahaan & Proyek (KOP)' },
 
     // Laporan
     { code: 'REPORTS_VIEW', module: 'REPORTS', action: 'view', name: 'Lihat Laporan & Rekapitulasi' },
@@ -128,6 +130,14 @@ export const PERMISSIONS = [
     { code: 'FINANCE_CREDIT_CREATE', module: 'FINANCE', action: 'create', name: 'Tambah Kewajiban Kredit' },
     { code: 'FINANCE_CREDIT_PAY', module: 'FINANCE', action: 'approve', name: 'Catat Pembayaran Pelunasan Kredit' },
     { code: 'FINANCE_CREDIT_MANAGE', module: 'FINANCE', action: 'edit', name: 'Kelola / Batalkan Pembayaran Kredit' },
+
+    // Stone Crusher (SC)
+    { code: 'CRUSHER_VIEW', module: 'CRUSHER', action: 'view', name: 'Lihat Modul Stone Crusher' },
+    { code: 'CRUSHER_DAILY_CREATE', module: 'CRUSHER', action: 'create', name: 'Catat Laporan Harian Crusher' },
+    { code: 'CRUSHER_DAILY_EDIT', module: 'CRUSHER', action: 'edit', name: 'Ubah Laporan Harian Crusher' },
+    { code: 'CRUSHER_BBM_CREATE', module: 'CRUSHER', action: 'create', name: 'Input Pengisian BBM Solar Crusher' },
+    { code: 'CRUSHER_MASTER_MANAGE', module: 'CRUSHER', action: 'edit', name: 'Kelola Master Sumber Material' },
+    { code: 'CRUSHER_WAGES_VIEW', module: 'CRUSHER', action: 'view', name: 'Lihat Hasil Pribadi & Slip Upah Operator / Helper' },
 ]
 
 export const ROLES = [
@@ -190,6 +200,7 @@ export const ROLES = [
         scope: 'ALL_BRANCHES' as const,
         permissions: [
             'LOGISTIK_VIEW', 'LOGISTIK_CREATE', 'LOGISTIK_EDIT', 'LOGISTIK_DELETE', 'LOGISTIK_APPROVE',
+            'LOGISTIK_PERUSAHAAN_VIEW', 'LOGISTIK_PERUSAHAAN_MANAGE',
             'MATERIAL_SEMEN_VIEW', 'MATERIAL_SEMEN_CREATE', 'MATERIAL_SEMEN_EDIT',
             'MATERIAL_AGREGAT_VIEW', 'MATERIAL_AGREGAT_CREATE', 'MATERIAL_AGREGAT_EDIT',
             'MATERIAL_USAGE_VIEW',

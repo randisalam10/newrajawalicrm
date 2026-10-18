@@ -255,16 +255,20 @@ export async function executeClosePeriod(payload: ClosePeriodPayload) {
     }
 
     const userId = session.user.id
-    const { period, locationId, notes, closeAllBranches } = payload
+    const { period, locationId, notes } = payload
     const isKonsolidasi = !locationId || locationId === "all"
 
-    if (isKonsolidasi && closeAllBranches) {
+    // PENTING: Tutup buku konsolidasi SELALU mengunci seluruh cabang sekaligus.
+    // Tanpa ini, scope per-cabang akan dihitung LIVE (tidak terkunci) sehingga
+    // angka konsolidasi (snapshot) bisa berbeda dari angka cabang.
+    if (isKonsolidasi) {
         // 1. Eksekusi tutup buku Konsolidasi Pusat (ALL)
         const mainResult = await saveClosingSnapshot(period, null, notes, userId)
 
-        // 2. Eksekusi tutup buku untuk seluruh cabang aktif
+        // 2. Eksekusi tutup buku untuk seluruh cabang aktif (WAJIB)
         const allLocations = await prisma.location.findMany({ select: { id: true, name: true } })
         let closedCount = 0
+        const failedBranches: string[] = []
 
         for (const loc of allLocations) {
             try {
@@ -272,12 +276,20 @@ export async function executeClosePeriod(payload: ClosePeriodPayload) {
                 await saveClosingSnapshot(period, loc.id, branchNotes, userId)
                 closedCount++
             } catch (branchErr) {
-                console.warn(`Peringatan: Gagal menutup snapshot cabang ${loc.name}:`, branchErr)
+                console.error(`Gagal menutup snapshot cabang ${loc.name}:`, branchErr)
+                failedBranches.push(loc.name)
             }
         }
 
         revalidatePath("/admin/finance/tutup-buku")
         revalidatePath("/admin/reports/monthly-management")
+
+        if (failedBranches.length > 0) {
+            throw new Error(
+                `Tutup buku konsolidasi ${period} TIDAK lengkap. Gagal mengunci ${failedBranches.length} cabang: ${failedBranches.join(", ")}. ` +
+                `Snapshot konsolidasi (ALL) sudah dibuat, namun scope cabang belum terkunci. Silakan ulangi tutup buku untuk cabang yang gagal.`
+            )
+        }
 
         return {
             success: true,

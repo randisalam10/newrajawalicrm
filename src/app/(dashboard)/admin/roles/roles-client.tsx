@@ -1,78 +1,18 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import React, { useState, useTransition } from "react"
+import { RolesClientProps, RoleItem } from "./types"
+import { RolesList } from "./components/roles-list"
+import { RolesPermissionMatrix } from "./components/roles-permission-matrix"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Shield, ShieldCheck, Plus, Check, Save, Lock, Building2, Globe, Users, Edit2, Trash2, CheckSquare, Square, Crown } from "lucide-react"
-import { createRole, updateRole, deleteRole, updateRolePermissions } from "./actions"
+import { Shield, Plus, Edit2, Copy, Check } from "lucide-react"
+import { createRole, updateRole, deleteRole, updateRolePermissions, duplicateRole } from "./actions"
 import { toast } from "sonner"
-
-interface PermissionItem {
-    id: string
-    code: string
-    module: string
-    action: string
-    name: string
-    description?: string | null
-}
-
-interface RoleItem {
-    id: string
-    name: string
-    label: string
-    description?: string | null
-    isSystem: boolean
-    scope: "ALL_BRANCHES" | "OWN_BRANCH"
-    _count: {
-        permissions: number
-        users: number
-    }
-}
-
-interface RolesClientProps {
-    roles: RoleItem[]
-    groupedPermissions: Record<string, PermissionItem[]>
-    initialRolePermissions: Record<string, string[]> // roleId -> array of permission codes
-}
-
-const MODULE_LABELS: Record<string, { title: string; desc: string }> = {
-    DASHBOARD: { title: "Monitoring Dashboard", desc: "Ringkasan KPI & grafik produksi harian/bulanan" },
-    PLANNING: { title: "Planning Pengecoran", desc: "Jadwal rencana pengecoran batching plant" },
-    PRODUKSI: { title: "Input Produksi", desc: "Input pengiriman mixer, edit data tiket, dan konfirmasi transaksi" },
-    SEWA: { title: "Sewa Alat / Kendaraan", desc: "Master alat sewa, order rental alat berat, surat jalan / DO sewa, dan penagihan" },
-    RETASE: { title: "Surat Jalan & Retase", desc: "Pencatatan surat jalan & perhitungan komisi retase driver mixer" },
-    INSENTIF: { title: "Master Insentif & Tarif", desc: "Pengaturan tarif komisi Sopir Mixer dan insentif Operator BP, CP, Exca, DT" },
-    CUSTOMER: { title: "Data Customer & Proyek", desc: "Master customer, data proyek, dan harga khusus mutu per proyek" },
-    MATERIAL_SEMEN: { title: "Semen Masuk & Stok", desc: "Pencatatan penerimaan semen masuk & monitoring kartu stok" },
-    MATERIAL_AGREGAT: { title: "Material Agregat", desc: "Penerimaan pasir & batu split serta penyesuaian stok agregat" },
-    MATERIAL_USAGE: { title: "Penggunaan Material", desc: "Monitoring rasio pemakaian aktual bahan baku terhadap rencana mutu" },
-    BILLING: { title: "Tagihan & Invoice", desc: "Pembuatan invoice, penerbitan, pencatatan pembayaran & saldo deposit" },
-    RBL: { title: "Rekap Bulanan (RBL)", desc: "Budgeting cabang, pencatatan pengeluaran operasional, tracking BBM, dan tutup buku" },
-    REPORTS: { title: "Laporan & Rekapitulasi", desc: "Rekap gaji sopir, laporan kendaraan, laporan penagihan, dan export audit" },
-    KARYAWAN: { title: "Data Master Karyawan & Supir", desc: "Master data pegawai, supir mixer, supir dump truck, dan operator" },
-    VEHICLE: { title: "Data Master Kendaraan & Alat", desc: "Master armada mixer, dump truck, alat berat, genset, dan kategori kendaraan" },
-    MUTU: { title: "Data Master Mutu Beton", desc: "Spesifikasi campuran, rasio material, dan formula mutu beton" },
-    ITEM_PEKERJAAN: { title: "Data Master Item Pekerjaan", desc: "Katalog item pekerjaan proyek (Rigid, Sloof, Kolom, Lantai, dll)" },
-    MASTER_CABANG: { title: "Data Master Cabang BP", desc: "Pengaturan cabang/lokasi batching plant" },
-    LOGISTIK: { title: "Logistik & Peralatan", desc: "Pengadaan barang, purchase order, supplier, dan katalog barang" },
-    USER_MGMT: { title: "Manajemen User", desc: "Akun login pengguna sistem & reset password" },
-    RBAC_MGMT: { title: "Pengaturan Hak Akses (RBAC)", desc: "Konfigurasi role dan matriks izin per menu" },
-}
-
-const ACTION_LABELS: Record<string, string> = {
-    view: "Lihat",
-    create: "Buat / Tambah",
-    edit: "Ubah",
-    delete: "Hapus",
-    approve: "Konfirmasi / Setujui",
-    export: "Export / Cetak",
-}
 
 export function RolesClient({ roles: initialRoles, groupedPermissions, initialRolePermissions }: RolesClientProps) {
     const [roles, setRoles] = useState<RoleItem[]>(initialRoles)
@@ -80,6 +20,7 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
     const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>(initialRolePermissions)
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [editingRole, setEditingRole] = useState<RoleItem | null>(null)
+    const [duplicatingRoleState, setDuplicatingRoleState] = useState<RoleItem | null>(null)
     const [isPending, startTransition] = useTransition()
 
     const selectedRole = roles.find(r => r.id === selectedRoleId)
@@ -114,13 +55,25 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
         })
     }
 
+    const handleToggleGroupAll = (groupModules: string[], selectAll: boolean) => {
+        if (selectedRole?.name === "SuperAdminBP") return
+        const allGroupCodes = groupModules.flatMap(m => (groupedPermissions[m] || []).map(p => p.code))
+
+        setRolePermissions(prev => {
+            const list = prev[selectedRoleId] || []
+            const updated = selectAll
+                ? Array.from(new Set([...list, ...allGroupCodes]))
+                : list.filter(c => !allGroupCodes.includes(c))
+            return { ...prev, [selectedRoleId]: updated }
+        })
+    }
+
     const handleSavePermissions = () => {
         if (!selectedRoleId) return
         startTransition(async () => {
             const result = await updateRolePermissions(selectedRoleId, currentPerms)
             if (result.success) {
                 toast.success(`Hak akses role "${selectedRole?.label}" berhasil disimpan! (${result.count} izin aktif)`)
-                // Update local count
                 setRoles(prev => prev.map(r => r.id === selectedRoleId ? {
                     ...r,
                     _count: { ...r._count, permissions: result.count || 0 }
@@ -148,6 +101,33 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
                 setIsCreateOpen(false)
             } else {
                 toast.error(result.error || "Gagal membuat role.")
+            }
+        })
+    }
+
+    const handleDuplicateRoleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        if (!duplicatingRoleState) return
+        const sourceId = duplicatingRoleState.id
+        const formData = new FormData(e.currentTarget)
+
+        startTransition(async () => {
+            const result = await duplicateRole(sourceId, formData)
+            if (result.success && result.role) {
+                toast.success(`Role "${result.role.label}" berhasil dibuat dengan menyalin ${result.permissionCount} izin!`)
+                const newRole: RoleItem = {
+                    ...result.role,
+                    _count: { permissions: result.permissionCount || 0, users: 0 }
+                }
+                setRoles(prev => [...prev, newRole])
+                setSelectedRoleId(newRole.id)
+                setRolePermissions(prev => ({
+                    ...prev,
+                    [newRole.id]: [...(prev[sourceId] || [])]
+                }))
+                setDuplicatingRoleState(null)
+            } else {
+                toast.error(result.error || "Gagal menduplikasi role.")
             }
         })
     }
@@ -194,16 +174,16 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 w-full">
             {/* Header Title & Actions */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-                        <Shield className="h-8 w-8 text-primary" />
+                    <h1 className="text-2xl sm:text-3xl font-bold tracking-tight flex items-center gap-2">
+                        <Shield className="h-7 w-7 text-primary" />
                         Manajemen Role & Izin Akses (RBAC)
                     </h1>
-                    <p className="text-muted-foreground mt-1">
-                        Atur peran pengguna dan kendalikan matriks izin akses per modul operasional.
+                    <p className="text-muted-foreground mt-1 text-sm">
+                        Atur peran pengguna dan kendalikan matriks izin akses per modul operasional (BP, Stone Crusher, Logistik, Keuangan).
                     </p>
                 </div>
                 <Button onClick={() => setIsCreateOpen(true)} className="gap-2 shadow-sm">
@@ -212,225 +192,40 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
                 </Button>
             </div>
 
-            {/* Layout: Left column = Role selector, Right column = Permission Matrix */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                
-                {/* Role List (Cards) */}
-                <div className="lg:col-span-4 xl:col-span-3 space-y-3">
-                    <div className="flex items-center justify-between pb-1">
-                        <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-                            Pilih Role ({roles.length})
-                        </h2>
-                    </div>
-
-                    <div className="space-y-2">
-                        {roles.map(role => {
-                            const isSelected = role.id === selectedRoleId
-                            return (
-                                <div
-                                    key={role.id}
-                                    onClick={() => setSelectedRoleId(role.id)}
-                                    className={`p-4 rounded-xl border transition-all cursor-pointer relative ${
-                                        isSelected
-                                            ? "bg-white border-primary shadow-md ring-1 ring-primary/20"
-                                            : "bg-white/80 border-slate-200 hover:border-slate-300 hover:bg-white"
-                                    }`}
-                                >
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-slate-900 text-sm">
-                                                    {role.label}
-                                                </span>
-                                                {role.name === "SuperAdminBP" ? (
-                                                    <span title="Super Admin HQ - Full Access Bypass" className="text-[10px] bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-extrabold px-1.5 py-0.5 rounded shadow-xs flex items-center gap-1">
-                                                        <Crown className="w-2.5 h-2.5 fill-slate-950" /> Super HQ
-                                                    </span>
-                                                ) : role.isSystem ? (
-                                                    <span title="Role sistem bawaan" className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-medium flex items-center gap-1">
-                                                        <Lock className="w-2.5 h-2.5" /> Sistem
-                                                    </span>
-                                                ) : null}
-                                            </div>
-                                            <p className="text-xs text-slate-500 mt-1 line-clamp-2">
-                                                {role.description || "Tidak ada deskripsi."}
-                                            </p>
-                                        </div>
-
-                                        {!role.isSystem && (
-                                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 text-slate-400 hover:text-slate-600"
-                                                    onClick={() => setEditingRole(role)}
-                                                >
-                                                    <Edit2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-7 w-7 text-rose-400 hover:text-rose-600"
-                                                    onClick={() => handleDeleteRole(role)}
-                                                >
-                                                    <Trash2 className="h-3.5 w-3.5" />
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 text-xs">
-                                        <div className="flex items-center gap-1.5 text-slate-500">
-                                            {role.scope === "ALL_BRANCHES" ? (
-                                                <Badge variant="outline" className="text-[10px] bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1 font-normal">
-                                                    <Globe className="w-3 h-3" /> Semua Cabang
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200 flex items-center gap-1 font-normal">
-                                                    <Building2 className="w-3 h-3" /> Cabang Sendiri
-                                                </Badge>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                                            <span className="flex items-center gap-1">
-                                                <Users className="w-3 h-3 text-slate-400" />
-                                                {role._count.users} User
-                                            </span>
-                                            <span>•</span>
-                                            <span>{role._count.permissions} Izin</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            )
-                        })}
-                    </div>
+            {/* Layout: Left column = Role selector (Locked/Sticky), Right column = Permission Matrix */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+                {/* Role List (Cards - Sticky locked on desktop) */}
+                <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-20 self-start">
+                    <RolesList
+                        roles={roles}
+                        selectedRoleId={selectedRoleId}
+                        onSelectRole={setSelectedRoleId}
+                        onEditRole={setEditingRole}
+                        onDeleteRole={handleDeleteRole}
+                        onDuplicateRole={setDuplicatingRoleState}
+                    />
                 </div>
 
                 {/* Permission Matrix (Center/Right) */}
                 <div className="lg:col-span-8 xl:col-span-9">
                     {selectedRole ? (
-                        <Card className="shadow-sm border-slate-200">
-                            <CardHeader className="bg-slate-50/60 border-b pb-4">
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                    <div>
-                                        <div className="flex items-center gap-2">
-                                            <CardTitle className="text-xl font-bold text-slate-900">
-                                                Hak Akses: {selectedRole.label}
-                                            </CardTitle>
-                                            <Badge variant={selectedRole.scope === "ALL_BRANCHES" ? "default" : "secondary"}>
-                                                {selectedRole.scope === "ALL_BRANCHES" ? "Global HO" : "Terbatas Cabang"}
-                                            </Badge>
-                                        </div>
-                                        <CardDescription className="mt-1">
-                                            Kode sistem: <code className="text-xs bg-slate-200/80 px-1.5 py-0.5 rounded font-semibold text-slate-700">{selectedRole.name}</code>
-                                            {" • "}
-                                            {currentPerms.length} izin aktif
-                                        </CardDescription>
-                                    </div>
-
-                                    <Button
-                                        onClick={handleSavePermissions}
-                                        disabled={isPending || selectedRole.name === "SuperAdminBP"}
-                                        className="gap-2 shadow-sm min-w-[150px]"
-                                    >
-                                        <Save className="h-4 w-4" />
-                                        {isPending ? "Menyimpan..." : "Simpan Hak Akses"}
-                                    </Button>
-                                </div>
-                            </CardHeader>
-
-                            <CardContent className="p-0 divide-y divide-slate-100">
-                                {selectedRole.name === "SuperAdminBP" && (
-                                    <div className="p-4 bg-gradient-to-r from-amber-50 via-yellow-50 to-amber-50/50 border-b border-amber-200 text-amber-950 text-xs flex items-center gap-2.5 font-medium">
-                                        <Crown className="h-5 w-5 text-amber-600 fill-amber-400 shrink-0" />
-                                        <div>
-                                            <span className="font-bold">Super Admin (HQ) - Akses Penuh:</span> Role ini memiliki hak akses tertinggi, bypass seluruh pembatasan cabang, dan akses eksklusif ke Laporan Bulanan Manajemen Direksi.
-                                        </div>
-                                    </div>
-                                )}
-
-                                {Object.entries(groupedPermissions).map(([moduleKey, permissions]) => {
-                                    const meta = MODULE_LABELS[moduleKey] || { title: moduleKey, desc: "" }
-                                    const moduleCodes = permissions.map(p => p.code)
-                                    const allChecked = moduleCodes.every(c => currentPerms.includes(c))
-                                    const someChecked = moduleCodes.some(c => currentPerms.includes(c))
-
-                                    return (
-                                        <div key={moduleKey} className="p-5 hover:bg-slate-50/40 transition-colors">
-                                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                                                <div>
-                                                    <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                                                        {meta.title}
-                                                    </h3>
-                                                    {meta.desc && (
-                                                        <p className="text-xs text-slate-500 mt-0.5">{meta.desc}</p>
-                                                    )}
-                                                </div>
-
-                                                {selectedRole.name !== "SuperAdminBP" && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleToggleModuleAll(moduleKey)}
-                                                        className="text-xs text-primary hover:underline font-medium flex items-center gap-1 self-start sm:self-auto"
-                                                    >
-                                                        {allChecked ? (
-                                                            <>
-                                                                <Square className="h-3.5 w-3.5" /> Hapus Semua
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <CheckSquare className="h-3.5 w-3.5" /> Pilih Semua
-                                                            </>
-                                                        )}
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {/* Action Checkboxes */}
-                                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-1">
-                                                {permissions.map(perm => {
-                                                    const isChecked = selectedRole.name === "SuperAdminBP" || currentPerms.includes(perm.code)
-                                                    return (
-                                                        <label
-                                                            key={perm.code}
-                                                            className={`flex items-start gap-2.5 p-2.5 rounded-lg border text-xs cursor-pointer transition-all ${
-                                                                isChecked
-                                                                    ? "bg-primary/5 border-primary/40 text-slate-900 font-medium shadow-xs"
-                                                                    : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                                                            } ${selectedRole.name === "SuperAdminBP" ? "cursor-not-allowed opacity-80" : ""}`}
-                                                        >
-                                                            <input
-                                                                type="checkbox"
-                                                                checked={isChecked}
-                                                                disabled={selectedRole.name === "SuperAdminBP"}
-                                                                onChange={() => handleTogglePermission(perm.code)}
-                                                                className="mt-0.5 rounded border-slate-300 text-primary focus:ring-primary h-3.5 w-3.5"
-                                                            />
-                                                            <div className="flex-1">
-                                                                <div className="font-semibold capitalize">
-                                                                    {ACTION_LABELS[perm.action] || perm.action}
-                                                                </div>
-                                                                <div className="text-[10px] text-slate-400 font-normal leading-tight mt-0.5">
-                                                                    {perm.name}
-                                                                </div>
-                                                            </div>
-                                                        </label>
-                                                    )
-                                                })}
-                                            </div>
-                                        </div>
-                                    )
-                                })}
-                            </CardContent>
-                        </Card>
+                        <RolesPermissionMatrix
+                            selectedRole={selectedRole}
+                            groupedPermissions={groupedPermissions}
+                            currentPerms={currentPerms}
+                            isPending={isPending}
+                            onTogglePermission={handleTogglePermission}
+                            onToggleModuleAll={handleToggleModuleAll}
+                            onToggleGroupAll={handleToggleGroupAll}
+                            onSavePermissions={handleSavePermissions}
+                            onDuplicateRole={setDuplicatingRoleState}
+                        />
                     ) : (
                         <div className="text-center p-12 bg-white rounded-xl border border-slate-200 text-slate-500">
                             Pilih role di sebelah kiri untuk melihat dan mengatur hak aksesnya.
                         </div>
                     )}
                 </div>
-
             </div>
 
             {/* Modal Tambah Role Baru */}
@@ -450,12 +245,12 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
                         <div className="space-y-3 py-2">
                             <div className="space-y-1.5">
                                 <Label htmlFor="label">Nama Tampilan Role *</Label>
-                                <Input id="label" name="label" placeholder="Contoh: Staf Keuangan Cabang" required />
+                                <Input id="label" name="label" placeholder="Contoh: Staf Logistik Lapangan" required />
                             </div>
 
                             <div className="space-y-1.5">
                                 <Label htmlFor="name">Kode Unik Role *</Label>
-                                <Input id="name" name="name" placeholder="Contoh: FinanceCabang" required />
+                                <Input id="name" name="name" placeholder="Contoh: LogistikLapangan" required />
                                 <p className="text-[11px] text-slate-400">Hanya gunakan huruf dan angka tanpa spasi.</p>
                             </div>
 
@@ -491,6 +286,92 @@ export function RolesClient({ roles: initialRoles, groupedPermissions, initialRo
                             </Button>
                         </DialogFooter>
                     </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal Duplikat Role */}
+            <Dialog open={!!duplicatingRoleState} onOpenChange={(open) => !open && setDuplicatingRoleState(null)}>
+                <DialogContent className="sm:max-w-[480px]">
+                    {duplicatingRoleState && (
+                        <form onSubmit={handleDuplicateRoleSubmit} className="space-y-4">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Copy className="h-5 w-5 text-primary" />
+                                    Duplikat Role: {duplicatingRoleState.label}
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Buat role baru berdasarkan konfigurasi role ini. Seluruh {duplicatingRoleState._count.permissions} izin akses akan disalin otomatis.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            <div className="space-y-3 py-2">
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="dup-label">Nama Tampilan Role Baru *</Label>
+                                    <Input
+                                        id="dup-label"
+                                        name="label"
+                                        defaultValue={`[Salinan] ${duplicatingRoleState.label}`}
+                                        required
+                                    />
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="dup-name">Kode Unik Role Baru *</Label>
+                                    <Input
+                                        id="dup-name"
+                                        name="name"
+                                        defaultValue={`${duplicatingRoleState.name}_Copy`}
+                                        required
+                                    />
+                                    <p className="text-[11px] text-slate-400">Hanya gunakan huruf dan angka tanpa spasi.</p>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="dup-scope">Cakupan Wilayah Data (Scope) *</Label>
+                                    <Select name="scope" defaultValue={duplicatingRoleState.scope}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Pilih Scope" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="OWN_BRANCH">
+                                                Cabang Sendiri (Terbatas pada lokasi kerja pengguna)
+                                            </SelectItem>
+                                            <SelectItem value="ALL_BRANCHES">
+                                                Semua Cabang (Akses global lintas cabang / Head Office)
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="dup-description">Deskripsi</Label>
+                                    <Textarea
+                                        id="dup-description"
+                                        name="description"
+                                        defaultValue={`Salinan konfigurasi dari role ${duplicatingRoleState.label}.`}
+                                        rows={3}
+                                    />
+                                </div>
+
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-900 flex items-start gap-2">
+                                    <Check className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                    <span>
+                                        Seluruh <strong>{duplicatingRoleState._count.permissions} izin aktif</strong> dari role sumber akan langsung diterapkan ke role baru ini. Anda dapat mengubahnya setelah disimpan.
+                                    </span>
+                                </div>
+                            </div>
+
+                            <DialogFooter>
+                                <Button type="button" variant="outline" onClick={() => setDuplicatingRoleState(null)}>
+                                    Batal
+                                </Button>
+                                <Button type="submit" disabled={isPending} className="gap-2">
+                                    <Copy className="h-4 w-4" />
+                                    {isPending ? "Menduplikasi..." : "Duplikat & Buat Role"}
+                                </Button>
+                            </DialogFooter>
+                        </form>
+                    )}
                 </DialogContent>
             </Dialog>
 

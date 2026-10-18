@@ -5,7 +5,7 @@ import { getCustomersForReport } from "@/app/(dashboard)/admin/reports/retase/ac
 import { getMasterIncentives } from "@/app/(dashboard)/admin/master-insentif/actions"
 import { prisma } from "@/lib/prisma"
 import { RetaseClient } from "./retase-client"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 
 export default async function RetasePage() {
     const session = await auth()
@@ -16,9 +16,10 @@ export default async function RetasePage() {
     const role = session.user.role || ""
     const isCorp = isCorporateUser(session.user)
 
-    const canConfirm = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
-    const canDelete = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
-    const canManageSettings = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
+    const hasEdit = hasPermission(session.user, "RETASE", "EDIT") || ["SuperAdminBP", "AdminBP"].includes(role)
+    const canConfirm = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
+    const canDelete = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
+    const canManageSettings = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
 
     const [
         pendingTransactions,

@@ -49,6 +49,7 @@ model RolePermission {
 enum Position {
   Sopir
   Operator
+  Helper
   Admin
   AdminLogistik
   CEO
@@ -176,6 +177,10 @@ model User {
   // Monthly Closing Relations
   monthlyClosingsClosed   MonthlyClosing[]   @relation("MonthlyClosedBy")
   monthlyClosingsReopened MonthlyClosing[]   @relation("MonthlyReopenedBy")
+
+  // Stone Crusher Relations
+  crusherReportsCreated   CrusherDailyReport[] @relation("CrusherReportCreator")
+  crusherEditLogs         CrusherReportEditLog[] @relation("CrusherEditLogger")
 }
 
 model WebPushSubscription {
@@ -211,12 +216,19 @@ model Employee {
   driver_aggregate_incomings AggregateIncoming[]     @relation("DriverAggregate")
   driver_aggregate_outgoings AggregateOutgoing[]     @relation("DriverAggregateOutgoing")
 
+  // Crusher & Universal Operator Relations
+  operatorWorkLogs             OperatorWorkLog[]
+  crusherDriverMaterialsIn     CrusherMaterialIn[]     @relation("CrusherDriverIn")
+  crusherDriverMaterialsOut    CrusherMaterialOut[]    @relation("CrusherDriverOut")
+  crusherOperatorMaterialsOut  CrusherMaterialOut[]   @relation("CrusherOperatorOut")
+
   @@index([driverCategoryId])
 }
 
 model Location {
   id                     String                  @id @default(uuid())
   name                   String                  @unique
+  type                   String                  @default("BATCHING_PLANT") // "BATCHING_PLANT" | "STONE_CRUSHER" | "HEAD_OFFICE"
   employees              Employee[]
   vehicles               Vehicle[]
   customers              Customer[]              @relation("CustomerOwner") // Changed
@@ -241,6 +253,22 @@ model Location {
   fixedCostContracts     FixedCostContract[]
   operationalTargetSettings OperationalTargetSetting[]
   monthlyClosings           MonthlyClosing[]
+
+  // Stone Crusher & Universal Operator Relations
+  crusherReports            CrusherDailyReport[]
+  crusherMaterialSources    CrusherMaterialSource[]
+  crusherDestinations       CrusherDestination[]
+  crusherRetaseSettings     CrusherRetaseSetting[]
+  crusherMaterialsOut       CrusherMaterialOut[]   @relation("CrusherTargetBP")
+  operatorWorkLogs          OperatorWorkLog[]
+
+  // Logistik Scoping Relations
+  ownedSuppliers            Supplier[]             @relation("SupplierOwner")
+  sharedSuppliers           Supplier[]             @relation("SupplierSharedLocations")
+  ownedMasterItems          MasterItem[]           @relation("MasterItemOwner")
+  sharedMasterItems         MasterItem[]           @relation("MasterItemSharedLocations")
+
+  @@index([type])
 }
 
 model Vehicle {
@@ -281,6 +309,12 @@ model Vehicle {
   kir_expiry_date    DateTime?               // Tanggal Jatuh Tempo Uji KIR
   kir_period_months  Int?                    @default(6)     // Periode Uji KIR dalam bulan (default 6 bulan)
   complianceRecords  VehicleComplianceRecord[]
+
+  // Crusher & Universal Operator Relations
+  crusherMaterialsIn CrusherMaterialIn[]
+  crusherMaterialsOut CrusherMaterialOut[]
+  crusherFuelLogs    CrusherFuelLog[]
+  operatorWorkLogs   OperatorWorkLog[]
 
   @@index([categoryId])
   @@index([is_for_rent])
@@ -750,6 +784,13 @@ enum PurchaseOrderStatus {
   CANCELLED
 }
 
+enum LogistikBusinessUnit {
+  BP
+  CRUSHER
+  ALL
+}
+
+
 model PoCompanyGroup {
   id                       String             @id @default(uuid())
   name                     String
@@ -792,33 +833,54 @@ model PoCategory {
 }
 
 model Supplier {
-  id          String       @id @default(uuid())
-  name        String
-  address     String?
-  contact     String?
-  masterItems MasterItem[]
-  createdAt   DateTime     @default(now())
+  id              String               @id @default(uuid())
+  name            String
+  address         String?
+  contact         String?
+  target_business LogistikBusinessUnit @default(ALL)
+  is_global       Boolean              @default(true)
+
+  location        Location?            @relation("SupplierOwner", fields: [locationId], references: [id])
+  locationId      String?
+  sharedLocations Location[]           @relation("SupplierSharedLocations")
+
+  masterItems     MasterItem[]
+  createdAt       DateTime             @default(now())
+
+  @@index([locationId])
+  @@index([is_global])
+  @@index([target_business])
 }
 
 model MasterItem {
-  id          String     @id @default(uuid())
-  kode_barang String     @unique
-  name        String
-  part_number String?
-  merk        String?
-  satuan      String // PCS, SET, LTR, dll
-  harga       Float // Harga satuan default
-  supplier    Supplier   @relation(fields: [supplierId], references: [id])
-  supplierId  String
-  category    PoCategory @relation(fields: [categoryId], references: [id])
-  categoryId  String
-  poItems     PoItem[]
-  priceHistories MasterItemPriceHistory[]
-  createdAt   DateTime   @default(now())
+  id              String               @id @default(uuid())
+  kode_barang     String               @unique
+  name            String
+  part_number     String?
+  merk            String?
+  satuan          String // PCS, SET, LTR, dll
+  harga           Float // Harga satuan default
+  target_business LogistikBusinessUnit @default(ALL)
+  is_global       Boolean              @default(true)
+
+  location        Location?            @relation("MasterItemOwner", fields: [locationId], references: [id])
+  locationId      String?
+  sharedLocations Location[]           @relation("MasterItemSharedLocations")
+
+  supplier        Supplier             @relation(fields: [supplierId], references: [id])
+  supplierId      String
+  category        PoCategory           @relation(fields: [categoryId], references: [id])
+  categoryId      String
+  poItems         PoItem[]
+  priceHistories  MasterItemPriceHistory[]
+  createdAt       DateTime             @default(now())
 
   @@index([name])
   @@index([categoryId])
   @@index([supplierId])
+  @@index([locationId])
+  @@index([is_global])
+  @@index([target_business])
 }
 
 model MasterItemPriceHistory {
@@ -915,6 +977,7 @@ model PurchaseOrder {
   pic_phone String?
 
   is_for_bp         Boolean            @default(false)
+  is_for_crusher    Boolean            @default(false)
   materialIncomings MaterialIncoming[]
 
   items            PoItem[]
@@ -930,6 +993,7 @@ model PurchaseOrder {
   @@index([createdAt])
   @@index([locationId])
   @@index([is_for_bp])
+  @@index([is_for_crusher])
   @@index([status, tanggal_terbit])
 }
 
@@ -1455,4 +1519,323 @@ model MonthlyClosing {
   @@index([period])
   @@index([locationId])
   @@index([status])
+}
+
+// ─── MODUL STONE CRUSHER: DATA MASTER & OPERASIONAL HARIAN ───────────
+
+// Master Sumber Material / Titik Ambil (Quarry / Sungai)
+model CrusherMaterialSource {
+  id                  String               @id @default(uuid())
+  name                String               // e.g. "Kali Harapan", "Quarry Koya Barat"
+  default_distance_km Float                @default(0) // Default jarak tempuh ke crusher (KM)
+  description         String?
+  isActive            Boolean              @default(true)
+  locationId          String?              // Crusher plant terkait (opsional jika spesifik cabang)
+  location            Location?            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  materialsIn         CrusherMaterialIn[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([locationId])
+  @@index([isActive])
+}
+
+// Master Tujuan Pengiriman Non-BP / Penjualan Bebas Stone Crusher
+model CrusherDestination {
+  id                  String               @id @default(uuid())
+  name                String               // e.g. "Proyek Jembatan Youtefa", "Toko Bangunan Anugerah"
+  distance_km         Float                @default(0) // Estimasi jarak tempuh dari stone crusher (KM)
+  address             String?              // Alamat lengkap / patokan lokasi
+  contact_person      String?              // Nama PIC
+  phone               String?              // Nomor kontak
+  notes               String?              // Catatan
+  isActive            Boolean              @default(true)
+  locationId          String?              // Crusher plant asal (opsional jika spesifik cabang)
+  location            Location?            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  materialsOut        CrusherMaterialOut[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([locationId])
+  @@index([isActive])
+  @@index([name])
+}
+
+// Master Tarif & Formula Retase Dump Truck Stone Crusher (Dikelola SuperAdmin / Finance)
+model CrusherRetaseSetting {
+  id                  String               @id @default(uuid())
+  locationId          String?              // Spesifik stone crusher (null = universal / default)
+  location            Location?            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  
+  // Formula: "PER_KM_TIERED" | "PER_KM_FLAT" | "PER_M3_KM" | "PER_RIT_FLAT"
+  formula_type        String               @default("PER_KM_TIERED")
+  
+  // Parameter Tarif
+  rate_dt_kecil       Float                @default(320) // Default Rp320 * km * rit
+  rate_dt_besar       Float                @default(0)
+  rate_per_km         Float                @default(0)
+  rate_per_m3_km      Float                @default(0)
+  rate_flat_rit       Float                @default(0)
+  
+  effective_date      DateTime?            // Tanggal berlaku tarif (untuk backdate audit)
+  isActive            Boolean              @default(true)
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@index([locationId])
+  @@index([isActive])
+}
+
+// Header Laporan Harian Stone Crusher
+model CrusherDailyReport {
+  id              String   @id @default(uuid())
+  date            DateTime // Tanggal operasional (T12:00:00.000Z)
+  locationId      String   // Lokasi Stone Crusher (e.g. SC. HARAPAN)
+  location        Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  // Seksi A: Jam Kerja Mesin Stone Crusher
+  hm_start        Float    // HM Awal
+  hm_end          Float    // HM Akhir
+  total_hm        Float    // hm_end - hm_start
+  hm_notes        String?
+
+  // Seksi G: Kondisi Cuaca
+  sunny_from      String?  // e.g. "08:00"
+  sunny_to        String?  // e.g. "17:00"
+  rain_from       String?  // e.g. "13:00"
+  rain_to         String?  // e.g. "15:00"
+  weather_notes   String?
+
+  status          String   @default("SUBMITTED") // SUBMITTED | DRAFT | APPROVED
+  createdById     String
+  createdBy       User     @relation("CrusherReportCreator", fields: [createdById], references: [id])
+
+  downtimes        CrusherDowntime[]
+  fuelLogs         CrusherFuelLog[]
+  materialsIn      CrusherMaterialIn[]
+  materialsOut     CrusherMaterialOut[]
+  operatorWorkLogs OperatorWorkLog[]
+  editLogs         CrusherReportEditLog[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([locationId, date])
+  @@index([date])
+  @@index([locationId])
+  @@index([status])
+}
+
+// Riwayat Revisi / Audit Trail Perubahan Laporan Stone Crusher
+model CrusherReportEditLog {
+  id          String             @id @default(uuid())
+  reportId    String
+  report      CrusherDailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User               @relation("CrusherEditLogger", fields: [userId], references: [id])
+  action      String             // "UPDATE_MACHINE_HM" | "UPDATE_WEATHER" | "UPDATE_NOTES"
+  changes     String             // Rincian data sebelum dan sesudah diubah
+  createdAt   DateTime           @default(now())
+
+  @@index([reportId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// Seksi B: Jam Rusak & Perbaikan Mesin Crusher (Downtime)
+model CrusherDowntime {
+  id              String             @id @default(uuid())
+  reportId        String
+  report          CrusherDailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  start_time      String             // "10:15"
+  end_time        String             // "12:00"
+  total_hours     Float              // Durasi jam mati
+  problem_desc    String             // Kerusakan
+  action_taken    String?            // Tindakan perbaikan
+
+  @@index([reportId])
+}
+
+// Seksi C: Monitoring Pengisian BBM (Solar)
+model CrusherFuelLog {
+  id              String             @id @default(uuid())
+  reportId        String
+  report          CrusherDailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  unit_name       String             // "Exc. I Kali", "Exc. II", "Genset", "DS 9041 AE"
+  unit_category   String             // "EXCAVATOR" | "GENSET" | "DUMP_TRUCK" | "LAINNYA"
+  vehicleId       String?            // Link ke master Vehicle jika ada
+  vehicle         Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  liters          Float              // Jumlah solar (Liter)
+  current_hm      Float?             // HM saat isi (alat berat/genset)
+  current_km      Float?             // KM saat isi (truk)
+  work_hours      Float?             // Jam kerja unit
+  notes           String?
+
+  createdAt       DateTime           @default(now())
+
+  @@index([reportId])
+  @@index([unit_name])
+  @@index([vehicleId])
+}
+
+// Seksi D & E: Material Masuk (Quarry Feed & Cold Bin)
+model CrusherMaterialIn {
+  id              String                 @id @default(uuid())
+  reportId        String
+  report          CrusherDailyReport     @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  feed_type       String                 // "QUARRY_RAW" (Seksi D) | "COLD_BIN" (Seksi E)
+  
+  vehicleId       String?                // Link ke master Vehicle jika internal
+  vehicle         Vehicle?               @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  plate_number    String                 // Plat nomor dump truck
+  driverId        String?                // Link ke Employee jika ada
+  driver          Employee?              @relation("CrusherDriverIn", fields: [driverId], references: [id], onDelete: SetNull)
+  driver_name     String                 // Nama sopir
+
+  sourceId        String?                // Link ke CrusherMaterialSource
+  source          CrusherMaterialSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  source_name     String                 // Snapshot nama sumber (e.g. Kali Harapan)
+  distance_km     Float                  @default(0) // Jarak tempuh (KM)
+
+  ritase          Int                    // Jumlah rit (e.g. 13 Ret)
+  volume_m3       Float?                 // Estimasi kubikasi (ritase * kapasitas bak)
+  
+  // Retase Sopir SC: Rp4.500 * ritase (Langsir Kali & Kolbin)
+  rate_price      Float                  @default(4500)
+  retase_amount   Float                  @default(0)
+  is_paid         Boolean                @default(false)
+  paid_date       DateTime?
+
+  notes           String?
+
+  createdAt       DateTime               @default(now())
+
+  @@index([reportId])
+  @@index([plate_number])
+  @@index([sourceId])
+  @@index([feed_type])
+  @@index([driverId])
+  @@index([vehicleId])
+  @@index([is_paid])
+}
+
+// Seksi F: Material Keluar (Tanpa Surat Jalan)
+model CrusherMaterialOut {
+  id                  String             @id @default(uuid())
+  reportId            String
+  report              CrusherDailyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  
+  material_name       String             // Abu Batu, Ciping 0.5, Batu 1-2, Batu 2-3, Batu Bulat
+  volume_m3           Float              // Volume kubikasi riil (m³)
+
+  // Armada & Sopir
+  vehicleId           String?
+  vehicle             Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  plate_number        String?            // Truk pengangkut (opsional)
+  driverId            String?
+  driver              Employee?          @relation("CrusherDriverOut", fields: [driverId], references: [id], onDelete: SetNull)
+  driver_name         String?
+  dump_truck_size     String?            // "BESAR" | "KECIL"
+  ritase              Int                @default(1)
+  distance_km         Float              @default(0)
+
+  // Retase Mobil Kecil (DT Kecil): Rp320 * jarak_km * retase
+  retase_rate         Float              @default(0)
+  retase_amount       Float              @default(0)
+  is_retase_paid      Boolean            @default(false)
+  paid_retase_date    DateTime?
+
+  // Insentif Operator Crusher: Rp5.000 / m³ (khusus 1/2, 2/3, 0.5)
+  operatorId          String?
+  operator            Employee?          @relation("CrusherOperatorOut", fields: [operatorId], references: [id], onDelete: SetNull)
+  operator_name       String?
+  operator_rate       Float              @default(0)
+  operator_fee        Float              @default(0)
+  is_operator_paid    Boolean            @default(false)
+
+  // Klasifikasi Tujuan: "BATCHING_PLANT" | "PENJUALAN_BEBAS"
+  destination_type    String             @default("BATCHING_PLANT")
+  
+  // Kasus 1: Transfer ke Batching Plant Internal
+  targetLocationId    String?            // Link ke Location BP (Arso 6, Koya, dll.)
+  targetLocation      Location?          @relation("CrusherTargetBP", fields: [targetLocationId], references: [id], onDelete: SetNull)
+  is_received_by_bp   Boolean            @default(false)
+  aggregateIncomingId String?            // Link sinkronisasi ke stok BP
+  receipt_status      String             @default("PENDING") // "PENDING" | "RECEIVED" | "REJECTED"
+  receivedAt          DateTime?
+  receivedById        String?
+  
+  // Kasus 2: Penjualan Bebas (Komersial Umum / Non-BP)
+  destinationId       String?            // Link ke CrusherDestination
+  destination         CrusherDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  customer_name       String?            // Nama pembeli umum / proyek
+  unit_price          Float?             @default(0) // Harga satuan per m³ (Rp)
+  total_price         Float?             @default(0) // Total nilai rupiah (Rp)
+  payment_method      String?            // "CASH" | "TRANSFER" | "TEMPO"
+  payment_status      String?            @default("LUNAS") // "LUNAS" | "BELUM_LUNAS"
+
+  notes               String?
+  createdAt           DateTime           @default(now())
+
+  @@index([reportId])
+  @@index([destination_type])
+  @@index([targetLocationId])
+  @@index([destinationId])
+  @@index([material_name])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([operatorId])
+  @@index([receipt_status])
+  @@index([is_retase_paid])
+}
+
+// Log Jam Kerja & Upah/Retase Operator Alat Berat & Helper
+// Universal: Digunakan untuk Stone Crusher maupun Batching Plant (Youtefa, Sorong, dll.)
+model OperatorWorkLog {
+  id                  String              @id @default(uuid())
+  date                DateTime            // Tanggal kerja (T12:00:00.000Z)
+  locationId          String              // Lokasi unit (SC Harapan, BP Youtefa, dll.)
+  location            Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  reportId            String?             // Link ke CrusherDailyReport jika diisi dari SC
+  report              CrusherDailyReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  employeeId          String              // Master Karyawan
+  employee            Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee_name       String              // Snapshot nama karyawan
+
+  role_type           String              // "OPERATOR_EXCAVATOR" | "OPERATOR_LOADER" | "HELPER" | "OPERATOR_CRUSHER" | "LAINNYA"
+
+  vehicleId           String?             // Master Unit Alat Berat (Excavator / Loader) - opsional untuk Helper
+  vehicle             Vehicle?            @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  vehicle_code        String?             // Snapshot kode alat (e.g. EXC-01, WL-01)
+
+  hm_start            Float?              // HM awal
+  hm_end              Float?              // HM akhir
+
+  work_hours_normal   Float               @default(0) // Jam kerja normal
+  work_hours_overtime Float               @default(0) // Jam kerja lembur
+  total_hours         Float               @default(0) // Total jam kerja
+
+  rate_normal         Float               @default(0) // Tarif normal per jam / per hari
+  rate_overtime       Float               @default(0) // Tarif lembur per jam
+  fee_normal          Float               @default(0) // work_hours_normal * rate_normal
+  fee_overtime        Float               @default(0) // work_hours_overtime * rate_overtime
+  total_fee           Float               @default(0) // fee_normal + fee_overtime
+
+  incentiveRateId     String?             // Link ke MasterIncentiveRate jika ada
+  is_paid             Boolean             @default(false)
+  paid_date           DateTime?
+  notes               String?
+  createdById         String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([locationId, date])
+  @@index([employeeId])
+  @@index([vehicleId])
+  @@index([role_type])
+  @@index([is_paid])
 }

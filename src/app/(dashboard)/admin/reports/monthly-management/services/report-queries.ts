@@ -33,7 +33,7 @@ export async function fetchMonthlyReportRawData(params: ReportQueryParams) {
         currentAggOutgoing,
         prevAggOutgoing
     ] = await Promise.all([
-        prisma.location.findMany({ orderBy: { name: "asc" } }),
+        prisma.location.findMany({ where: { type: "BATCHING_PLANT" }, orderBy: { name: "asc" } }),
         prisma.productionTransaction.findMany({
             where: {
                 ...locationFilter,
@@ -430,13 +430,15 @@ export async function fetchMonthlyReportRawData(params: ReportQueryParams) {
         allMonthTxnsKonsolidasi,
         invoicesIssuedInMonth,
         unbilledTxns,
+        unbilledBacklogTxns,
         activeDeposits,
         paymentsInMonth,
         allUnpaidInvoices,
         cementIncomings,
         aggIncomings,
         poList,
-        allSuppliers
+        allSuppliers,
+        availableMonthsRaw
     ] = await Promise.all([
         prisma.productionTransaction.findMany({
             where: {
@@ -460,9 +462,22 @@ export async function fetchMonthlyReportRawData(params: ReportQueryParams) {
             where: {
                 invoiceItem: null,
                 status: "Confirmed",
+                date: { gte: monthStart, lte: monthEnd },
                 ...locationFilter
             },
-            include: { 
+            include: {
+                project: { include: { prices: { include: { concreteQuality: true } } } },
+                concreteQuality: true
+            }
+        }),
+        // Backlog seluruh periode (belum ditagih, TANPA batas bulan) — disajikan terpisah sebagai konteks
+        prisma.productionTransaction.findMany({
+            where: {
+                invoiceItem: null,
+                status: "Confirmed",
+                ...locationFilter
+            },
+            include: {
                 project: { include: { prices: { include: { concreteQuality: true } } } },
                 concreteQuality: true
             }
@@ -549,7 +564,12 @@ export async function fetchMonthlyReportRawData(params: ReportQueryParams) {
             },
             orderBy: { tanggal_terbit: "desc" }
         }),
-        prisma.supplier.findMany({ select: { id: true, name: true } })
+        prisma.supplier.findMany({ select: { id: true, name: true } }),
+        prisma.$queryRaw<{ ym: string }[]>`
+            SELECT DISTINCT to_char(date, 'YYYY-MM') AS ym
+            FROM "ProductionTransaction"
+            ORDER BY ym DESC
+        `
     ])
 
     return {
@@ -582,6 +602,8 @@ export async function fetchMonthlyReportRawData(params: ReportQueryParams) {
         cementIncomings,
         aggIncomings,
         poList,
-        allSuppliers
+        allSuppliers,
+        unbilledBacklogTxns,
+        availableMonthsRaw
     }
 }

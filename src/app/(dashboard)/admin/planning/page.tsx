@@ -2,13 +2,15 @@ import { getPlans, getPlanMasters } from "./actions"
 import { PlanningClient } from "./planning-client"
 import { auth } from "@/auth"
 import { Eye } from "lucide-react"
+import { hasPermission } from "@/lib/rbac"
 
 export const dynamic = 'force-dynamic'
 
 export default async function PlanningPage() {
     const session = await auth()
     const userRole = session?.user?.role || "OperatorBP"
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP"].includes(userRole)
+    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && 
+        (["SuperAdminBP", "AdminBP"].includes(userRole) || hasPermission(session?.user, "PLANNING", "CREATE") || hasPermission(session?.user, "PLANNING", "EDIT"))
 
     const [plans, masters] = await Promise.all([
         getPlans(),

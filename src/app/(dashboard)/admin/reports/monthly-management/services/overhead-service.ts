@@ -26,12 +26,17 @@ export function calculateOverheadAndAmortization(params: OverheadCalculationPara
     const rblCategoryBreakdown: Record<string, { name: string; count: number; total: number; notes: string }> = {}
     const pureOverheadCategoryBreakdown: Record<string, { name: string; count: number; total: number; notes: string }> = {}
 
+    // Kategori yang BUKAN beban operasional (mis. kasbon/uang muka/piutang) tidak boleh masuk Seksi D.
+    // Tetap dihitung sebagai kas keluar fisik (totalRblCashDisbursement), tetapi dikecualikan dari opex.
+    const NON_EXPENSE_KEYWORDS = ["kasbon", "piutang", "uang muka", "uangmuka", "panjar", "pinjaman"]
+
     rblExpensesAll.forEach(e => {
         const cat = (e.category || "").toLowerCase()
         const ref = (e.categoryRef?.name || "").toLowerCase()
         const catId = e.categoryId || ""
         const isBbm = catId === "cat-bbm-solar" || cat.includes("bbm") || cat.includes("solar") || ref.includes("bbm") || ref.includes("solar")
         const isMnt = catId === "cat-pemeliharaan" || cat.includes("sparepart") || cat.includes("pemeliharaan") || cat.includes("servis") || cat.includes("bengkel") || ref.includes("sparepart") || ref.includes("pemeliharaan") || ref.includes("servis") || ref.includes("bengkel")
+        const isNonExpense = NON_EXPENSE_KEYWORDS.some(k => cat.includes(k) || ref.includes(k))
 
         const catName = e.categoryRef?.name || e.category || "Operasional Umum"
 
@@ -45,7 +50,7 @@ export function calculateOverheadAndAmortization(params: OverheadCalculationPara
             rblBbmDirect += (e.amount || 0)
         } else if (isMnt) {
             rblMaintenanceDirect += (e.amount || 0)
-        } else {
+        } else if (!isNonExpense) {
             pureOverheadOpex += (e.amount || 0)
             if (!pureOverheadCategoryBreakdown[catName]) {
                 pureOverheadCategoryBreakdown[catName] = { name: catName, count: 0, total: 0, notes: e.notes || "-" }
@@ -66,7 +71,6 @@ export function calculateOverheadAndAmortization(params: OverheadCalculationPara
     let totalPerizinanCost = 0
     let totalGajiCost = 0
     let totalAsuransiRetribusiCost = 0
-    let totalFixedVehicleComplianceCost = 0
     let totalFixedKirCost = 0
     let totalFixedTaxCost = 0
 
@@ -85,7 +89,6 @@ export function calculateOverheadAndAmortization(params: OverheadCalculationPara
         } else if (cat === "SEWA_MESS") {
             totalSewaMessCost += m
         } else if (cat === "PAJAK_KIR" || name.includes("KIR") || name.includes("STNK") || name.includes("PAJAK ARMADA") || name.includes("PAJAK KENDARAAN")) {
-            totalFixedVehicleComplianceCost += m
             if (name.includes("STNK") || (name.includes("PAJAK") && !name.includes("KIR"))) {
                 totalFixedTaxCost += m
             } else {

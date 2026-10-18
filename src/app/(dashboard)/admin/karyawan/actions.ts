@@ -8,7 +8,7 @@ import { z } from "zod"
 const karyawanSchema = z.object({
     id: z.string().optional(),
     name: z.string().min(1, "Nama Karyawan required"),
-    position: z.enum(["Sopir", "Operator", "Admin", "AdminLogistik", "CEO", "FVP"]),
+    position: z.enum(["Sopir", "Operator", "Helper", "Admin", "AdminLogistik", "CEO", "FVP"]),
     status: z.enum(["Active", "Inactive"]).default("Active"),
     join_date: z.string().min(1, "Tanggal Bergabung required"),
     locationId: z.string().optional(), // For SuperAdmin Branch Assignment

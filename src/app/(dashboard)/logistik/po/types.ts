@@ -6,6 +6,10 @@ export type POListClientProps = {
     userPermissions?: string[]
     companies: any[]
     categories: any[]
+    fixedLocationId?: string
+    fixedPeruntukan?: "ALL" | "BP" | "CRUSHER" | "HO"
+    createHref?: string
+    createLabel?: string
 }
 
 export type PODateFilterMode = "ALL" | "SPECIFIC" | "RANGE"

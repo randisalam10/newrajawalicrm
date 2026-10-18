@@ -27,6 +27,7 @@ export default async function PrintPOPage({
         include: {
             companyGroup: true,
             category: true,
+            location: true,
             items: {
                 include: {
                     masterItem: true,
@@ -117,7 +118,9 @@ export default async function PrintPOPage({
         perusahaan_alamat: po.companyGroup?.address || undefined,
         perusahaan_telepon: po.companyGroup?.email || undefined,
         perusahaan_logo: logoUrl ? `${baseUrl}${logoUrl}` : undefined,
-        proyek_nama: companyProject?.name || po.companyGroup?.name || "-",
+        proyek_nama: po.is_for_crusher && po.location?.name
+            ? po.location.name
+            : (companyProject?.name || (po.is_for_bp && po.location?.name ? po.location.name : po.companyGroup?.name || "-")),
         proyek_kode: companyProject?.kode_proyek || po.companyGroup?.kode_cabang || "-",
         supplier_nama: supplier?.name || "-",
         supplier_alamat: supplier?.address || undefined,

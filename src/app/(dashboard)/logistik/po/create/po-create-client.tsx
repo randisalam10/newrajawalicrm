@@ -25,7 +25,9 @@ export function POCreateClient({
     locations = [],
     userRole = "",
     userLocationId = null,
-    pembuatAdmin
+    pembuatAdmin,
+    initialPeruntukan,
+    initialLocationId,
 }: {
     companies: any[]
     categories: any[]
@@ -37,6 +39,8 @@ export function POCreateClient({
     userRole?: string
     userLocationId?: string | null
     pembuatAdmin: string
+    initialPeruntukan?: "BP" | "CRUSHER" | "HO"
+    initialLocationId?: string
 }) {
     const router = useRouter()
     const [saving, setSaving] = useState(false)
@@ -46,16 +50,41 @@ export function POCreateClient({
 
     // Corporate scope detection: SuperAdminBP, AdminLogistik, CEO, FVP, Approver
     const isCorp = userRole === "SuperAdminBP" || userRole === "AdminLogistik" || ["CEO", "FVP", "Approver"].includes(userRole || "")
-    const [isForBp, setIsForBp] = useState(!isCorp ? true : false)
-    const [selectedLocationId, setSelectedLocationId] = useState(!isCorp && userLocationId ? userLocationId : "")
+    const userLocation = locations.find((l: any) => l.id === userLocationId)
+    const isUserSc = userLocation?.type === "STONE_CRUSHER" || userLocation?.name?.toLowerCase().includes("crusher") || userRole === "OperatorCrusher" || userRole === "AdminCrusher"
 
-    // Master items state
-    const [masterItemsList, setMasterItemsList] = useState<any[]>(items)
+    const defaultForBp = initialPeruntukan
+        ? initialPeruntukan === "BP"
+        : (!isCorp ? !isUserSc : false)
+
+    const defaultForCrusher = initialPeruntukan
+        ? initialPeruntukan === "CRUSHER"
+        : (!isCorp ? isUserSc : false)
+
+    const [isForBp, setIsForBp] = useState(defaultForBp)
+    const [isForCrusher, setIsForCrusher] = useState(defaultForCrusher)
+    const [selectedLocationId, setSelectedLocationId] = useState(
+        initialLocationId || (!isCorp && userLocationId ? userLocationId : "")
+    )
 
     const [selectedCompanyId, setSelectedCompanyId] = useState("")
     const [selectedProjectId, setSelectedProjectId] = useState("")
     const [selectedCategoryId, setSelectedCategoryId] = useState("")
     const [selectedSupplierId, setSelectedSupplierId] = useState("")
+
+    // Auto-select PT RPJ if creating for crusher and reset project
+    useEffect(() => {
+        if (isForCrusher) {
+            setSelectedProjectId("")
+            if (companies.length > 0 && !selectedCompanyId) {
+                const rpj = companies.find((c: any) => c.kode_cabang === "RPJ" || c.name?.toUpperCase().includes("RAJAWALI PUNCAK JAYAWIJAYA"))
+                if (rpj) setSelectedCompanyId(rpj.id)
+            }
+        }
+    }, [isForCrusher, companies, selectedCompanyId])
+
+    // Master items state
+    const [masterItemsList, setMasterItemsList] = useState<any[]>(items)
     const [pimpinan, setPimpinan] = useState("")
     const [kepalaPeralatan, setKepalaPeralatan] = useState("")
     const [jabatanKepala, setJabatanKepala] = useState("")
@@ -106,6 +135,7 @@ export function POCreateClient({
     const selectedVehicle = vehicles.find((v: any) => v.id === inputVehicleId)
     const isHM = selectedVehicle?.meter_type === "HM" ||
         selectedVehicle?.category?.name?.toLowerCase().includes("batching") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("crusher") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("genset") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("excavator") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("loader") ||
@@ -138,8 +168,104 @@ export function POCreateClient({
         return parsedInputMeter < effectiveLastMeter
     }, [effectiveLastMeter, parsedInputMeter])
 
+    // Deteksi ruang lingkup Stone Crusher (dari radio button peruntukan, role user, atau cabang terpilih)
+    const isCrusherScope = isForCrusher || isUserSc || (selectedLocationId && locations.find((l: any) => l.id === selectedLocationId)?.type === "STONE_CRUSHER")
+
+    // Filter daftar kendaraan & alat berat sesuai peruntukan PO (Stone Crusher vs Batching Plant vs Proyek)
+    const filteredVehicles = useMemo(() => {
+        if (isCrusherScope) {
+            // Khusus Stone Crusher: Hanya unit/alat yang bersumber atau dialokasikan untuk Stone Crusher
+            const list = vehicles.filter((v: any) => {
+                const catName = (v.category?.name || "").toLowerCase()
+                const vType = (v.vehicle_type || "").toLowerCase()
+                const locType = v.location?.type || ""
+                const locName = (v.location?.name || "").toLowerCase()
+                const isAssignedToCrusherLoc =
+                    locType === "STONE_CRUSHER" ||
+                    locName.includes("crusher") ||
+                    (selectedLocationId && v.locationId === selectedLocationId)
+
+                // Strictly exclude armada mixer dan pompa beton cor (khusus BP)
+                if (
+                    catName.includes("mixer") ||
+                    vType.includes("mixer") ||
+                    catName.includes("pump") ||
+                    catName.includes("pompa") ||
+                    catName.includes("batching plant")
+                ) {
+                    return false
+                }
+
+                // Include unit yang berlokasi di Stone Crusher
+                if (isAssignedToCrusherLoc) return true
+
+                // Include alat berat & mekanikal operasional Stone Crusher
+                if (
+                    catName.includes("crusher") ||
+                    catName.includes("excavator") ||
+                    catName.includes("loader") ||
+                    catName.includes("genset")
+                ) {
+                    return true
+                }
+
+                // Include armada Dump Truck (pengangkut material batu & agregat crusher)
+                if (catName.includes("dump") || v.dump_truck_size) {
+                    return true
+                }
+
+                return false
+            })
+
+            // Sort: Prioritaskan unit di lokasi Stone Crusher terlebih dahulu, lalu kode unit
+            return [...list].sort((a: any, b: any) => {
+                const aIsCrusherLoc = a.location?.type === "STONE_CRUSHER" || a.location?.name?.toLowerCase().includes("crusher")
+                const bIsCrusherLoc = b.location?.type === "STONE_CRUSHER" || b.location?.name?.toLowerCase().includes("crusher")
+                if (aIsCrusherLoc && !bIsCrusherLoc) return -1
+                if (!aIsCrusherLoc && bIsCrusherLoc) return 1
+                return (a.code || "").localeCompare(b.code || "")
+            })
+        }
+
+        if (isForBp) {
+            // Khusus Batching Plant: Armada mixer, pompa, mesin BP, dan dump truck BP
+            const list = vehicles.filter((v: any) => {
+                const catName = (v.category?.name || "").toLowerCase()
+                const locType = v.location?.type || ""
+                const locName = (v.location?.name || "").toLowerCase()
+
+                // Exclude unit eksklusif stone crusher
+                if (catName.includes("stone crusher") || locType === "STONE_CRUSHER" || locName.includes("crusher")) {
+                    return false
+                }
+
+                // Filter cabang BP jika cabang telah dipilih
+                if (selectedLocationId && v.locationId && v.locationId !== selectedLocationId) {
+                    return false
+                }
+
+                return true
+            })
+
+            return [...list].sort((a: any, b: any) => (a.code || "").localeCompare(b.code || ""))
+        }
+
+        return vehicles
+    }, [vehicles, isCrusherScope, isForBp, selectedLocationId])
+
+    // Reset inputVehicleId jika unit yang dipilih sebelumnya tidak ada dalam filter baru
+    useEffect(() => {
+        if (inputVehicleId) {
+            const isValid = filteredVehicles.some((v: any) => v.id === inputVehicleId)
+            if (!isValid) {
+                setInputVehicleId("")
+                setInputKmHm("")
+            }
+        }
+    }, [filteredVehicles, inputVehicleId])
+
     const vehicleOptions = useMemo(() => {
-        return vehicles.map((v: any) => {
+        return filteredVehicles.map((v: any) => {
             const cat = v.category?.name || v.vehicle_type || "Unit"
             const loc = v.location?.name ? ` • ${v.location.name}` : ""
             const plate = v.plate_number ? ` - ${v.plate_number}` : ""
@@ -149,7 +275,7 @@ export function POCreateClient({
                 label: `[${v.code}]${plate} [${cat}${loc}]${spec}`,
             }
         })
-    }, [vehicles])
+    }, [filteredVehicles])
 
     const handleCompanyChange = (val: string) => {
         setSelectedCompanyId(val)
@@ -324,13 +450,17 @@ export function POCreateClient({
             alert("Silakan pilih Cabang Batching Plant untuk PO bertag BP.")
             return
         }
+        if (isForCrusher && isCorp && !selectedLocationId) {
+            alert("Silakan pilih Lokasi Stone Crusher untuk PO bertag Crusher.")
+            return
+        }
 
         setSaving(true)
         try {
-            const finalLocationId = isForBp ? (!isCorp ? (userLocationId || undefined) : (selectedLocationId || undefined)) : undefined
+            const finalLocationId = (isForBp || isForCrusher) ? (!isCorp ? (userLocationId || selectedLocationId || undefined) : (selectedLocationId || undefined)) : undefined
             const result = await createPurchaseOrder({
                 companyGroupId: selectedCompanyId,
-                companyProjectId: selectedProjectId || undefined,
+                companyProjectId: isForCrusher ? undefined : (selectedProjectId || undefined),
                 categoryId: selectedCategoryId,
                 supplierId: selectedSupplierId,
                 pimpinan,
@@ -341,6 +471,7 @@ export function POCreateClient({
                 tanggal_terbit: new Date(tanggalTerbit),
                 locationId: finalLocationId,
                 is_for_bp: isForBp,
+                is_for_crusher: isForCrusher,
                 notes: notes || undefined,
                 pic_name: picName || undefined,
                 pic_phone: picPhone || undefined,
@@ -433,6 +564,8 @@ export function POCreateClient({
                     onCompanyChange={handleCompanyChange}
                     isForBp={isForBp}
                     setIsForBp={setIsForBp}
+                    isForCrusher={isForCrusher}
+                    setIsForCrusher={setIsForCrusher}
                     isCorp={isCorp}
                     selectedLocationId={selectedLocationId}
                     setSelectedLocationId={setSelectedLocationId}

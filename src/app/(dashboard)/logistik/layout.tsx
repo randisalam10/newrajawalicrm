@@ -13,7 +13,17 @@ export default async function LogistikLayout({
         redirect("/login")
     }
 
-    let hasLogistikAccess = session.user.role === "SuperAdminBP" || session.user.role === "AdminLogistik"
+    const allowedRoles = [
+        "SuperAdminBP",
+        "AdminLogistik",
+        "AdminBP",
+        "AdminCrusher",
+        "OperatorCrusher",
+        "CEO",
+        "FVP",
+        "Approver"
+    ]
+    let hasLogistikAccess = allowedRoles.includes(session.user.role || "")
 
     if (!hasLogistikAccess && session.user.id) {
         const dbUser = await prisma.user.findUnique({
@@ -30,16 +40,18 @@ export default async function LogistikLayout({
             }
         })
 
+        const role = dbUser?.role || session.user.role || ""
         const perms = dbUser?.roleRef?.permissions.map(rp => rp.permission.code) || session.user.permissions || []
-        hasLogistikAccess = dbUser?.role === "SuperAdminBP" || 
-            dbUser?.role === "AdminLogistik" || 
+        hasLogistikAccess = allowedRoles.includes(role) || 
             perms.includes("LOGISTIK_VIEW") ||
             perms.includes("LOGISTIK_CREATE") ||
-            perms.includes("LOGISTIK_APPROVE")
+            perms.includes("LOGISTIK_APPROVE") ||
+            perms.some(p => p.startsWith("CRUSHER_"))
     }
 
     if (!hasLogistikAccess) {
-        redirect("/admin")
+        const fallbackTarget = session.user.role === "OperatorBP" ? "/operator" : (session.user.role === "OperatorCrusher" ? "/crusher" : "/admin")
+        redirect(fallbackTarget)
     }
 
     return <>{children}</>

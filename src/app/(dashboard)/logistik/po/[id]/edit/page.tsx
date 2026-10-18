@@ -37,7 +37,8 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
         redirect("/logistik/po")
     }
 
-    const { companies, categories, suppliers, items, vehicles, locations } = await getPoFormData()
+    const peruntukanParam = po.is_for_crusher ? "CRUSHER" : (po.is_for_bp ? "BP" : undefined)
+    const { companies, categories, suppliers, items, signers, vehicles, locations } = await getPoFormData(po.locationId || undefined, peruntukanParam)
 
     return (
         <div className="space-y-4">
@@ -51,6 +52,7 @@ export default async function POEditPage({ params }: { params: Promise<{ id: str
                 categories={categories}
                 suppliers={suppliers}
                 items={items}
+                signers={signers || []}
                 vehicles={vehicles}
                 locations={locations || []}
                 userRole={session?.user?.role || ""}

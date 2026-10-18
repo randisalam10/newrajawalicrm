@@ -14,7 +14,9 @@ const categorySchema = z.object({
 function canManageCategory(user: any) {
     if (!user) return false
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP" || user.role === "AdminLogistik"
+    if (["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(user.role)) return true
+    const perms: string[] = user.permissions || []
+    return perms.includes("LOGISTIK_CREATE") || perms.includes("LOGISTIK_EDIT") || perms.includes("CRUSHER_VIEW")
 }
 
 export async function getPoCategories() {

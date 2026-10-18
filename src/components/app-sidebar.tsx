@@ -16,7 +16,7 @@ import {
     SidebarGroupContent,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Landmark, BookLock, Loader2 } from "lucide-react"
+import { Factory, HardHat, FileText, Settings, Users, Truck, LogOut, LayoutDashboard, ShieldCheck, ChevronRight, BarChart3, Receipt, CalendarClock, Layers, ShoppingCart, Box, Store, KeyRound, PenTool, WalletCards, CheckSquare, Fuel, Calculator, Tag, Landmark, BookLock, Loader2, Mountain, Clock, MapPin } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
@@ -35,7 +35,9 @@ type AppSidebarProps = {
 export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
     const [mounted, setMounted] = useState(false)
-    const [openGroup, setOpenGroup] = useState<string | null>("Operasional & Transaksi")
+    const [openGroup, setOpenGroup] = useState<string | null>(
+        user?.role === "OperatorCrusher" ? "Stone Crusher" : "Operasional & Transaksi"
+    )
     const [isLoggingOut, startTransition] = useTransition()
 
     const handleLogout = () => {
@@ -81,6 +83,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         if (code === "RETASE_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
         if (code === "PLANNING_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
         if (code === "CUSTOMER_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
+        if (code === "CRUSHER_VIEW" && ["AdminBP", "OperatorCrusher", "CEO", "FVP"].includes(role)) return true
         if (code === "DASHBOARD_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP", "Approver"].includes(role)) return true
 
         return false
@@ -92,13 +95,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }
 
     const rawNavGroups = [
+        // ================= OPERASIONAL (PALING ATAS) =================
         {
             title: "Monitoring",
             defaultOpen: true,
             items: [
-                ...(hasPerm("DASHBOARD_VIEW") ? [{
+                ...((hasPerm("DASHBOARD_VIEW") || user?.role === "OperatorCrusher") ? [{
                     title: "Dashboard",
-                    url: user?.role === "OperatorBP" ? "/operator" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin"),
+                    url: user?.role === "OperatorBP" ? "/operator" : (user?.role === "OperatorCrusher" ? "/crusher" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin")),
                     icon: LayoutDashboard,
                     isSuperAdminOnly: false,
                 }] : []),
@@ -112,12 +116,44 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("PRODUKSI_VIEW") ? [{ title: "Input Produksi", url: "/admin/produksi", icon: Factory, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("SEWA_VIEW") ? [{ title: "Sewa Alat / Kendaraan", url: "/admin/sewa", icon: KeyRound, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck, isSuperAdminOnly: false }] : []),
-                ...(hasPerm("INSENTIF_VIEW") ? [
-                    { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false }
-                ] : []),
-                ...(hasPerm("CUSTOMER_VIEW") ? [{ title: "Data Customer", url: "/admin/customer", icon: HardHat, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers, isSuperAdminOnly: false }] : []),
+            ]
+        },
+        ...(hasPerm("CRUSHER_VIEW") ? [{
+            title: "Stone Crusher",
+            defaultOpen: true,
+            items: [
+                { title: "Dashboard & Rekap", url: "/crusher", icon: Mountain, isSuperAdminOnly: false },
+                { title: "Operasional dan Gangguan", url: "/crusher/mesin", icon: Clock, isSuperAdminOnly: false },
+                { title: "Pengisian BBM (Solar)", url: "/crusher/solar", icon: Fuel, isSuperAdminOnly: false },
+                { title: "Material Masuk", url: "/crusher/material-masuk", icon: Layers, isSuperAdminOnly: false },
+                { title: "Material Keluar", url: "/crusher/material-keluar", icon: Truck, isSuperAdminOnly: false },
+                { title: "Retase Operator & Helper", url: "/crusher/operator", icon: HardHat, isSuperAdminOnly: false },
+            ]
+        }] : []),
+        {
+            title: "Pengadaan & Logistik",
+            defaultOpen: false,
+            items: [
+                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" && user?.role !== "OperatorCrusher" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
+                ...(isSuperAdmin || user?.role === "AdminLogistik" || (hasPerm("LOGISTIK_VIEW") && user?.role !== "OperatorCrusher") ? [
+                    { title: "PO Batching Plant", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
+                ] : []),
+                ...(isSuperAdmin || user?.role === "AdminLogistik" || user?.role === "OperatorCrusher" || hasPerm("CRUSHER_VIEW") ? [
+                    { title: "PO Stone Crusher", url: "/crusher/po", icon: ShoppingCart, badge: "SC", isSuperAdminOnly: false },
+                ] : []),
+                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
+                    { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare, isSuperAdminOnly: false }
+                ] : []),
+                ...(isSuperAdmin || user?.role === "AdminLogistik" || user?.role === "OperatorCrusher" || hasAnyPerm("LOGISTIK_VIEW", "CRUSHER_VIEW") ? [
+                    { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound, isSuperAdminOnly: false },
+                    { title: "Master Supplier", url: "/logistik/supplier", icon: Store, isSuperAdminOnly: false },
+                    { title: "Master Barang", url: "/logistik/master-barang", icon: Box, isSuperAdminOnly: false },
+                ] : []),
+                ...(isSuperAdmin || user?.role === "AdminLogistik" || hasPerm("LOGISTIK_PERUSAHAAN_VIEW") || hasPerm("LOGISTIK_PERUSAHAAN_MANAGE") ? [
+                    { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory, isSuperAdminOnly: false },
+                ] : [])
             ]
         },
         {
@@ -136,6 +172,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Retase Batchingplant", url: "/admin/reports/retase", icon: BarChart3, isSuperAdminOnly: false }] : []),
+                ...((isSuperAdmin || hasPerm("FINANCE_VIEW") || hasPerm("RETASE_VIEW") || hasPerm("REPORTS_VIEW") || hasPerm("CRUSHER_VIEW") || ['CEO', 'FVP', 'Finance', 'SuperAdminBP'].includes(user?.role || '')) ? [
+                    { title: "Retase Stone Crusher", url: "/admin/retase-crusher", icon: Mountain, isSuperAdminOnly: false }
+                ] : []),
             ]
         },
         {
@@ -165,10 +204,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ] : []),
             ]
         },
+
+        // ================= DATA MASTER (PALING BAWAH) =================
         {
             title: "Data Master",
             defaultOpen: false,
             items: [
+                ...(hasPerm("CUSTOMER_VIEW") ? [
+                    { title: "Data Customer", url: "/admin/customer", icon: HardHat, isSuperAdminOnly: false }
+                ] : []),
                 ...(hasPerm("KARYAWAN_VIEW") ? [
                     { title: "Data Karyawan", url: "/admin/karyawan", icon: Users, isSuperAdminOnly: false },
                 ] : []),
@@ -185,41 +229,25 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Item Pekerjaan", url: "/admin/item-pekerjaan", icon: Settings, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("INSENTIF_VIEW") ? [
-                    { title: "Master Insentif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false },
+                    { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasAnyPerm("MATERIAL_AGREGAT_VIEW", "PRODUKSI_VIEW", "MUTU_VIEW") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP'].includes(user?.role || '') ? [
                     { title: "Master Harga Material", url: "/admin/master-material", icon: Tag, isSuperAdminOnly: false }
                 ] : []),
                 ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("CRUSHER_VIEW") ? [
+                    { title: "Master Sumber & Jarak (SC)", url: "/crusher/sumber", icon: MapPin, isSuperAdminOnly: false },
+                    { title: "Master Tujuan Non-BP (SC)", url: "/admin/master-tujuan-crusher", icon: MapPin, isSuperAdminOnly: false },
+                    { title: "Master Kendaraan (SC)", url: "/crusher/kendaraan", icon: Truck, isSuperAdminOnly: false },
+                    { title: "Master Karyawan (SC)", url: "/crusher/karyawan", icon: Users, isSuperAdminOnly: false },
+                ] : []),
                 ...(isSuperAdmin ? [
                     { title: "Master Biaya & Target", url: "/admin/fixed-costs", icon: Landmark, isSuperAdminOnly: true }
                 ] : [])
             ]
         },
-        {
-            title: "Approval & Persetujuan",
-            defaultOpen: true,
-            items: [
-                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
-                    { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare, isSuperAdminOnly: false }
-                ] : []),
-            ]
-        },
-        {
-            title: "Logistik & Peralatan",
-            defaultOpen: false,
-            items: [
-                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
-                ...(hasPerm("LOGISTIK_CREATE") ? [{ title: "Buat PO Baru", url: "/logistik/po/create", icon: ShoppingCart, isSuperAdminOnly: false }] : []),
-                ...(hasPerm("LOGISTIK_VIEW") ? [
-                    { title: "Daftar PO", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
-                    { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory, isSuperAdminOnly: false },
-                    { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound, isSuperAdminOnly: false },
-                    { title: "Master Supplier", url: "/logistik/supplier", icon: Store, isSuperAdminOnly: false },
-                    { title: "Master Barang", url: "/logistik/master-barang", icon: Box, isSuperAdminOnly: false },
-                ] : [])
-            ]
-        },
+
+        // ================= ADMINISTRATOR & AKSES (PALING AKHIR) =================
         {
             title: "Administrator & Akses",
             defaultOpen: false,
@@ -319,11 +347,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
                                                                     <item.icon className="!h-4 !w-4 opacity-70" />
                                                                     <span className="truncate">{item.title}</span>
                                                                 </div>
-                                                                {item.isSuperAdminOnly && (
+                                                                {item.badge ? (
+                                                                    <span className="ml-auto text-[9px] font-bold tracking-wider uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                                                        {item.badge}
+                                                                    </span>
+                                                                ) : item.isSuperAdminOnly ? (
                                                                     <span className="ml-auto text-[9px] font-medium tracking-wider uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 shrink-0">
                                                                         HQ
                                                                     </span>
-                                                                )}
+                                                                ) : null}
                                                             </Link>
                                                         </SidebarMenuButton>
                                                     </SidebarMenuItem>

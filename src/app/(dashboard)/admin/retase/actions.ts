@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import { hasPermission } from "@/lib/rbac"
 
 function isCorporate(session: any): boolean {
     if (!session?.user) return false
@@ -12,11 +13,39 @@ function isCorporate(session: any): boolean {
     return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP", "Approver"].includes(role)
 }
 
-function canManageRetase(session: any): boolean {
+async function canManageRetase(session: any, action: "EDIT" = "EDIT"): Promise<boolean> {
     if (!session?.user) return false
-    const role = session.user.role || ""
+    const user = session.user
+    const role = user.role || ""
     if (["CEO", "FVP", "Approver"].includes(role)) return false
-    return role === "SuperAdminBP" || role === "AdminBP"
+    if (role === "SuperAdminBP" || role === "AdminBP") return true
+
+    if (hasPermission(user, "RETASE", action)) return true
+
+    if (user.id) {
+        try {
+            const dbUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: {
+                    role: true,
+                    roleRef: {
+                        include: {
+                            permissions: {
+                                include: { permission: true }
+                            }
+                        }
+                    }
+                }
+            })
+            if (dbUser?.role === "SuperAdminBP" || dbUser?.role === "AdminBP") return true
+            const dbPerms = dbUser?.roleRef?.permissions.map(p => p.permission.code) || []
+            if (dbPerms.includes(`RETASE_${action.toUpperCase()}`)) return true
+        } catch (e) {
+            console.error("Error checking retase permissions from DB:", e)
+        }
+    }
+
+    return false
 }
 
 // --- SETTINGS ---
@@ -49,7 +78,7 @@ const mixerSettingSchema = z.object({
 export async function saveMixerRetaseSetting(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const parsed = mixerSettingSchema.parse(Object.fromEntries(formData.entries()))
@@ -140,7 +169,7 @@ const operatorSettingSchema = z.object({
 export async function saveOperatorBPRateSetting(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const parsed = operatorSettingSchema.parse(Object.fromEntries(formData.entries()))
@@ -232,7 +261,7 @@ const updateSettingSchema = z.object({
 export async function upsertRetaseSetting(formData: FormData) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const parsed = updateSettingSchema.parse(Object.fromEntries(formData.entries()))
@@ -478,7 +507,7 @@ export async function getTransactions(status: "Pending" | "Confirmed") {
 export async function confirmTransaction(transactionId: string, distance: number) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const transaction: any = await prisma.productionTransaction.findUnique({
@@ -538,7 +567,7 @@ export async function confirmTransaction(transactionId: string, distance: number
 export async function deleteConfirmedTransaction(transactionId: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda hanya memiliki hak akses lihat." }
 
     try {
         const transaction: any = await prisma.productionTransaction.findUnique({
@@ -605,7 +634,7 @@ const updateAggregateSettingSchema = z.object({
 export async function upsertAggregateRetaseSetting(formData: FormData) {
     const session = await auth()
     if (!session?.user) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak: Anda tidak memiliki izin." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak: Anda tidak memiliki izin." }
 
     try {
         const parsed = updateAggregateSettingSchema.parse(Object.fromEntries(formData.entries()))
@@ -680,7 +709,7 @@ export async function getAggregateRetaseTransactions() {
 export async function toggleAggregateRetasePaid(id: string, isPaid: boolean, type?: "incoming" | "outgoing") {
     const session = await auth()
     if (!session?.user) return { error: "Unauthorized" }
-    if (!canManageRetase(session)) return { error: "Akses ditolak." }
+    if (!await canManageRetase(session)) return { error: "Akses ditolak." }
 
     try {
         if (type === "outgoing") {

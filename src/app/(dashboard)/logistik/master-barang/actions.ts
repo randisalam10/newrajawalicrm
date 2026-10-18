@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
+import type { LogistikBusinessUnit } from "@/lib/logistik-scoping"
+import {
+    buildMasterItemBranchFilter,
+    isLogistikCentralUser,
+    LogistikFilterParams
+} from "@/lib/logistik-scoping"
 
 const itemSchema = z.object({
     kode_barang: z.string().min(1, "Kode barang wajib diisi"),
@@ -15,19 +21,30 @@ const itemSchema = z.object({
     part_number: z.string().optional(),
     merk: z.string().optional(),
     reason: z.string().optional(),
+    target_business: z.enum(["BP", "CRUSHER", "ALL"]).optional().default("ALL"),
+    is_global: z.string().optional().transform(v => v === "true" || v === "on"),
+    locationId: z.string().optional().or(z.literal("")),
 })
 
 function canManageMasterBarang(user: any) {
     if (!user) return false
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP" || user.role === "AdminLogistik"
+    if (["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(user.role)) return true
+    const perms: string[] = user.permissions || []
+    return perms.includes("LOGISTIK_CREATE") || perms.includes("LOGISTIK_EDIT") || perms.includes("CRUSHER_VIEW")
 }
 
-export async function getMasterItems() {
+export async function getMasterItems(params?: LogistikFilterParams) {
+    const session = await auth()
+    const where = buildMasterItemBranchFilter(session?.user, params)
+
     return await prisma.masterItem.findMany({
+        where,
         include: {
             supplier: true,
             category: true,
+            location: { select: { id: true, name: true } },
+            sharedLocations: { select: { id: true, name: true } },
             priceHistories: {
                 orderBy: { effectiveDate: 'desc' },
                 include: {
@@ -52,16 +69,39 @@ export async function createMasterItem(formData: FormData) {
     }
 
     const data = Object.fromEntries(formData.entries())
+    const sharedLocationIds = formData.getAll("sharedLocationIds") as string[]
     const parsed = itemSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
     const userId = session.user.id
+    const isCentral = isLogistikCentralUser(session.user)
+    const isCrusher = session.user.role === "OperatorCrusher" || session.user.role === "AdminCrusher"
+
+    let target_business = parsed.data.target_business
+    let is_global = isCentral ? (parsed.data.is_global ?? false) : false
+    let locationId = session.user.locationId || null
+
+    if (isCentral) {
+        locationId = parsed.data.locationId && parsed.data.locationId.trim() !== "" ? parsed.data.locationId : null
+    } else {
+        target_business = isCrusher ? "CRUSHER" : "BP"
+    }
+
+    const validSharedIds = isCentral
+        ? sharedLocationIds.filter(id => Boolean(id) && id.trim().length > 0 && id !== locationId)
+        : []
 
     try {
-        const { reason, ...itemData } = parsed.data
+        const { reason, target_business: _tb, is_global: _ig, locationId: _locId, ...itemData } = parsed.data
         await prisma.masterItem.create({
             data: {
                 ...itemData,
+                target_business,
+                is_global,
+                locationId,
+                ...(validSharedIds.length > 0 && {
+                    sharedLocations: { connect: validSharedIds.map(id => ({ id })) }
+                }),
                 priceHistories: {
                     create: {
                         oldPrice: 0,
@@ -89,19 +129,39 @@ export async function updateMasterItem(id: string, formData: FormData) {
     }
 
     const data = Object.fromEntries(formData.entries())
+    const sharedLocationIds = formData.getAll("sharedLocationIds") as string[]
     const parsed = itemSchema.safeParse(data)
     if (!parsed.success) return { success: false, error: parsed.error.format() }
 
+    const isCentral = isLogistikCentralUser(session.user)
+    const currentItem = await prisma.masterItem.findUnique({ where: { id } })
+    if (!currentItem) return { success: false, error: "Barang tidak ditemukan." }
+
+    if (!isCentral && currentItem.locationId && currentItem.locationId !== session.user.locationId) {
+        return { success: false, error: "Akses ditolak: Anda hanya dapat mengubah barang milik cabang Anda." }
+    }
+
     const userId = session.user.id
+    const oldPrice = currentItem.harga
+    const newPrice = parsed.data.harga
+    const priceChanged = Math.abs(oldPrice - newPrice) > 0.001
+
+    let target_business = currentItem.target_business
+    let is_global = currentItem.is_global
+    let locationId = currentItem.locationId
+
+    if (isCentral) {
+        target_business = parsed.data.target_business
+        is_global = parsed.data.is_global ?? false
+        locationId = parsed.data.locationId && parsed.data.locationId.trim() !== "" ? parsed.data.locationId : null
+    }
+
+    const validSharedIds = isCentral
+        ? sharedLocationIds.filter(id => Boolean(id) && id.trim().length > 0 && id !== locationId)
+        : []
 
     try {
-        const currentItem = await prisma.masterItem.findUnique({ where: { id } })
-        if (!currentItem) return { success: false, error: "Barang tidak ditemukan." }
-
-        const oldPrice = currentItem.harga
-        const newPrice = parsed.data.harga
-        const priceChanged = Math.abs(oldPrice - newPrice) > 0.001
-        const { reason, ...itemData } = parsed.data
+        const { reason, target_business: _tb, is_global: _ig, locationId: _locId, ...itemData } = parsed.data
 
         await prisma.$transaction(async (tx) => {
             if (priceChanged) {
@@ -122,7 +182,15 @@ export async function updateMasterItem(id: string, formData: FormData) {
 
             await tx.masterItem.update({
                 where: { id },
-                data: itemData
+                data: {
+                    ...itemData,
+                    target_business,
+                    is_global,
+                    locationId,
+                    sharedLocations: isCentral
+                        ? { set: validSharedIds.map(locId => ({ id: locId })) }
+                        : undefined
+                }
             })
         })
 
@@ -182,6 +250,14 @@ export async function deleteMasterItem(id: string) {
     const session = await auth()
     if (!session?.user || !canManageMasterBarang(session.user)) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola master barang" }
+    }
+
+    const isCentral = isLogistikCentralUser(session.user)
+    const existing = await prisma.masterItem.findUnique({ where: { id } })
+    if (!existing) return { success: false, error: "Barang tidak ditemukan." }
+
+    if (!isCentral && existing.locationId && existing.locationId !== session.user.locationId) {
+        return { success: false, error: "Akses ditolak: Anda hanya dapat menghapus barang milik cabang Anda." }
     }
 
     try {

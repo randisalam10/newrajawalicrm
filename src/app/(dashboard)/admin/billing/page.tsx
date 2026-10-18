@@ -24,9 +24,14 @@ export default async function BillingPage() {
         ? allLocations
         : allLocations.filter(loc => loc.id === session.user.locationId)
 
-    // FVP and CEO are read-only; only AdminBP and SuperAdminBP can create/modify invoices, payments, deposits
-    const canManage = (session.user.role === "SuperAdminBP" || session.user.role === "AdminBP") &&
-        !["CEO", "FVP"].includes(session.user.role ?? "")
+    // FVP and CEO are read-only; SuperAdminBP, AdminBP, or users with BILLING permissions can manage
+    const canManage = (
+        session.user.role === "SuperAdminBP" ||
+        session.user.role === "AdminBP" ||
+        hasPermission(session.user, "BILLING", "CREATE") ||
+        hasPermission(session.user, "BILLING", "EDIT") ||
+        hasPermission(session.user, "BILLING", "APPROVE")
+    ) && !["CEO", "FVP", "Approver"].includes(session.user.role ?? "")
 
     return (
         <div className="space-y-6">

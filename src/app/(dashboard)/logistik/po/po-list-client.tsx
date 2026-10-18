@@ -15,7 +15,11 @@ export function POListClient({
     userRole,
     userPermissions = [],
     companies,
-    categories
+    categories,
+    fixedLocationId,
+    fixedPeruntukan,
+    createHref,
+    createLabel,
 }: POListClientProps) {
     const [orders, setOrders] = useState(initialData)
     const [totalCount, setTotalCount] = useState(initialTotal)
@@ -32,6 +36,14 @@ export function POListClient({
     const [endDate, setEndDate] = useState("")
     const [isLoading, setIsLoading] = useState(false)
 
+    // Synchronize initial data when switching branches / locations
+    useEffect(() => {
+        setOrders(initialData)
+        setTotalCount(initialTotal)
+        setTotalPages(initialTotalPages)
+        setPage(1)
+    }, [initialData, initialTotal, initialTotalPages, fixedLocationId, fixedPeruntukan])
+
     // Detail Dialog State
     const [selectedPoId, setSelectedPoId] = useState<string | null>(null)
     const [detailPo, setDetailPo] = useState<any | null>(null)
@@ -39,7 +51,11 @@ export function POListClient({
     const [detailError, setDetailError] = useState<string | null>(null)
 
     const canApprove = ['SuperAdminBP', 'AdminBP', 'AdminLogistik', 'CEO', 'FVP', 'Approver'].includes(userRole) || userPermissions.includes('LOGISTIK_APPROVE')
-    const canManagePo = ['SuperAdminBP', 'AdminLogistik', 'AdminBP'].includes(userRole) || userPermissions.includes('LOGISTIK_CREATE') || userPermissions.includes('LOGISTIK_EDIT')
+    const canManagePo = ['SuperAdminBP', 'AdminLogistik', 'AdminBP', 'AdminCrusher', 'OperatorCrusher'].includes(userRole) || 
+        userPermissions.includes('LOGISTIK_CREATE') || 
+        userPermissions.includes('LOGISTIK_EDIT') ||
+        userPermissions.includes('CRUSHER_MANAGE') ||
+        userPermissions.includes('CRUSHER_CREATE')
 
     const fetchData = async (
         p: number, 
@@ -76,6 +92,8 @@ export function POListClient({
                 status: st === "ALL" ? undefined : st,
                 startDate: startArg,
                 endDate: endArg,
+                locationId: fixedLocationId || undefined,
+                peruntukan: fixedPeruntukan || undefined,
             })
             setOrders(result.orders)
             setTotalCount(result.totalCount)
@@ -96,7 +114,7 @@ export function POListClient({
             fetchData(page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate)
         }, 350)
         return () => clearTimeout(timeout)
-    }, [page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate])
+    }, [page, search, companyId, categoryId, paymentMethod, statusFilter, dateMode, startDate, endDate, specificDate, fixedLocationId, fixedPeruntukan])
 
     const resetFilters = () => {
         setSearch("")
@@ -193,6 +211,8 @@ export function POListClient({
                 canManagePo={canManagePo}
                 hasActiveFilters={!!hasActiveFilters}
                 resetFilters={resetFilters}
+                createHref={createHref}
+                createLabel={createLabel}
             />
 
             {/* ── COMPACT PO TABLE ── */}

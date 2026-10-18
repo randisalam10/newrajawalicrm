@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { startOfDay, endOfDay } from "date-fns"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
@@ -14,10 +14,36 @@ async function getSessionWithLocation() {
     return session
 }
 
-function canManagePlanning(user: any) {
+async function canManagePlanning(user: any, action: "CREATE" | "EDIT" | "DELETE" = "CREATE"): Promise<boolean> {
     if (!user) return false
     if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    return user.role === "SuperAdminBP" || user.role === "AdminBP"
+    if (user.role === "SuperAdminBP" || user.role === "AdminBP") return true
+    if (hasPermission(user, "PLANNING", action)) return true
+
+    if (user.id) {
+        try {
+            const dbUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: {
+                    role: true,
+                    roleRef: {
+                        include: {
+                            permissions: {
+                                include: { permission: true }
+                            }
+                        }
+                    }
+                }
+            })
+            if (dbUser?.role === "SuperAdminBP" || dbUser?.role === "AdminBP") return true
+            const dbPerms = dbUser?.roleRef?.permissions.map(p => p.permission.code) || []
+            if (dbPerms.includes(`PLANNING_${action.toUpperCase()}`)) return true
+        } catch (e) {
+            console.error("Error checking planning permissions from DB:", e)
+        }
+    }
+
+    return false
 }
 
 // ─── QUERIES ─────────────────────────────────────────────────────────────────
@@ -113,7 +139,7 @@ export async function createPlan(data: {
     notes?: string
 }) {
     const session = await getSessionWithLocation()
-    if (!session || !canManagePlanning(session.user)) {
+    if (!session || !await canManagePlanning(session.user, "CREATE")) {
         throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
     }
 
@@ -159,7 +185,7 @@ export async function updatePlan(id: string, data: {
     status?: 'Planned' | 'OnGoing' | 'Done' | 'Cancelled'
 }) {
     const session = await getSessionWithLocation()
-    if (!session || !canManagePlanning(session.user)) {
+    if (!session || !await canManagePlanning(session.user, "EDIT")) {
         throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
     }
 
@@ -183,7 +209,7 @@ export async function updatePlan(id: string, data: {
 
 export async function deletePlan(id: string) {
     const session = await getSessionWithLocation()
-    if (!session || !canManagePlanning(session.user)) {
+    if (!session || !await canManagePlanning(session.user, "DELETE")) {
         throw new Error("Akses ditolak: Anda tidak memiliki izin untuk mengelola planning pengecoran")
     }
 

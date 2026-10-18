@@ -9,6 +9,7 @@ import { pusherServer, getChannelName } from "@/lib/pusher"
 import { sendPushNotification } from "@/lib/firebase/admin"
 import { sendWebPushToUsers } from "@/lib/web-push"
 import { isCorporateUser } from "@/lib/rbac"
+import { buildSupplierBranchFilter, buildMasterItemBranchFilter } from "@/lib/logistik-scoping"
 
 const poItemSchema = z.object({
     masterItemId: z.string(),
@@ -31,6 +32,7 @@ const poSchema = z.object({
     tanggal_terbit: z.string().transform(v => new Date(v)),
     locationId: z.string().optional(),
     is_for_bp: z.boolean().optional(),
+    is_for_crusher: z.boolean().optional(),
     notes: z.string().optional(),
     pic_name: z.string().optional(),
     pic_phone: z.string().optional(),
@@ -124,6 +126,7 @@ export async function getPurchaseOrders(params?: {
     startDate?: string
     endDate?: string
     locationId?: string
+    peruntukan?: "ALL" | "BP" | "CRUSHER" | "HO"
 }) {
     const session = await auth()
     if (!session?.user) return { orders: [], totalCount: 0, totalPages: 0 }
@@ -137,7 +140,8 @@ export async function getPurchaseOrders(params?: {
         status,
         paymentMethod,
         startDate,
-        endDate
+        endDate,
+        peruntukan
     } = params || {}
 
     const skip = (page - 1) * pageSize
@@ -175,6 +179,18 @@ export async function getPurchaseOrders(params?: {
         where.status = status
     }
 
+    // Peruntukan Filter (BP / CRUSHER / HO)
+    if (peruntukan === "BP") {
+        where.is_for_bp = true
+    } else if (peruntukan === "CRUSHER") {
+        where.is_for_crusher = true
+    } else if (peruntukan === "HO") {
+        where.is_for_bp = false
+        where.is_for_crusher = false
+    }
+
+    const andClauses: any[] = []
+
     if (search && search.trim()) {
         const term = search.trim()
 
@@ -192,7 +208,7 @@ export async function getPurchaseOrders(params?: {
         })
         const matchingProjectIds = matchingProjects.map(p => p.id)
 
-        where.OR = [
+        const searchOrClauses: any[] = [
             // Nomor PO
             { po_number: { contains: term, mode: 'insensitive' } },
             // Nama Perusahaan
@@ -221,27 +237,38 @@ export async function getPurchaseOrders(params?: {
         ]
 
         if (matchingSupplierIds.length > 0) {
-            where.OR.push({ supplierId: { in: matchingSupplierIds } })
+            searchOrClauses.push({ supplierId: { in: matchingSupplierIds } })
         }
 
         if (matchingProjectIds.length > 0) {
-            where.OR.push({ companyProjectId: { in: matchingProjectIds } })
+            searchOrClauses.push({ companyProjectId: { in: matchingProjectIds } })
         }
+
+        andClauses.push({ OR: searchOrClauses })
     }
 
     if (companyGroupId && companyGroupId !== "ALL") where.companyGroupId = companyGroupId
     if (categoryId && categoryId !== "ALL") where.categoryId = categoryId
 
-    // Scoping hak akses: non-corporate (seperti Admin BP) hanya melihat PO yang dibuat oleh user / cabangnya sendiri
+    // Scoping hak akses: non-corporate (seperti Admin BP / Admin SC) hanya melihat PO yang dibuat oleh user / cabangnya sendiri
     const isCorp = isCorporateUser(session.user)
-    if (!isCorp) {
-        where.OR = [
+    if (params?.locationId && params.locationId !== "ALL") {
+        if (!isCorp && session.user.locationId && session.user.locationId !== params.locationId) {
+            where.locationId = session.user.locationId
+        } else {
+            where.locationId = params.locationId
+        }
+    } else if (!isCorp) {
+        const branchClauses: any[] = [
             { submittedById: session.user.id },
             ...(session.user.locationId ? [{ locationId: session.user.locationId }] : []),
             ...(session.user.username ? [{ pembuat_admin: { equals: session.user.username, mode: 'insensitive' } }] : [])
         ]
-    } else if (params?.locationId && params.locationId !== "ALL") {
-        where.locationId = params.locationId
+        andClauses.push({ OR: branchClauses })
+    }
+
+    if (andClauses.length > 0) {
+        where.AND = andClauses
     }
 
     const [orders, totalCount] = await Promise.all([
@@ -279,7 +306,9 @@ export async function getPurchaseOrders(params?: {
 
     const enrichedOrders = orders.map(po => ({
         ...po,
-        proyek_nama: po.companyProjectId ? projectMap[po.companyProjectId] || "-" : "-",
+        proyek_nama: po.is_for_crusher && po.location?.name
+            ? po.location.name
+            : (po.companyProjectId ? projectMap[po.companyProjectId] || "-" : (po.is_for_bp && po.location?.name ? po.location.name : "-")),
         supplier_nama: po.supplierId ? supplierMap[po.supplierId] || "-" : "-"
     }))
 
@@ -324,7 +353,7 @@ export async function getPurchaseOrderById(id: string) {
         if (!po) return { success: false, error: "Purchase Order tidak ditemukan" }
 
         const isCorp = isCorporateUser(session.user)
-        if (!isCorp && po.locationId && po.locationId !== session.user.locationId) {
+        if (!isCorp && po.locationId && po.locationId !== session.user.locationId && po.submittedById !== session.user.id) {
             return { success: false, error: "Akses Ditolak: Anda tidak memiliki wewenang melihat PO cabang lain." }
         }
 
@@ -365,6 +394,7 @@ export async function createPurchaseOrder(data: {
     tanggal_terbit: Date
     locationId?: string
     is_for_bp?: boolean
+    is_for_crusher?: boolean
     notes?: string
     pic_name?: string
     pic_phone?: string
@@ -407,14 +437,32 @@ export async function createPurchaseOrder(data: {
 
     const isCorp = isCorporateUser(session.user)
     let is_for_bp = data.is_for_bp ?? false
+    let is_for_crusher = data.is_for_crusher ?? false
     let locationId = data.locationId || null
 
-    if (!isCorp) {
-        // Role Cabang BP: dipaksa untuk cabangnya sendiri dan is_for_bp = true
-        is_for_bp = true
-        if (session.user.locationId) {
-            locationId = session.user.locationId
+    if (!isCorp && session.user.locationId) {
+        locationId = session.user.locationId
+    }
+
+    // Auto-detect classification from target location
+    if (locationId) {
+        const targetLoc = await prisma.location.findUnique({
+            where: { id: locationId },
+            select: { type: true }
+        })
+        if (targetLoc?.type === "STONE_CRUSHER") {
+            is_for_crusher = true
+            is_for_bp = false
+        } else if (targetLoc?.type === "BATCHING_PLANT") {
+            is_for_bp = true
+            is_for_crusher = false
         }
+    } else if (!isCorp) {
+        is_for_bp = true
+    }
+
+    if (is_for_crusher) {
+        companyProjectId = null
     }
 
     let retries = 5
@@ -447,6 +495,7 @@ export async function createPurchaseOrder(data: {
                     companyProjectId,
                     locationId,
                     is_for_bp,
+                    is_for_crusher,
                     vehicleId: resolvedVehicleId,
                     km_hm_kendaraan: resolvedKmHm,
                     notes: data.notes || null,
@@ -558,6 +607,7 @@ export async function createPurchaseOrder(data: {
             revalidatePath("/logistik/po")
             revalidatePath("/logistik/po/create")
             revalidatePath("/logistik/master-barang")
+            revalidatePath("/crusher/po")
             return { success: true, po_number, id: created.id }
         } catch (e: any) {
             lastError = e
@@ -652,6 +702,7 @@ export async function submitPurchaseOrder(id: string) {
 
         revalidatePath("/logistik/po")
         revalidatePath("/logistik/approval")
+        revalidatePath("/crusher/po")
         return { success: true, status: 'SUBMITTED' }
     } catch (e: any) {
         return { success: false, error: e.message }
@@ -785,6 +836,7 @@ export async function updatePoStatus(
             console.error("Pusher Trigger Error:", pusherErr)
         }
         revalidatePath("/logistik/po")
+        revalidatePath("/crusher/po")
 
         // --- PUSH NOTIFICATION ---
         const targetedIds = [po.ceoId, po.fvpId].filter(Boolean) as string[]
@@ -882,12 +934,29 @@ export async function fetchSignersSafe() {
 }
 
 // For PO Create form: load master data
-export async function getPoFormData() {
+export async function getPoFormData(targetLocationId?: string, peruntukan?: string) {
+    const session = await auth()
+
+    let businessUnitParam: "ALL" | "BP" | "CRUSHER" = "ALL"
+    if (peruntukan === "CRUSHER" || session?.user?.role === "OperatorCrusher" || session?.user?.role === "AdminCrusher") {
+        businessUnitParam = "CRUSHER"
+    } else if (peruntukan === "BP" || session?.user?.role === "AdminBP" || session?.user?.role === "AdminTenggarong") {
+        businessUnitParam = "BP"
+    }
+
+    const effectiveLocationId = targetLocationId || session?.user?.locationId || null
+    const effectiveUser = effectiveLocationId && session?.user
+        ? { ...session.user, locationId: effectiveLocationId }
+        : session?.user
+
+    const supplierWhere = buildSupplierBranchFilter(effectiveUser, { businessUnit: businessUnitParam })
+    const itemWhere = buildMasterItemBranchFilter(effectiveUser, { businessUnit: businessUnitParam })
+
     const [companies, categories, suppliers, items, signers, vehicles, locations] = await Promise.all([
         prisma.poCompanyGroup.findMany({ include: { projects: true }, orderBy: { name: 'asc' } }),
         prisma.poCategory.findMany({ orderBy: { name: 'asc' } }),
-        prisma.supplier.findMany({ orderBy: { name: 'asc' } }),
-        prisma.masterItem.findMany({ include: { supplier: true }, orderBy: { name: 'asc' } }),
+        prisma.supplier.findMany({ where: supplierWhere, orderBy: { name: 'asc' } }),
+        prisma.masterItem.findMany({ where: itemWhere, include: { supplier: true }, orderBy: { name: 'asc' } }),
         fetchSignersSafe(),
         prisma.vehicle.findMany({
             include: {
@@ -1121,6 +1190,7 @@ export async function updatePurchaseOrder(poId: string, data: {
     ceoId?: string
     fvpId?: string
     is_for_bp?: boolean
+    is_for_crusher?: boolean
     items: {
         masterItemId: string
         quantity: number
@@ -1134,7 +1204,7 @@ export async function updatePurchaseOrder(poId: string, data: {
     pembuat_admin: string
 }) {
     const session = await auth()
-    if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
+    if (!session?.user?.id) return { success: false, error: "Unauthorized" }
 
     try {
         const existingPO = await prisma.purchaseOrder.findUnique({ where: { id: poId } })
@@ -1146,20 +1216,31 @@ export async function updatePurchaseOrder(poId: string, data: {
         const { items, jabatan_kepala, ...poData } = data
         const resolvedKmHm = poData.km_hm_kendaraan || items.find(i => i.km_hm)?.km_hm || null
 
-        // Scoping hak akses: Admin BP hanya bisa update PO cabangnya sendiri
+        // Scoping hak akses: non-corporate hanya bisa update PO cabangnya sendiri atau yang dia buat
         const isCorp = isCorporateUser(session.user)
         if (!isCorp) {
-            if (!session.user.locationId) return { success: false, error: "Akses ditolak: Akun BP Anda tidak terhubung ke cabang manapun." }
-            if (existingPO.locationId && existingPO.locationId !== session.user.locationId) {
-                return { success: false, error: "Akses ditolak: Anda hanya dapat mengedit PO cabang Batching Plant Anda sendiri." }
+            const isCreator = existingPO.submittedById === session.user.id
+            const isSameBranch = session.user.locationId && existingPO.locationId === session.user.locationId
+            if (!isCreator && !isSameBranch) {
+                return { success: false, error: "Akses ditolak: Anda hanya dapat mengedit PO cabang Anda sendiri atau yang Anda buat." }
             }
-            poData.is_for_bp = true
-            poData.locationId = session.user.locationId
-        } else if (poData.is_for_bp && !poData.locationId) {
-            return { success: false, error: "Cabang Batching Plant (BP) wajib dipilih jika ditandai Untuk BP." }
-        } else if (!poData.is_for_bp) {
-            poData.is_for_bp = false
-            poData.locationId = undefined
+            if (session.user.locationId) {
+                poData.locationId = session.user.locationId
+            }
+        }
+
+        if (poData.locationId) {
+            const loc = await prisma.location.findUnique({
+                where: { id: poData.locationId },
+                select: { type: true }
+            })
+            if (loc?.type === "STONE_CRUSHER") {
+                poData.is_for_crusher = true
+                poData.is_for_bp = false
+            } else if (loc?.type === "BATCHING_PLANT") {
+                poData.is_for_bp = true
+                poData.is_for_crusher = false
+            }
         }
 
         await prisma.$transaction(async (tx) => {
@@ -1173,8 +1254,9 @@ export async function updatePurchaseOrder(poId: string, data: {
                     ...poData,
                     kepala_peralatan: poData.kepala_peralatan || "-",
                     is_for_bp: poData.is_for_bp ?? false,
+                    is_for_crusher: poData.is_for_crusher ?? false,
                     km_hm_kendaraan: resolvedKmHm,
-                    companyProjectId: poData.companyProjectId || null,
+                    companyProjectId: poData.is_for_crusher ? null : (poData.companyProjectId || null),
                     locationId: poData.locationId || null,
                     ceoId: poData.ceoId || null,
                     fvpId: poData.fvpId || null,

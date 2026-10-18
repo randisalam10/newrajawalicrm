@@ -14,6 +14,8 @@ interface POFormDocInfoProps {
     onCompanyChange: (val: string) => void
     isForBp: boolean
     setIsForBp: (val: boolean) => void
+    isForCrusher?: boolean
+    setIsForCrusher?: (val: boolean) => void
     isCorp: boolean
     selectedLocationId: string
     setSelectedLocationId: (val: string) => void
@@ -42,6 +44,8 @@ export function POFormDocInfo({
     onCompanyChange,
     isForBp,
     setIsForBp,
+    isForCrusher = false,
+    setIsForCrusher,
     isCorp,
     selectedLocationId,
     setSelectedLocationId,
@@ -62,10 +66,16 @@ export function POFormDocInfo({
     metodePembayaran,
     setMetodePembayaran,
 }: POFormDocInfoProps) {
+    const userLocation = locations.find((l: any) => l.id === userLocationId)
+    const isUserSc = userLocation?.type === "STONE_CRUSHER" || userLocation?.name?.toLowerCase().includes("crusher")
+    const disableBp = !isCorp && isUserSc
+    const disableCrusher = !isCorp && !isUserSc
+    const disableProyek = !isCorp && isUserSc
+
     return (
-        <Card className="shadow-sm">
+        <Card className="shadow-2xs">
             <CardHeader className="bg-slate-50/50 border-b pb-4">
-                <CardTitle className="text-lg">Informasi Dokumen & Tujuan</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Informasi Dokumen & Tujuan</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
                 {/* Perusahaan Penerbit */}
@@ -79,39 +89,74 @@ export function POFormDocInfo({
                     />
                 </div>
 
-                {/* Tag Peruntukan: Untuk Batching Plant (BP) */}
-                <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="space-y-0.5">
-                            <label className="text-xs font-bold text-blue-900 flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={isForBp}
-                                    disabled={!isCorp}
-                                    onChange={(e) => setIsForBp(e.target.checked)}
-                                    className="rounded text-blue-600 cursor-pointer h-4 w-4"
-                                />
-                                <span>Peruntukan: Untuk Batching Plant (BP)</span>
-                            </label>
-                            <p className="text-[11px] text-blue-700">
-                                {!isCorp 
-                                    ? "Sebagai Admin Cabang, PO ini otomatis tercatat untuk Batching Plant Anda." 
-                                    : "Centang jika pengadaan ini untuk operasional Batching Plant (Semen Silo, sparepart plant, dll)."}
-                            </p>
-                        </div>
-                        <span className={cn(
-                            "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shrink-0",
-                            isForBp ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-700"
-                        )}>
-                            {isForBp ? "UNTUK BP" : "NON-BP"}
-                        </span>
-                    </div>
+                {/* Tag Peruntukan Operasional */}
+                <div className="p-3 bg-slate-50/80 border border-slate-200 rounded-lg space-y-2.5">
+                    <Label className="text-xs font-bold text-slate-800 block">Peruntukan Pengadaan *</Label>
+                    <div className="flex flex-wrap items-center gap-4 text-xs">
+                                <label className={cn(
+                                    "flex items-center gap-2 font-medium text-slate-700",
+                                    disableBp ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                                )}>
+                                    <input
+                                        type="radio"
+                                        name="peruntukan"
+                                        checked={isForBp}
+                                        disabled={disableBp}
+                                        onChange={() => {
+                                            if (disableBp) return
+                                            setIsForBp(true)
+                                            setIsForCrusher?.(false)
+                                        }}
+                                        className="text-blue-600 cursor-pointer h-4 w-4"
+                                    />
+                                    <span>Batching Plant (BP)</span>
+                                </label>
 
-                    {/* Dropdown / Label Cabang BP */}
+                                <label className={cn(
+                                    "flex items-center gap-2 font-medium text-slate-700",
+                                    disableCrusher ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                                )}>
+                                    <input
+                                        type="radio"
+                                        name="peruntukan"
+                                        checked={!!isForCrusher}
+                                        disabled={disableCrusher}
+                                        onChange={() => {
+                                            if (disableCrusher) return
+                                            setIsForBp(false)
+                                            setIsForCrusher?.(true)
+                                            setSelectedProjectId("")
+                                        }}
+                                        className="text-amber-600 cursor-pointer h-4 w-4"
+                                    />
+                                    <span>Stone Crusher</span>
+                                </label>
+
+                                <label className={cn(
+                                    "flex items-center gap-2 font-medium text-slate-700",
+                                    disableProyek ? "opacity-40 cursor-not-allowed" : "cursor-pointer"
+                                )}>
+                                    <input
+                                        type="radio"
+                                        name="peruntukan"
+                                        checked={!isForBp && !isForCrusher}
+                                        disabled={disableProyek}
+                                        onChange={() => {
+                                            if (disableProyek) return
+                                            setIsForBp(false)
+                                            setIsForCrusher?.(false)
+                                        }}
+                                        className="text-slate-600 cursor-pointer h-4 w-4"
+                                    />
+                                    <span>Proyek / Office</span>
+                                </label>
+                            </div>
+
+                    {/* Dropdown Cabang Batching Plant */}
                     {isForBp && (
-                        <div className="pt-2 border-t border-blue-200/80 space-y-1">
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1">
                             <Label className="text-xs font-semibold text-blue-950">Cabang Batching Plant *</Label>
-                            {!isCorp ? (
+                            {!isCorp && userLocationId ? (
                                 <div className="px-3 py-2 bg-white border border-blue-300 rounded-md text-xs font-medium text-slate-800 flex items-center gap-1.5">
                                     <span className="text-blue-600">🏢</span>
                                     <span>{locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"}</span>
@@ -119,7 +164,9 @@ export function POFormDocInfo({
                                 </div>
                             ) : (
                                 <Combobox
-                                    options={locations.map((l: any) => ({ value: l.id, label: l.name }))}
+                                    options={locations
+                                        .filter((l: any) => l.type === "BATCHING_PLANT" || !l.type || !l.type?.includes("CRUSHER"))
+                                        .map((l: any) => ({ value: l.id, label: l.name }))}
                                     value={selectedLocationId}
                                     onChange={setSelectedLocationId}
                                     placeholder="Pilih Cabang Batching Plant..."
@@ -127,20 +174,48 @@ export function POFormDocInfo({
                             )}
                         </div>
                     )}
+
+                    {/* Dropdown Lokasi Stone Crusher */}
+                    {isForCrusher && (
+                        <div className="pt-2 border-t border-slate-200/80 space-y-1">
+                            <Label className="text-xs font-semibold text-amber-950">Lokasi Stone Crusher (Tujuan Pengadaan) *</Label>
+                            {!isCorp && userLocationId ? (
+                                <div className="px-3 py-2 bg-white border border-amber-300 rounded-md text-xs font-medium text-slate-800 flex items-center gap-1.5">
+                                    <span className="text-amber-600">⛰️</span>
+                                    <span>{locations.find((l: any) => l.id === userLocationId)?.name || "Crusher Anda"}</span>
+                                    <span className="text-[10px] text-slate-400 font-normal ml-auto">(Terkunci untuk crusher Anda)</span>
+                                </div>
+                            ) : (
+                                <Combobox
+                                    options={locations
+                                        .filter((l: any) => l.type === "STONE_CRUSHER" || l.name?.toLowerCase().includes("crusher"))
+                                        .map((l: any) => ({ value: l.id, label: l.name }))}
+                                    value={selectedLocationId}
+                                    onChange={setSelectedLocationId}
+                                    placeholder="Pilih Lokasi Stone Crusher..."
+                                />
+                            )}
+                            <p className="text-[11px] text-amber-800/80">
+                                Lokasi Stone Crusher otomatis berfungsi sebagai tujuan pengadaan.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Proyek */}
-                <div className="space-y-2">
-                    <Label>Tujuan / Lokasi (Proyek)</Label>
-                    <div className={cn(selectedCompanyId ? "" : "opacity-50 pointer-events-none")}>
-                        <Combobox
-                            options={projectOptions}
-                            value={selectedProjectId}
-                            onChange={setSelectedProjectId}
-                            placeholder="Pilih Proyek (Opsional)..."
-                        />
+                {!isForCrusher && (
+                    <div className="space-y-2">
+                        <Label>Tujuan / Lokasi (Proyek)</Label>
+                        <div className={cn(selectedCompanyId ? "" : "opacity-50 pointer-events-none")}>
+                            <Combobox
+                                options={projectOptions}
+                                value={selectedProjectId}
+                                onChange={setSelectedProjectId}
+                                placeholder="Pilih Proyek (Opsional)..."
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Kategori */}
                 <div className="space-y-2 pt-2 border-t">

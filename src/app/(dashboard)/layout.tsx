@@ -59,7 +59,7 @@ export default async function DashboardLayout({
             <div className="print:hidden">
                 <AppSidebar user={userForSidebar} />
             </div>
-            <div className="flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen overflow-x-hidden print:bg-white print:min-h-0 print:overflow-visible print:block">
+            <div className="flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen overflow-x-clip print:bg-white print:min-h-0 print:overflow-visible print:block">
                 {/* Modern Sticky Top Header Bar */}
                 <header className="h-16 border-b border-sidebar-border bg-white/80 backdrop-blur-md sticky top-0 z-30 px-4 md:px-6 flex items-center justify-between shrink-0 print:hidden">
                     <div className="flex items-center gap-3 min-w-0">

@@ -6,8 +6,16 @@ import { Eye } from "lucide-react"
 
 export default async function KategoriPage() {
     const session = await auth()
-    const userRole = session?.user?.role || ""
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP", "AdminLogistik"].includes(userRole)
+    const user = session?.user
+    const userRole = user?.role || ""
+    const permissions: string[] = (user as any)?.permissions || []
+    const isRestricted = ["CEO", "FVP", "Approver"].includes(userRole)
+    const canManage = !isRestricted && (
+        ["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(userRole) ||
+        permissions.includes("LOGISTIK_CREATE") ||
+        permissions.includes("LOGISTIK_EDIT") ||
+        permissions.includes("CRUSHER_VIEW")
+    )
 
     const categories = await getPoCategories()
 

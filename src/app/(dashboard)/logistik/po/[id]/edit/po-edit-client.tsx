@@ -20,6 +20,7 @@ interface POEditClientProps {
     categories: any[]
     suppliers: any[]
     items: any[]
+    signers?: any[]
     vehicles?: any[]
     locations?: any[]
     userRole?: string
@@ -33,6 +34,7 @@ export function POEditClient({
     categories,
     suppliers,
     items,
+    signers = [],
     vehicles = [],
     locations = [],
     userRole = "",
@@ -45,6 +47,7 @@ export function POEditClient({
     // Corporate scope detection: SuperAdminBP, AdminLogistik, CEO, FVP, Approver
     const isCorp = userRole === "SuperAdminBP" || userRole === "AdminLogistik" || ["CEO", "FVP", "Approver"].includes(userRole || "")
     const [isForBp, setIsForBp] = useState<boolean>(initialPo.is_for_bp ?? (!isCorp ? true : false))
+    const [isForCrusher, setIsForCrusher] = useState<boolean>(initialPo.is_for_crusher ?? false)
     const [selectedLocationId, setSelectedLocationId] = useState<string>(
         initialPo.locationId || (!isCorp && userLocationId ? userLocationId : "")
     )
@@ -60,6 +63,23 @@ export function POEditClient({
     const [pimpinan, setPimpinan] = useState(initialPo.pimpinan || "")
     const [kepalaPeralatan, setKepalaPeralatan] = useState(initialPo.kepala_peralatan || "")
     const [jabatanKepala, setJabatanKepala] = useState(initialPo.jabatan_kepala || "Kepala Peralatan")
+
+    // Determine initial CEO signer ID
+    const initialCeoId = initialPo.ceoId || (() => {
+        if (!initialPo.pimpinan) return "none"
+        const matched = signers.find((s: any) => (s.employee?.name || s.username) === initialPo.pimpinan)
+        return matched?.id || "none"
+    })()
+
+    // Determine initial FVP/Approver signer ID
+    const initialFvpId = initialPo.fvpId || (() => {
+        if (!initialPo.kepala_peralatan || initialPo.kepala_peralatan === "-") return "none"
+        const matched = signers.find((s: any) => (s.employee?.name || s.username) === initialPo.kepala_peralatan)
+        return matched?.id || "none"
+    })()
+
+    const [selectedCeoId, setSelectedCeoId] = useState<string>(initialCeoId)
+    const [selectedFvpId, setSelectedFvpId] = useState<string>(initialFvpId)
 
     // Map existing items
     const defaultItems = initialPo.items?.map((i: any) => {
@@ -127,6 +147,7 @@ export function POEditClient({
     const selectedVehicle = vehicles.find((v: any) => v.id === inputVehicleId)
     const isHM = selectedVehicle?.meter_type === "HM" ||
         selectedVehicle?.category?.name?.toLowerCase().includes("batching") ||
+        selectedVehicle?.category?.name?.toLowerCase().includes("crusher") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("genset") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("excavator") ||
         selectedVehicle?.category?.name?.toLowerCase().includes("loader") ||
@@ -160,8 +181,101 @@ export function POEditClient({
         return parsedInputMeter < effectiveLastMeter
     }, [effectiveLastMeter, parsedInputMeter])
 
+    // Deteksi ruang lingkup Stone Crusher (dari radio button peruntukan, role user, atau cabang terpilih)
+    const userLocation = locations.find((l: any) => l.id === userLocationId)
+    const isUserSc = userLocation?.type === "STONE_CRUSHER" || userLocation?.name?.toLowerCase().includes("crusher") || userRole === "OperatorCrusher" || userRole === "AdminCrusher"
+    const isCrusherScope = isForCrusher || isUserSc || (selectedLocationId && locations.find((l: any) => l.id === selectedLocationId)?.type === "STONE_CRUSHER")
+
+    // Filter daftar kendaraan & alat berat sesuai peruntukan PO (Stone Crusher vs Batching Plant vs Proyek)
+    const filteredVehicles = useMemo(() => {
+        if (isCrusherScope) {
+            // Khusus Stone Crusher: Hanya unit/alat yang bersumber atau dialokasikan untuk Stone Crusher
+            const list = vehicles.filter((v: any) => {
+                const catName = (v.category?.name || "").toLowerCase()
+                const vType = (v.vehicle_type || "").toLowerCase()
+                const locType = v.location?.type || ""
+                const locName = (v.location?.name || "").toLowerCase()
+                const isAssignedToCrusherLoc =
+                    locType === "STONE_CRUSHER" ||
+                    locName.includes("crusher") ||
+                    (selectedLocationId && v.locationId === selectedLocationId)
+
+                // Strictly exclude armada mixer dan pompa beton cor (khusus BP)
+                if (
+                    catName.includes("mixer") ||
+                    vType.includes("mixer") ||
+                    catName.includes("pump") ||
+                    catName.includes("pompa") ||
+                    catName.includes("batching plant")
+                ) {
+                    return false
+                }
+
+                // Include unit yang berlokasi di Stone Crusher
+                if (isAssignedToCrusherLoc) return true
+
+                // Include alat berat & mekanikal operasional Stone Crusher
+                if (
+                    catName.includes("crusher") ||
+                    catName.includes("excavator") ||
+                    catName.includes("loader") ||
+                    catName.includes("genset")
+                ) {
+                    return true
+                }
+
+                // Include armada Dump Truck (pengangkut material batu & agregat crusher)
+                if (catName.includes("dump") || v.dump_truck_size) {
+                    return true
+                }
+
+                return false
+            })
+
+            // Sort: Prioritaskan unit di lokasi Stone Crusher terlebih dahulu, lalu kode unit
+            return [...list].sort((a: any, b: any) => {
+                const aIsCrusherLoc = a.location?.type === "STONE_CRUSHER" || a.location?.name?.toLowerCase().includes("crusher")
+                const bIsCrusherLoc = b.location?.type === "STONE_CRUSHER" || b.location?.name?.toLowerCase().includes("crusher")
+                if (aIsCrusherLoc && !bIsCrusherLoc) return -1
+                if (!aIsCrusherLoc && bIsCrusherLoc) return 1
+                return (a.code || "").localeCompare(b.code || "")
+            })
+        }
+
+        if (isForBp) {
+            // Khusus Batching Plant: Armada mixer, pompa, mesin BP, dan dump truck BP
+            const list = vehicles.filter((v: any) => {
+                const catName = (v.category?.name || "").toLowerCase()
+                const locType = v.location?.type || ""
+                const locName = (v.location?.name || "").toLowerCase()
+
+                // Exclude unit eksklusif stone crusher
+                if (catName.includes("stone crusher") || locType === "STONE_CRUSHER" || locName.includes("crusher")) {
+                    return false
+                }
+
+                // Filter cabang BP jika cabang telah dipilih
+                if (selectedLocationId && v.locationId && v.locationId !== selectedLocationId) {
+                    return false
+                }
+
+                return true
+            })
+
+            return [...list].sort((a: any, b: any) => (a.code || "").localeCompare(b.code || ""))
+        }
+
+        return vehicles
+    }, [vehicles, isCrusherScope, isForBp, selectedLocationId])
+
     const vehicleOptions = useMemo(() => {
-        return vehicles.map((v: any) => {
+        // Jika inputVehicleId telah dipilih dari item eksisting, pastikan unit tetap ada di opsi
+        const activeUnit = inputVehicleId ? vehicles.find((v: any) => v.id === inputVehicleId) : null
+        const list = [...filteredVehicles]
+        if (activeUnit && !list.some((v: any) => v.id === activeUnit.id)) {
+            list.unshift(activeUnit)
+        }
+        return list.map((v: any) => {
             const cat = v.category?.name || v.vehicle_type || "Unit"
             const plate = v.plate_number ? ` - ${v.plate_number}` : ""
             const loc = v.location?.name ? ` [${v.location.name}]` : ""
@@ -171,16 +285,21 @@ export function POEditClient({
                 label: `${v.code}${plate} - ${cat}${loc}${meter}`
             }
         })
-    }, [vehicles])
+    }, [filteredVehicles, vehicles, inputVehicleId])
 
     const handleCompanyChange = (val: string) => {
         setSelectedCompanyId(val)
         setSelectedProjectId("")
         const comp = companies.find((c: any) => c.id === val)
         if (comp) {
-            setPimpinan(comp.pimpinan_default || "")
-            setKepalaPeralatan(comp.kepala_peralatan_default || "")
-            setJabatanKepala(comp.jabatan_kepala_default || "Kepala Peralatan")
+            const ceoSigner = signers.find(s => s.id === comp.defaultCeoId)
+            const fvpSigner = signers.find(s => s.id === comp.defaultFvpId)
+
+            setPimpinan(ceoSigner?.employee?.name || ceoSigner?.username || comp.pimpinan_default || "")
+            setKepalaPeralatan(fvpSigner?.employee?.name || fvpSigner?.username || comp.kepala_peralatan_default || "-")
+            setJabatanKepala(fvpSigner ? "Approver" : (comp.jabatan_kepala_default || "Kepala Peralatan"))
+            setSelectedCeoId(ceoSigner ? comp.defaultCeoId : "none")
+            setSelectedFvpId(fvpSigner ? comp.defaultFvpId : "none")
         }
     }
 
@@ -336,18 +455,31 @@ export function POEditClient({
             return
         }
 
+        if (isForBp && isCorp && !selectedLocationId) {
+            alert("Silakan pilih Cabang Batching Plant untuk PO bertag BP.")
+            return
+        }
+        if (isForCrusher && isCorp && !selectedLocationId) {
+            alert("Silakan pilih Lokasi Stone Crusher untuk PO bertag Crusher.")
+            return
+        }
+
         setSaving(true)
         try {
+            const finalLocationId = (isForBp || isForCrusher) ? (!isCorp ? (userLocationId || selectedLocationId || undefined) : (selectedLocationId || undefined)) : undefined
             const result = await updatePurchaseOrder(initialPo.id, {
                 companyGroupId: selectedCompanyId,
-                companyProjectId: selectedProjectId || undefined,
+                companyProjectId: isForCrusher ? undefined : (selectedProjectId || undefined),
                 categoryId: selectedCategoryId,
                 supplierId: selectedSupplierId,
                 is_for_bp: isForBp,
-                locationId: isForBp ? selectedLocationId || undefined : undefined,
+                is_for_crusher: isForCrusher,
+                locationId: finalLocationId,
                 pimpinan,
                 kepala_peralatan: kepalaPeralatan,
                 jabatan_kepala: jabatanKepala || undefined,
+                ceoId: selectedCeoId !== "none" ? selectedCeoId : undefined,
+                fvpId: selectedFvpId !== "none" ? selectedFvpId : undefined,
                 metode_pembayaran: metodePembayaran,
                 km_hm_kendaraan: kmHm || undefined,
                 tanggal_terbit: new Date(tanggalTerbit),
@@ -412,7 +544,7 @@ export function POEditClient({
     const shortcutItem = masterItemsList.find((i: any) => i.id === shortcutItemId)
 
     return (
-        <form onSubmit={handleSubmit} className="max-w-6xl space-y-6">
+        <form onSubmit={handleSubmit} className="w-full space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Bagian Kiri: Informasi Dokumen & Tujuan */}
                 <POFormDocInfo
@@ -422,6 +554,8 @@ export function POEditClient({
                     onCompanyChange={handleCompanyChange}
                     isForBp={isForBp}
                     setIsForBp={setIsForBp}
+                    isForCrusher={isForCrusher}
+                    setIsForCrusher={setIsForCrusher}
                     isCorp={isCorp}
                     selectedLocationId={selectedLocationId}
                     setSelectedLocationId={setSelectedLocationId}
@@ -447,6 +581,29 @@ export function POEditClient({
                 <POFormMetaSigners
                     tanggalTerbit={tanggalTerbit}
                     setTanggalTerbit={setTanggalTerbit}
+                    signers={signers}
+                    selectedCeoId={selectedCeoId}
+                    onCeoChange={(val) => {
+                        setSelectedCeoId(val)
+                        if (val === "none") {
+                            setPimpinan("")
+                        } else {
+                            const s = signers.find(u => u.id === val)
+                            setPimpinan(s?.employee?.name || s?.username || "")
+                        }
+                    }}
+                    selectedFvpId={selectedFvpId}
+                    onFvpChange={(val) => {
+                        setSelectedFvpId(val)
+                        if (val === "none") {
+                            setKepalaPeralatan("-")
+                            setJabatanKepala("")
+                        } else {
+                            const s = signers.find(u => u.id === val)
+                            setKepalaPeralatan(s?.employee?.name || s?.username || "")
+                            setJabatanKepala("Approver")
+                        }
+                    }}
                     pimpinan={pimpinan}
                     setPimpinan={setPimpinan}
                     kepalaPeralatan={kepalaPeralatan}

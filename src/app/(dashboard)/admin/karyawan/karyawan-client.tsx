@@ -73,8 +73,9 @@ export function KaryawanClient({
         const active = initialData.filter(d => d.status === "Active").length
         const sopir = initialData.filter(d => d.position === "Sopir").length
         const operator = initialData.filter(d => d.position === "Operator").length
-        const staff = initialData.filter(d => !["Sopir", "Operator"].includes(d.position)).length
-        return { total, active, sopir, operator, staff }
+        const helper = initialData.filter(d => d.position === "Helper").length
+        const staff = initialData.filter(d => !["Sopir", "Operator", "Helper"].includes(d.position)).length
+        return { total, active, sopir, operator, helper, staff }
     }, [initialData])
 
     // Filtered data calculation
@@ -169,6 +170,12 @@ export function KaryawanClient({
                         <HardHat className="w-3 h-3 text-amber-500" /> Operator
                     </span>
                 )
+            case "Helper":
+                return (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200">
+                        <UserCheck className="w-3 h-3 text-teal-500" /> Helper
+                    </span>
+                )
             case "Admin":
             case "AdminLogistik":
                 return (
@@ -246,6 +253,7 @@ export function KaryawanClient({
                                             <SelectContent>
                                                 <SelectItem value="Sopir">Sopir</SelectItem>
                                                 <SelectItem value="Operator">Operator</SelectItem>
+                                                <SelectItem value="Helper">Helper</SelectItem>
                                                 <SelectItem value="Admin">Admin</SelectItem>
                                                 <SelectItem value="AdminLogistik">Admin Logistik & Peralatan</SelectItem>
                                                 <SelectItem value="CEO">CEO</SelectItem>
@@ -463,6 +471,7 @@ export function KaryawanClient({
                                     <SelectItem value="ALL">Semua Posisi</SelectItem>
                                     <SelectItem value="Sopir">Sopir</SelectItem>
                                     <SelectItem value="Operator">Operator</SelectItem>
+                                    <SelectItem value="Helper">Helper</SelectItem>
                                     <SelectItem value="Admin">Admin</SelectItem>
                                     <SelectItem value="AdminLogistik">Admin Logistik</SelectItem>
                                     <SelectItem value="CEO">CEO</SelectItem>

@@ -26,7 +26,7 @@ export default async function MaterialAgregatPage() {
     const locationFilter = getLocationFilter(session.user)
     const vehicleFilter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
-    const [data, outData, locations, vehicles, drivers, retaseSettings] = await Promise.all([
+    const [data, outData, locations, vehicles, drivers, retaseSettings, pendingTransfers] = await Promise.all([
         prisma.aggregateIncoming.findMany({
             where: locationFilter,
             include: { 
@@ -68,6 +68,18 @@ export default async function MaterialAgregatPage() {
         prisma.aggregateRetaseSetting.findMany({
             include: { location: true }
         }),
+        prisma.crusherMaterialOut.findMany({
+            where: {
+                destination_type: "BATCHING_PLANT",
+                is_received_by_bp: false,
+                ...(isCorp ? {} : (session.user.locationId ? { targetLocationId: session.user.locationId } : {})),
+            },
+            include: {
+                report: { select: { date: true, location: { select: { name: true } } } },
+                targetLocation: { select: { id: true, name: true } },
+            },
+            orderBy: { createdAt: "desc" },
+        }),
     ])
 
     return (
@@ -79,6 +91,7 @@ export default async function MaterialAgregatPage() {
                 vehicles={JSON.parse(JSON.stringify(vehicles))}
                 drivers={JSON.parse(JSON.stringify(drivers))}
                 retaseSettings={JSON.parse(JSON.stringify(retaseSettings))}
+                pendingCrusherTransfers={JSON.parse(JSON.stringify(pendingTransfers))}
                 userRole={session.user.role as string}
                 userLocationId={session.user.locationId ?? null}
                 isCorporate={isCorp}

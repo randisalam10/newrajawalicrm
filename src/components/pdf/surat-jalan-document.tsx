@@ -147,7 +147,7 @@ function SuratJalanCopy({ tx, copyLabel, noSJ, tanggal, waktu }: { tx: SuratJala
             {/* Header */}
             <View style={s.headerRow}>
                 <View>
-                    <Text style={s.companyName}>PT. RAJAWALI MIX</Text>
+                    <Text style={s.companyName}>PT. Rajawali Puncak Jayawijaya</Text>
                     <Text style={s.companySub}>Batching Plant &amp; Beton Cor Readymix</Text>
                     <Text style={s.companySub}>Cabang: {tx.location.name}</Text>
                 </View>

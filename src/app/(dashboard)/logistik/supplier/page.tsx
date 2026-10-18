@@ -1,14 +1,27 @@
-import { getSuppliersData } from "./actions"
+import { getSuppliersData, getLocationsForLogistik } from "./actions"
 import { SupplierClient } from "./supplier-client"
 import { auth } from "@/auth"
 import { Eye, Store } from "lucide-react"
+import { isLogistikCentralUser } from "@/lib/logistik-scoping"
 
 export default async function SupplierPage() {
     const session = await auth()
-    const userRole = session?.user?.role || ""
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP", "AdminLogistik"].includes(userRole)
+    const user = session?.user
+    const userRole = user?.role || ""
+    const permissions: string[] = (user as any)?.permissions || []
+    const isRestricted = ["CEO", "FVP", "Approver"].includes(userRole)
+    const canManage = !isRestricted && (
+        ["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(userRole) ||
+        permissions.includes("LOGISTIK_CREATE") ||
+        permissions.includes("LOGISTIK_EDIT") ||
+        permissions.includes("CRUSHER_VIEW")
+    )
 
-    const { suppliers, stats } = await getSuppliersData()
+    const isCentral = isLogistikCentralUser(session?.user)
+    const [locations, { suppliers, stats }] = await Promise.all([
+        getLocationsForLogistik(),
+        getSuppliersData()
+    ])
 
     return (
         <div className="space-y-4 w-full">
@@ -30,7 +43,14 @@ export default async function SupplierPage() {
                 )}
             </div>
 
-            <SupplierClient initialData={suppliers} stats={stats} canManage={canManage} />
+            <SupplierClient
+                initialData={suppliers}
+                stats={stats}
+                canManage={canManage}
+                isCentral={isCentral}
+                locations={locations}
+                userLocationId={session?.user?.locationId || null}
+            />
         </div>
     )
 }

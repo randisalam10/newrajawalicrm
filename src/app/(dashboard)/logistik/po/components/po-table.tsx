@@ -108,6 +108,11 @@ export function POTable({
                                                     BP {po.location?.name ? `• ${po.location.name}` : ''}
                                                 </Badge>
                                             )}
+                                            {po.is_for_crusher && (
+                                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5 border-amber-300 bg-amber-50 text-amber-700 font-semibold">
+                                                    Crusher {po.location?.name ? `• ${po.location.name}` : ''}
+                                                </Badge>
+                                            )}
                                         </div>
                                     </TableCell>
 

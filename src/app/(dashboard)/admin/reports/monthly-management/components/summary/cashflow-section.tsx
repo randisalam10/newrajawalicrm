@@ -47,21 +47,20 @@ export const CashflowSection: React.FC<CashflowSectionProps> = ({
                         </div>
                         <div>
                             <CardTitle className="text-sm font-bold text-slate-900 tracking-wide uppercase flex items-center gap-2">
-                                1.2 Realisasi Arus Kas &amp; Cashflow Penjualan Beton
+                                1.2 Realisasi Kas Masuk Pelanggan vs Kas Operasional Cabang (RBL)
                             </CardTitle>
                             <CardDescription className="text-xs text-slate-500 mt-0.5">
-                                Arus kas riil: Penerimaan pembayaran beton &amp; pelunasan invoice pelanggan vs kas keluar operasional cabang
+                                Kas masuk = pelunasan invoice pelanggan (dapat mencakup tagihan periode lalu). Kas keluar = realisasi kas operasional cabang (RBL) saja — belum termasuk PO, gaji, dan retase.
                             </CardDescription>
                         </div>
                     </div>
-                    <Badge className={`px-3 py-1 text-xs font-bold shadow-2xs ${
-                        cashflow.netOperatingCashflow >= 0
-                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                            : "bg-rose-600 hover:bg-rose-700 text-white"
-                    }`}>
+                    <Badge className={`px-3 py-1 text-xs font-bold shadow-2xs ${cashflow.netOperatingCashflow >= 0
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        : "bg-rose-600 hover:bg-rose-700 text-white"
+                        }`}>
                         {cashflow.netOperatingCashflow >= 0
-                            ? `✓ SURPLUS KAS MASUK: +${formatRp(cashflow.netOperatingCashflow)}`
-                            : `⚠ DEFISIT KAS: ${formatRp(cashflow.netOperatingCashflow)}`}
+                            ? `✓ KAS MASUK PELANGGAN > KAS OPERASIONAL CABANG (RBL): +${formatRp(cashflow.netOperatingCashflow)}`
+                            : `⚠ KAS OPERASIONAL CABANG (RBL) > KAS MASUK PELANGGAN: ${formatRp(cashflow.netOperatingCashflow)}`}
                     </Badge>
                 </div>
             </CardHeader>
@@ -125,31 +124,27 @@ export const CashflowSection: React.FC<CashflowSectionProps> = ({
                     </div>
 
                     {/* 3. Arus Kas Bersih Operasional */}
-                    <div className={`p-4 rounded-xl border-2 flex flex-col justify-between shadow-2xs ${
-                        cashflow.netOperatingCashflow >= 0
-                            ? "border-emerald-300 bg-emerald-50/60"
-                            : "border-rose-300 bg-rose-50/60"
-                    }`}>
+                    <div className={`p-4 rounded-xl border-2 flex flex-col justify-between shadow-2xs ${cashflow.netOperatingCashflow >= 0
+                        ? "border-emerald-300 bg-emerald-50/60"
+                        : "border-rose-300 bg-rose-50/60"
+                        }`}>
                         <div>
-                            <div className={`text-xs font-bold uppercase ${
-                                cashflow.netOperatingCashflow >= 0 ? "text-emerald-900" : "text-rose-900"
-                            }`}>
-                                Arus Kas Bersih (Net Cashflow)
+                            <div className={`text-xs font-bold uppercase ${cashflow.netOperatingCashflow >= 0 ? "text-emerald-900" : "text-rose-900"
+                                }`}>
+                                Selisih Kas Masuk vs Kas Operasional Cabang (RBL)
                             </div>
-                            <div className={`text-2xl font-black font-mono tracking-tight mt-1.5 ${
-                                cashflow.netOperatingCashflow >= 0 ? "text-emerald-700" : "text-rose-600"
-                            }`}>
+                            <div className={`text-2xl font-black font-mono tracking-tight mt-1.5 ${cashflow.netOperatingCashflow >= 0 ? "text-emerald-700" : "text-rose-600"
+                                }`}>
                                 {formatRp(cashflow.netOperatingCashflow)}
                             </div>
                         </div>
-                        <div className={`text-[10px] font-medium pt-2 border-t mt-3 ${
-                            cashflow.netOperatingCashflow >= 0
-                                ? "text-emerald-800 border-emerald-200"
-                                : "text-rose-800 border-rose-200"
-                        }`}>
+                        <div className={`text-[10px] font-medium pt-2 border-t mt-3 ${cashflow.netOperatingCashflow >= 0
+                            ? "text-emerald-800 border-emerald-200"
+                            : "text-rose-800 border-rose-200"
+                            }`}>
                             {cashflow.netOperatingCashflow >= 0
-                                ? "✓ Kas masuk dari pembayaran beton mencukupi seluruh beban operasional cabang."
-                                : "⚠ Kas masuk belum menutup seluruh pengeluaran kas cabang bulan ini."}
+                                ? "✓ Kas masuk pelanggan melebihi realisasi kas operasional cabang (RBL). Catatan: beban non-RBL (PO, gaji, retase) tidak termasuk."
+                                : "⚠ Kas masuk pelanggan belum menutup realisasi kas operasional cabang (RBL) bulan ini."}
                         </div>
                     </div>
 
@@ -191,17 +186,15 @@ export const CashflowSection: React.FC<CashflowSectionProps> = ({
                     <div className="flex items-center gap-3 shrink-0">
                         <div className="bg-white px-3 py-1.5 rounded border border-slate-200 text-right">
                             <div className="text-[10px] text-slate-500">Hasil Bersih Akrual (E):</div>
-                            <div className={`font-mono font-bold ${
-                                (scorecard.netFieldContribution || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
-                            }`}>
+                            <div className={`font-mono font-bold ${(scorecard.netFieldContribution || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
+                                }`}>
                                 {formatRp(scorecard.netFieldContribution || 0)}
                             </div>
                         </div>
                         <div className="bg-white px-3 py-1.5 rounded border border-slate-200 text-right">
-                            <div className="text-[10px] text-slate-500">Arus Kas Masuk Bersih:</div>
-                            <div className={`font-mono font-bold ${
-                                cashflow.netOperatingCashflow >= 0 ? "text-emerald-700" : "text-rose-600"
-                            }`}>
+                            <div className="text-[10px] text-slate-500">Selisih Kas (RBL):</div>
+                            <div className={`font-mono font-bold ${cashflow.netOperatingCashflow >= 0 ? "text-emerald-700" : "text-rose-600"
+                                }`}>
                                 {formatRp(cashflow.netOperatingCashflow)}
                             </div>
                         </div>

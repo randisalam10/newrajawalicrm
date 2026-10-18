@@ -383,14 +383,23 @@ export function DetailTab({ drilldown, scorecard }: DetailTabProps) {
                     <CardContent className="p-4 space-y-3">
                         <div className="grid grid-cols-2 gap-2 text-xs">
                             <div className="p-3 bg-slate-50 rounded-lg border">
-                                <div className="text-slate-500 text-[11px]">Faktur Terbit Bulan Ini</div>
+                                <div className="text-slate-500 text-[11px]">Nilai Faktur Diterbitkan (Dokumen)</div>
                                 <div className="text-lg font-bold text-slate-900 mt-0.5">{formatRp(drilldown.billing?.totalInvoiced || 0)}</div>
-                                <div className="text-[10px] text-slate-400">{drilldown.billing?.invoicedCount || 0} Faktur</div>
+                                <div className="text-[10px] text-slate-400">{drilldown.billing?.invoicedCount || 0} Faktur — dapat mencakup pekerjaan periode lalu</div>
                             </div>
                             <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100">
-                                <div className="text-blue-700 text-[11px]">Unbilled Pool (Belum Ditagih)</div>
+                                <div className="text-blue-700 text-[11px]">Belum Ditagih (Bulan Ini)</div>
                                 <div className="text-lg font-bold text-blue-900 mt-0.5">{formatRp(drilldown.billing?.unbilledEstimatedValue || 0)}</div>
                                 <div className="text-[10px] text-blue-700">{drilldown.billing?.unbilledCount || 0} Tiket ({(drilldown.billing?.unbilledVolume || 0).toFixed(1)} m³)</div>
+                            </div>
+                        </div>
+
+                        {/* Backlog belum ditagih seluruh periode (konteks terpisah) */}
+                        <div className="p-3 bg-amber-50/60 rounded-lg border border-amber-200 text-xs">
+                            <div className="text-amber-800 text-[11px] font-semibold">Akumulasi Backlog Belum Ditagih (Seluruh Periode)</div>
+                            <div className="text-base font-bold text-amber-900 mt-0.5">{formatRp(drilldown.billing?.unbilledBacklogEstimatedValue || 0)}</div>
+                            <div className="text-[10px] text-amber-700">
+                                {drilldown.billing?.unbilledBacklogCount || 0} Tiket ({(drilldown.billing?.unbilledBacklogVolume || 0).toFixed(1)} m³) — sejak awal data, bukan hanya bulan terpilih
                             </div>
                         </div>
 

@@ -186,12 +186,26 @@ export function PODetailDialog({
                                             <span className="text-slate-400 block text-[10px] uppercase font-medium">Proyek:</span>
                                             <span className="text-slate-700 font-medium block leading-tight">{detailPo.project?.name || "-"}</span>
                                         </div>
+                                        {detailPo.location?.name && (
+                                            <div>
+                                                <span className="text-slate-400 block text-[10px] uppercase font-medium">Lokasi Cabang:</span>
+                                                <span className="text-slate-700 font-medium block leading-tight">{detailPo.location.name}</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center justify-between pt-1 border-t border-slate-200/60">
                                             <span className="text-slate-500 text-[11px]">Pembayaran:</span>
                                             <span className="font-semibold text-slate-800 text-[11px]">
                                                 {detailPo.metode_pembayaran === 'CASH' ? 'Tunai / Cash' : 'Kredit / Tempo'}
                                             </span>
                                         </div>
+                                        {detailPo.vehicle && (
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-slate-500 text-[11px]">Unit / Alat:</span>
+                                                <span className="font-semibold text-slate-800 text-[11px]">
+                                                    {detailPo.vehicle.plate_number} {detailPo.vehicle.code ? `(${detailPo.vehicle.code})` : ""}
+                                                </span>
+                                            </div>
+                                        )}
                                         {detailPo.km_hm_kendaraan && (
                                             <div className="flex items-center justify-between">
                                                 <span className="text-slate-500 text-[11px]">KM / HM:</span>

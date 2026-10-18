@@ -20,6 +20,8 @@ export interface AnalyticsCalculationParams {
     totalMaterialCost: number
     totalFuelCost: number
     prevTotalFuelCost?: number       // Biaya BBM bulan sebelumnya untuk MoM fuel ratio
+    prevTotalDirectCost?: number     // Total biaya langsung AKTUAL bulan sebelumnya (untuk MoM akurat)
+    prevUnitDirectCostPerM3?: number // Biaya langsung per m³ AKTUAL bulan sebelumnya
     totalRetaseCost: number
     totalMaintenanceCost: number
     manualDirectCost?: number
@@ -50,6 +52,8 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
         totalMaterialCost,
         totalFuelCost,
         prevTotalFuelCost = 0,
+        prevTotalDirectCost = 0,
+        prevUnitDirectCostPerM3 = 0,
         totalRetaseCost,
         totalMaintenanceCost,
         manualDirectCost = 0,
@@ -83,9 +87,14 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
         grossProfitPerM3: currentASP - unitDirectCostPerM3,
     }
 
-    // 2. MoM Comparison
-    const prevDirectCostEst = Math.round(prevVolumeTotal * unitDirectCostPerM3)
-    const prevGrossProfit = prevTotalGrossRevenue - prevDirectCostEst
+    // 2. MoM Comparison — gunakan biaya langsung AKTUAL bulan lalu bila tersedia (bukan estimasi)
+    const prevUnitCost = (prevUnitDirectCostPerM3 && prevUnitDirectCostPerM3 > 0)
+        ? prevUnitDirectCostPerM3
+        : (prevVolumeTotal > 0 && prevTotalDirectCost > 0 ? Math.round(prevTotalDirectCost / prevVolumeTotal) : 0)
+    const prevDirectCostActual = (prevTotalDirectCost && prevTotalDirectCost > 0)
+        ? prevTotalDirectCost
+        : Math.round(prevVolumeTotal * prevUnitCost)
+    const prevGrossProfit = prevTotalGrossRevenue - prevDirectCostActual
     const prevGrossMargin = prevTotalGrossRevenue > 0 ? (prevGrossProfit / prevTotalGrossRevenue) * 100 : 0
 
     const momComparison: MomComparisonData = {
@@ -106,12 +115,12 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
         },
         cogs: {
             current: unitDirectCostPerM3,
-            prev: prevVolumeTotal > 0 && prevDirectCostEst > 0 ? Math.round(prevDirectCostEst / prevVolumeTotal) : 0,
-            growthPct: prevDirectCostEst > 0 ? ((unitDirectCostPerM3 - (prevDirectCostEst / prevVolumeTotal)) / (prevDirectCostEst / prevVolumeTotal)) * 100 : 0
+            prev: prevUnitCost,
+            growthPct: prevUnitCost > 0 ? ((unitDirectCostPerM3 - prevUnitCost) / prevUnitCost) * 100 : 0
         },
         grossProfitPerM3: {
             current: unitEconomics.grossProfitPerM3,
-            prev: prevASP - (prevVolumeTotal > 0 && prevDirectCostEst > 0 ? Math.round(prevDirectCostEst / prevVolumeTotal) : 0),
+            prev: prevASP - prevUnitCost,
         },
         grossMarginPct: {
             current: grossMarginPercent,
@@ -148,8 +157,8 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
 
     // Cek transaksi unpriced (belum ada harga di project)
     const unpricedTxns = currentTxns.filter(t => {
-        const p = t.project?.prices?.find((pr: any) => 
-            pr.qualityId === t.qualityId || 
+        const p = t.project?.prices?.find((pr: any) =>
+            pr.qualityId === t.qualityId ||
             (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
         )?.price
         return !p || p <= 0
@@ -190,8 +199,8 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
         const vol = locTxns.reduce((s, t) => s + (t.volume_cubic || 0), 0)
         let rev = 0
         locTxns.forEach(t => {
-            const p = t.project?.prices?.find((pr: any) => 
-                pr.qualityId === t.qualityId || 
+            const p = t.project?.prices?.find((pr: any) =>
+                pr.qualityId === t.qualityId ||
                 (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
             )?.price || 0
             rev += (t.volume_cubic * p)
@@ -218,8 +227,8 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
     const mutuMap: Record<string, { name: string; volume: number; revenue: number; trips: number; unpricedTrips: number }> = {}
     currentTxns.forEach(t => {
         const name = t.concreteQuality?.name || "Mutu Standar"
-        const matchedPrice = t.project?.prices?.find((pr: any) => 
-            pr.qualityId === t.qualityId || 
+        const matchedPrice = t.project?.prices?.find((pr: any) =>
+            pr.qualityId === t.qualityId ||
             (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
         )?.price
         const p = matchedPrice ?? 0
@@ -256,8 +265,8 @@ export function calculateReportAnalytics(params: AnalyticsCalculationParams) {
         const custName = t.project?.customer?.customer_name || "Pelanggan Umum"
         const projName = t.project?.name || "Proyek Lapangan"
         const key = `${custName}-${projName}`
-        const matchedPrice = t.project?.prices?.find((pr: any) => 
-            pr.qualityId === t.qualityId || 
+        const matchedPrice = t.project?.prices?.find((pr: any) =>
+            pr.qualityId === t.qualityId ||
             (pr.concreteQuality?.name && t.concreteQuality?.name && pr.concreteQuality.name.toLowerCase() === t.concreteQuality.name.toLowerCase())
         )?.price
         const p = matchedPrice ?? 0

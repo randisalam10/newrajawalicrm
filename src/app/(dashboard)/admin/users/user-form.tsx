@@ -32,6 +32,24 @@ const userSchema = z.object({
     employeeId: z.string().min(1, "Pegawai required"),
     isPoApprover: z.boolean().default(false),
     poApproverRole: z.enum(["FVP", "CEO", "BOTH"]).default("FVP"),
+}).superRefine((data, ctx) => {
+    if (!data.id) {
+        if (!data.password || data.password.length < 8) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Password minimal 8 karakter",
+                path: ["password"],
+            })
+        }
+    } else {
+        if (data.password && data.password.length > 0 && data.password.length < 8) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Password minimal 8 karakter jika ingin diubah",
+                path: ["password"],
+            })
+        }
+    }
 })
 
 export function UserForm({
@@ -78,7 +96,20 @@ export function UserForm({
             toast({ title: "Success", description: "Data user berhasil disimpan" })
             onSuccess()
         } else {
-            toast({ variant: "destructive", title: "Error", description: result.error as string || "Terjadi kesalahan" })
+            let errorMsg = "Terjadi kesalahan"
+            if (typeof result.error === "string") {
+                errorMsg = result.error
+            } else if (result.error && typeof result.error === "object") {
+                const firstField = Object.keys(result.error).find(k => k !== "_errors")
+                if (firstField && (result.error as any)[firstField]?._errors?.length) {
+                    errorMsg = `${firstField}: ${(result.error as any)[firstField]._errors.join(", ")}`
+                } else if ((result.error as any)._errors?.length) {
+                    errorMsg = (result.error as any)._errors.join(", ")
+                } else {
+                    errorMsg = JSON.stringify(result.error)
+                }
+            }
+            toast({ variant: "destructive", title: "Error", description: errorMsg })
         }
         setIsLoading(false)
     }

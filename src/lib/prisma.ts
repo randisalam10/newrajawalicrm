@@ -15,13 +15,18 @@ function createPrismaClient() {
 
   let ClientConstructor: any = PrismaClient
   try {
-    if (!(PrismaClient.prototype as any)?.creditObligation) {
-      const { createRequire } = require("module")
-      const nativeRequire = createRequire(process.cwd() + "/package.json")
-      const { PrismaClient: FreshClient } = nativeRequire("@prisma/client")
-      if (FreshClient) {
-        ClientConstructor = FreshClient
+    const { createRequire } = require("module")
+    const nativeRequire = createRequire(process.cwd() + "/package.json")
+    if (nativeRequire.cache) {
+      for (const k of Object.keys(nativeRequire.cache)) {
+        if (k.includes("@prisma") || k.includes(".prisma")) {
+          delete nativeRequire.cache[k]
+        }
       }
+    }
+    const { PrismaClient: FreshClient } = nativeRequire("@prisma/client")
+    if (FreshClient) {
+      ClientConstructor = FreshClient
     }
   } catch (e) {
     // fallback
@@ -36,19 +41,33 @@ function createPrismaClient() {
   })
 }
 
-// If cached client is missing newly added models, reset it
-if (globalForPrisma.prisma) {
-  const cached = globalForPrisma.prisma as any
-  if (!cached.fixedCostContract || !cached.vehicleComplianceRecord || !cached.creditObligation) {
-    globalForPrisma.prisma = undefined
+function getValidClient(): PrismaClient {
+  let client = globalForPrisma.prisma
+  if (
+    !client ||
+    !(client as any).crusherDestination ||
+    !(client as any).crusherRetaseSetting
+  ) {
+    try {
+      client?.$disconnect().catch(() => {})
+    } catch (e) {}
+    client = createPrismaClient()
+    globalForPrisma.prisma = client
   }
+  return client as PrismaClient
 }
 
-export const prisma: PrismaClient =
-  globalForPrisma.prisma ?? createPrismaClient()
-
-// Always cache prisma singleton in memory across all environments
-globalForPrisma.prisma = prisma
+// Proxy delegates every access to an up-to-date PrismaClient instance
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    const client = getValidClient()
+    const value = Reflect.get(client, prop, receiver)
+    if (typeof value === "function") {
+      return value.bind(client)
+    }
+    return value
+  },
+})
 
 export default prisma
 

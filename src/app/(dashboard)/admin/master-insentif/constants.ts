@@ -1,9 +1,16 @@
 export const ROLE_CATEGORIES = [
     { value: "OPERATOR_BP", label: "Operator Batching Plant" },
     { value: "OPERATOR_CP", label: "Operator Concrete Pump (CP)" },
-    { value: "OPERATOR_ALAT_BERAT", label: "Operator Alat Berat (Excavator / Loader / Crane)" },
+    { value: "OPERATOR_ALAT_BERAT", label: "Operator Alat Berat (Umum)" },
+    { value: "OPERATOR_EXCAVATOR", label: "Operator Excavator (HM/Jam)" },
+    { value: "OPERATOR_LOADER", label: "Operator Wheel Loader (HM/Jam)" },
+    { value: "HELPER", label: "Helper Lapangan / Perorangan (Jam)" },
+    { value: "OPERATOR_CRUSHER", label: "Operator Stone Crusher (m³)" },
     { value: "SOPIR_MIXER", label: "Sopir Truk Mixer" },
     { value: "SOPIR_DT", label: "Sopir Dump Truck (DT Agregat)" },
+    { value: "SOPIR_DT_LANGSIR", label: "Sopir DT Langsir Kali (Ret)" },
+    { value: "SOPIR_DT_KOLBIN", label: "Sopir DT Masuk Kolbin (Ret)" },
+    { value: "SOPIR_DT_KECIL", label: "Sopir DT Kecil Stone Crusher (km·ret)" },
     { value: "LAINNYA", label: "Peran Lainnya" },
 ] as const
 

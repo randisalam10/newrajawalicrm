@@ -116,6 +116,22 @@ export function MonthlyManagementClient({ initialData }: MonthlyManagementClient
                     </div>
                 )}
 
+                {/* Banner Peringatan: Scope cabang dihitung LIVE padahal konsolidasi sudah dikunci */}
+                {initialData.isLiveUnlocked && (
+                    <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-lg flex items-start gap-2.5 text-xs shadow-sm">
+                        <div className="p-1.5 bg-amber-100 rounded-md text-amber-700 shrink-0">
+                            <Lock className="h-4 w-4" />
+                        </div>
+                        <div>
+                            <span className="font-bold text-amber-800">Perhitungan Live (Belum Dikunci):</span>{" "}
+                            <span>
+                                Konsolidasi "Semua Cabang" untuk {selectedPeriodLabel} sudah ditutup buku, namun scope cabang ini belum memiliki snapshot terkunci.
+                                Angka di bawah dihitung LIVE dari data terkini dan dapat berbeda dari laporan konsolidasi.
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 {/* Filter Controls & Navigation Tab Pills */}
                 <ReportFilterBar
                     selectedMonth={selectedMonth}

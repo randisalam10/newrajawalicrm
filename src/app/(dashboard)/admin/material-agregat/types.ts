@@ -12,6 +12,7 @@ export type MaterialAgregatProps = {
     isCorporate?: boolean
     canManage?: boolean
     isReadOnly?: boolean
+    pendingCrusherTransfers?: any[]
 }
 
 export type AggregateSummary = {

@@ -19,7 +19,12 @@ export default async function MasterSewaPage() {
 
     if (!canView) redirect("/admin")
 
-    const canManage = (role === "SuperAdminBP" || role === "AdminBP") && !["CEO", "FVP", "Approver"].includes(role)
+    const canManage = (
+        role === "SuperAdminBP" ||
+        role === "AdminBP" ||
+        hasPermission(session.user, "SEWA", "EDIT") ||
+        hasPermission(session.user, "MASTER_DATA", "EDIT")
+    ) && !["CEO", "FVP", "Approver"].includes(role)
     const isCorporate = isCorporateUser(session.user)
 
     const [equipments, locations] = await Promise.all([

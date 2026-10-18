@@ -8,6 +8,7 @@ import {
     ClipboardList,
     Settings,
     ArrowUpDown,
+    Truck,
 } from "lucide-react"
 import {
     AggregateInRow,
@@ -34,6 +35,7 @@ import { MaterialMasukTab } from "./components/tabs/material-masuk-tab"
 import { MaterialKeluarTab } from "./components/tabs/material-keluar-tab"
 import { KartuStokTab } from "./components/tabs/kartu-stok-tab"
 import { TarifRetaseTab } from "./components/tabs/tarif-retase-tab"
+import { TransferSCTab } from "./components/tabs/transfer-sc-tab"
 
 export function MaterialAgregatClient({
     initialData,
@@ -42,6 +44,7 @@ export function MaterialAgregatClient({
     vehicles = [],
     drivers = [],
     retaseSettings = [],
+    pendingCrusherTransfers = [],
     userRole,
     userLocationId,
     isCorporate = false,
@@ -471,6 +474,16 @@ export function MaterialAgregatClient({
                                 <span>Pengaturan Tarif Retase DT</span>
                             </TabsTrigger>
                         )}
+
+                        <TabsTrigger value="transfer_sc" className="gap-2 text-xs font-semibold data-[state=active]:bg-white data-[state=active]:text-amber-700 data-[state=active]:shadow-xs">
+                            <Truck className="h-3.5 w-3.5 text-amber-600" />
+                            <span>Transfer SC</span>
+                            {pendingCrusherTransfers.length > 0 && (
+                                <span className="bg-amber-100 text-amber-800 rounded-full px-1.5 py-0.2 text-[10px] font-mono font-bold animate-pulse">
+                                    {pendingCrusherTransfers.length}
+                                </span>
+                            )}
+                        </TabsTrigger>
                     </TabsList>
                 </div>
 
@@ -563,6 +576,15 @@ export function MaterialAgregatClient({
                         />
                     </TabsContent>
                 )}
+
+                {/* TAB 5: PENERIMAAN TRANSFER DARI STONE CRUSHER */}
+                <TabsContent value="transfer_sc" className="space-y-4">
+                    <TransferSCTab
+                        transfers={pendingCrusherTransfers}
+                        canManage={canManage}
+                        userLocationId={userLocationId}
+                    />
+                </TabsContent>
             </Tabs>
 
             {/* ── MODAL INPUT & EDIT PENERIMAAN ── */}

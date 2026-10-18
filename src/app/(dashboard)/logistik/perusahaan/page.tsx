@@ -3,11 +3,26 @@ import { PerusahaanClient } from "./perusahaan-client"
 import { Card, CardContent } from "@/components/ui/card"
 import { auth } from "@/auth"
 import { Eye } from "lucide-react"
+import { redirect } from "next/navigation"
 
 export default async function PerusahaanPage() {
     const session = await auth()
-    const userRole = session?.user?.role || ""
-    const canManage = !["CEO", "FVP", "Approver"].includes(userRole) && ["SuperAdminBP", "AdminBP", "AdminLogistik"].includes(userRole)
+    if (!session?.user) redirect("/login")
+
+    const userRole = session.user.role || ""
+    const permissions = (session.user as any)?.permissions || []
+
+    const isSuperAdmin = userRole === "SuperAdminBP"
+    const isAdminLogistik = userRole === "AdminLogistik"
+    const hasPerusahaanView = permissions.includes("LOGISTIK_PERUSAHAAN_VIEW")
+    const hasPerusahaanManage = permissions.includes("LOGISTIK_PERUSAHAAN_MANAGE")
+
+    const canAccess = isSuperAdmin || isAdminLogistik || hasPerusahaanView || hasPerusahaanManage
+    if (!canAccess) {
+        redirect(userRole === "OperatorCrusher" ? "/crusher/po" : "/logistik/po")
+    }
+
+    const canManage = (isSuperAdmin || isAdminLogistik || hasPerusahaanManage) && !["CEO", "FVP", "Approver"].includes(userRole)
 
     const [companies, signers] = await Promise.all([
         getPoCompanies(),

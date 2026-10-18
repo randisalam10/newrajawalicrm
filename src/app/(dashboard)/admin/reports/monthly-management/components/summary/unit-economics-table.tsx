@@ -191,7 +191,7 @@ export const UnitEconomicsTable: React.FC<UnitEconomicsTableProps> = ({ unitEcon
                             <td className={`py-2 px-4 ${retaseStatus.color}`}>{retaseStatus.label}</td>
                         </tr>
                         <tr>
-                            <td className="py-2 px-4 pl-8 text-slate-700">6. Suku Cadang &amp; Bengkel PO</td>
+                            <td className="py-2 px-4 pl-8 text-slate-700">6. Suku Cadang &amp; Bengkel (PO + RBL)</td>
                             <td className="py-2 px-4 text-right font-medium">{formatRp(unitEconomics.maintenancePerM3)}</td>
                             <td className="py-2 px-4 text-right text-slate-600 font-mono">{formatRp(targets.maintenance)}</td>
                             <td className="py-2 px-4 text-right">

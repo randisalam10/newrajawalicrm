@@ -13,6 +13,8 @@ export const authConfig = {
             const isAdminRoute = nextUrl.pathname.startsWith('/admin')
             const isOperatorRoute = nextUrl.pathname.startsWith('/operator')
 
+            const isCrusherRoute = nextUrl.pathname.startsWith('/crusher')
+
             if (isAuthRoute) {
                 if (isLoggedIn) {
                     // Redirect based on role
@@ -20,6 +22,7 @@ export const authConfig = {
                     let target = '/operator'
                     if (['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole)) target = '/admin'
                     else if (userRole === 'AdminLogistik') target = '/logistik'
+                    else if (userRole === 'OperatorCrusher') target = '/crusher'
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 return true
@@ -43,6 +46,7 @@ export const authConfig = {
                     let target = '/operator'
                     if (['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole as string)) target = '/admin'
                     else if (userRole === 'AdminLogistik') target = '/logistik'
+                    else if (userRole === 'OperatorCrusher') target = '/crusher'
                     return Response.redirect(new URL(target, nextUrl))
                 }
 
@@ -65,7 +69,8 @@ export const authConfig = {
                             p.startsWith('PRODUKSI_') ||
                             p.startsWith('BILLING_') ||
                             p.startsWith('PLANNING_') ||
-                            p.startsWith('CUSTOMER_')
+                            p.startsWith('CUSTOMER_') ||
+                            p.startsWith('CRUSHER_')
                         )
 
                     if (hasAdminAccess) {
@@ -76,19 +81,34 @@ export const authConfig = {
                         return true
                     }
 
-                    const target = userRole === 'AdminLogistik' ? '/logistik' : '/operator'
+                    const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorCrusher' ? '/crusher' : '/operator')
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 if (isOperatorRoute && !['OperatorBP', 'SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
-                    const target = userRole === 'AdminLogistik' ? '/logistik' : '/admin'
+                    const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorCrusher' ? '/crusher' : '/admin')
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 if (isLogistikRoute) {
                     const permissions = (auth.user as any)?.permissions as string[] | undefined
-                    const hasAccess = ['SuperAdminBP', 'AdminLogistik', 'CEO', 'FVP'].includes(userRole as string) ||
-                        (permissions && (permissions.includes('LOGISTIK_VIEW') || permissions.includes('LOGISTIK_CREATE')))
+                    const allowedRoles = ['SuperAdminBP', 'AdminLogistik', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP', 'Approver']
+                    const hasAccess = allowedRoles.includes(userRole as string) ||
+                        (permissions && (
+                            permissions.includes('LOGISTIK_VIEW') ||
+                            permissions.includes('LOGISTIK_CREATE') ||
+                            permissions.includes('LOGISTIK_APPROVE') ||
+                            permissions.some(p => p.startsWith('CRUSHER_'))
+                        ))
                     if (!hasAccess) {
-                        const target = userRole === 'OperatorBP' ? '/operator' : '/admin'
+                        const target = userRole === 'OperatorBP' ? '/operator' : (userRole === 'OperatorCrusher' ? '/crusher' : '/admin')
+                        return Response.redirect(new URL(target, nextUrl))
+                    }
+                }
+                if (isCrusherRoute) {
+                    const permissions = (auth.user as any)?.permissions as string[] | undefined
+                    const hasAccess = ['SuperAdminBP', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP'].includes(userRole as string) ||
+                        (permissions && permissions.some(p => p.startsWith('CRUSHER_')))
+                    if (!hasAccess) {
+                        const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorBP' ? '/operator' : '/admin')
                         return Response.redirect(new URL(target, nextUrl))
                     }
                 }

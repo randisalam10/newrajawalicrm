@@ -39,6 +39,8 @@ interface POFilterBarProps {
     canManagePo: boolean
     hasActiveFilters: boolean
     resetFilters: () => void
+    createHref?: string
+    createLabel?: string
 }
 
 export function POFilterBar({
@@ -66,6 +68,8 @@ export function POFilterBar({
     canManagePo,
     hasActiveFilters,
     resetFilters,
+    createHref,
+    createLabel,
 }: POFilterBarProps) {
     return (
         <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3 space-y-2.5 shadow-2xs">
@@ -138,9 +142,9 @@ export function POFilterBar({
                 {/* Buat PO Baru */}
                 {canManagePo && (
                     <div className="ml-auto shrink-0">
-                        <Link href="/logistik/po/create">
+                        <Link href={createHref || "/logistik/po/create"}>
                             <Button size="sm" className="text-xs h-8 bg-blue-600 hover:bg-blue-700 text-white gap-1.5 shadow-xs font-medium">
-                                <span>+ Buat PO Baru</span>
+                                <span>{createLabel || "+ Buat PO Baru"}</span>
                             </Button>
                         </Link>
                     </div>

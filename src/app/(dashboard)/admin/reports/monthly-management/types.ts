@@ -523,6 +523,9 @@ export interface DrilldownData {
         unbilledCount: number
         unbilledVolume: number
         unbilledEstimatedValue: number
+        unbilledBacklogCount?: number
+        unbilledBacklogVolume?: number
+        unbilledBacklogEstimatedValue?: number
         arAging: {
             current: number
             ar31to60: number
@@ -565,6 +568,7 @@ export interface MonthlyManagementReportResult {
     costComposition?: CostCompositionItem[]
     drilldown?: DrilldownData
     isClosed?: boolean
+    isLiveUnlocked?: boolean
     closingInfo?: {
         id: string
         closedAt: string | Date

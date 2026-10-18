@@ -3,13 +3,18 @@ import { POCreateClient } from "./po-create-client"
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 
-export default async function POCreatePage() {
+type Props = {
+    searchParams?: Promise<{ peruntukan?: string; locationId?: string }>
+}
+
+export default async function POCreatePage({ searchParams }: Props) {
     const session = await auth()
     const role = session?.user?.role || ""
     if (["CEO", "FVP", "Approver"].includes(role)) {
         redirect("/logistik/approval")
     }
-    const { companies, categories, suppliers, items, signers, vehicles, locations } = await getPoFormData()
+    const resolvedParams = searchParams ? await searchParams : {}
+    const { companies, categories, suppliers, items, signers, vehicles, locations } = await getPoFormData(resolvedParams.locationId, resolvedParams.peruntukan)
 
     return (
         <div className="space-y-4 w-full">
@@ -28,6 +33,8 @@ export default async function POCreatePage() {
                 userRole={role}
                 userLocationId={session?.user?.locationId || null}
                 pembuatAdmin={session?.user?.username || "Admin"}
+                initialPeruntukan={resolvedParams.peruntukan as any}
+                initialLocationId={resolvedParams.locationId}
             />
         </div>
     )

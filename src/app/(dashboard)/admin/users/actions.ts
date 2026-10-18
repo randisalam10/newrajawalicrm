@@ -76,7 +76,7 @@ export async function createUser(formData: FormData) {
     const parsed = userCreateSchema.safeParse(data)
 
     if (!parsed.success) {
-        return { success: false, error: parsed.error.format() }
+        return { success: false, error: parsed.error.issues[0]?.message || "Validasi data gagal" }
     }
 
     try {
@@ -126,7 +126,7 @@ export async function updateUser(id: string, formData: FormData) {
     const parsed = userUpdateSchema.safeParse({ ...data, id })
 
     if (!parsed.success) {
-        return { success: false, error: parsed.error.format() }
+        return { success: false, error: parsed.error.issues[0]?.message || "Validasi data gagal" }
     }
 
     try {
