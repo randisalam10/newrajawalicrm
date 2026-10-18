@@ -96,6 +96,7 @@ echo -e "${YELLOW}   Mengecek dan me-resolve status migrasi lama yang tertahan..
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
+    -v $(pwd)/prisma/migrations:/app/prisma/migrations \
     "$IMAGE_NAME" \
     sh -c "
         npx prisma migrate resolve --rolled-back 20260228000000_add_invoice_payment_deposit_system 2>/dev/null || true
@@ -104,12 +105,14 @@ docker run --rm \
         npx prisma migrate resolve --applied 20260929000000_add_ppn_mode_to_project_price 2>/dev/null || true
         npx prisma migrate resolve --applied 20260930000000_add_custom_material_name 2>/dev/null || true
         npx prisma migrate resolve --applied 20261003000000_add_missing_models_and_columns 2>/dev/null || true
+        npx prisma migrate resolve --rolled-back 20261018000000_add_crusher_operator_helper_retase 2>/dev/null || true
     " || true
 
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"
 if ! docker run --rm \
     --network host \
     --env-file $ENV_FILE \
+    -v $(pwd)/prisma/migrations:/app/prisma/migrations \
     "$IMAGE_NAME" \
     sh -c "npx prisma migrate deploy"; then
     echo -e "${RED}❌ ERROR KRITIS: Prisma migrate deploy GAGAL! Deployment dibatalkan.${NC}"
