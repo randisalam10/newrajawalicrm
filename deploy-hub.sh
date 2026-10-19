@@ -121,8 +121,8 @@ if ! docker run --rm \
 fi
 echo -e "${GREEN}   ✓ Prisma migrate deploy selesai.${NC}"
 
-# Ensure DDL patch aman (Idempotent) agar kolom custom_material_name selalu terpasang
-echo -e "${YELLOW}   Memastikan kolom custom_material_name pada AggregateIncoming & Outgoing...${NC}"
+# Ensure DDL patch aman (Idempotent) agar kolom penting selalu terpasang
+echo -e "${YELLOW}   Memastikan patch DDL kolom penting (custom_material_name, target_business, dll)...${NC}"
 docker run --rm \
     --network host \
     --env-file $ENV_FILE \
@@ -134,8 +134,22 @@ async function main() {
     await prisma.\$executeRawUnsafe(\`
         ALTER TABLE \"AggregateIncoming\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
         ALTER TABLE \"AggregateOutgoing\" ADD COLUMN IF NOT EXISTS \"custom_material_name\" TEXT;
+
+        DO \\$\\$ BEGIN 
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'LogistikBusinessUnit') THEN 
+                CREATE TYPE \"LogistikBusinessUnit\" AS ENUM ('BP', 'CRUSHER', 'ALL'); 
+            END IF; 
+        END \\$\\$;
+
+        ALTER TABLE \"Supplier\" ADD COLUMN IF NOT EXISTS \"target_business\" \"LogistikBusinessUnit\" NOT NULL DEFAULT 'ALL';
+        ALTER TABLE \"Supplier\" ADD COLUMN IF NOT EXISTS \"is_global\" BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE \"Supplier\" ADD COLUMN IF NOT EXISTS \"locationId\" TEXT;
+
+        ALTER TABLE \"MasterItem\" ADD COLUMN IF NOT EXISTS \"target_business\" \"LogistikBusinessUnit\" NOT NULL DEFAULT 'ALL';
+        ALTER TABLE \"MasterItem\" ADD COLUMN IF NOT EXISTS \"is_global\" BOOLEAN NOT NULL DEFAULT true;
+        ALTER TABLE \"MasterItem\" ADD COLUMN IF NOT EXISTS \"locationId\" TEXT;
     \`);
-    console.log('   ✓ Patch DDL custom_material_name verified.');
+    console.log('   ✓ Patch DDL verified.');
     await prisma.\$disconnect();
 }
 main().catch(e => { console.warn('   ℹ DDL notice:', e.message); process.exit(0); });
