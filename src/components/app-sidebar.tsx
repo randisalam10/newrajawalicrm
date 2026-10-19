@@ -138,7 +138,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             items: [
                 ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" && user?.role !== "OperatorCrusher" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
                 ...(isSuperAdmin || user?.role === "AdminLogistik" || (hasPerm("LOGISTIK_VIEW") && user?.role !== "OperatorCrusher") ? [
-                    { title: "PO Batching Plant", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
+                    { title: "PO Umum", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
                 ] : []),
                 ...(isSuperAdmin || user?.role === "AdminLogistik" || user?.role === "OperatorCrusher" || hasPerm("CRUSHER_VIEW") ? [
                     { title: "PO Stone Crusher", url: "/crusher/po", icon: ShoppingCart, badge: "SC", isSuperAdminOnly: false },
