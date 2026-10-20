@@ -1,5 +1,59 @@
 import type { NextAuthConfig } from "next-auth"
 
+export function resolveUserDashboard(userRole?: string | null, permissions: string[] = []): string {
+    const role = (userRole || '').trim()
+    const roleLower = role.toLowerCase()
+    const hasCrusherPerm = permissions.some(p => p.startsWith('CRUSHER_'))
+    const hasLogistikPerm = permissions.some(p => p.startsWith('LOGISTIK_'))
+    const isCrusherRole =
+        roleLower === 'operatorcrusher' ||
+        roleLower === 'admincrusher' ||
+        roleLower.includes('crusher') ||
+        roleLower.startsWith('sc')
+
+    if (['adminbp', 'superadminbp', 'ceo', 'fvp'].includes(roleLower)) {
+        return '/admin'
+    }
+    if (roleLower === 'operatorbp') {
+        return '/operator'
+    }
+    if (isCrusherRole || hasCrusherPerm) {
+        // If user only has logistik permission without crusher permission, route to /logistik
+        if (hasLogistikPerm && !hasCrusherPerm) {
+            return '/logistik'
+        }
+        return '/crusher'
+    }
+    if (roleLower === 'adminlogistik' || hasLogistikPerm) {
+        return '/logistik'
+    }
+    const hasAdminPerm = permissions.some(p =>
+        p.startsWith('MUTU_') ||
+        p.startsWith('ITEM_PEKERJAAN_') ||
+        p.startsWith('INSENTIF_') ||
+        p.startsWith('MASTER_DATA_') ||
+        p.startsWith('VEHICLE_') ||
+        p.startsWith('KARYAWAN_') ||
+        p.startsWith('MATERIAL_') ||
+        p.startsWith('RBL_') ||
+        p.startsWith('SEWA_') ||
+        p.startsWith('REPORTS_') ||
+        p.startsWith('PRODUKSI_') ||
+        p.startsWith('BILLING_') ||
+        p.startsWith('PLANNING_') ||
+        p.startsWith('CUSTOMER_') ||
+        p.startsWith('DASHBOARD_') ||
+        p.startsWith('FINANCE_')
+    )
+    if (hasAdminPerm) {
+        return '/admin'
+    }
+    if (permissions.includes('PRODUKSI_CREATE')) {
+        return '/operator'
+    }
+    return '/admin'
+}
+
 export const authConfig = {
     trustHost: true,
     pages: {
@@ -12,24 +66,20 @@ export const authConfig = {
             const isAuthRoute = nextUrl.pathname.startsWith('/login')
             const isAdminRoute = nextUrl.pathname.startsWith('/admin')
             const isOperatorRoute = nextUrl.pathname.startsWith('/operator')
-
+            const isLogistikRoute = nextUrl.pathname.startsWith('/logistik')
             const isCrusherRoute = nextUrl.pathname.startsWith('/crusher')
 
             if (isAuthRoute) {
                 if (isLoggedIn) {
-                    // Redirect based on role
-                    const userRole = auth.user.role as string
-                    let target = '/operator'
-                    if (['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole)) target = '/admin'
-                    else if (userRole === 'AdminLogistik') target = '/logistik'
-                    else if (userRole === 'OperatorCrusher') target = '/crusher'
+                    const userRole = (auth.user.role as string) || ''
+                    const permissions = ((auth.user as any)?.permissions as string[]) || []
+                    const target = resolveUserDashboard(userRole, permissions)
                     return Response.redirect(new URL(target, nextUrl))
                 }
                 return true
             }
 
             if (!isLoggedIn) {
-                // Exclude root path from redirecting loop if needed, but here we protect it
                 if (nextUrl.pathname === '/') {
                     return Response.redirect(new URL('/login', nextUrl))
                 }
@@ -37,25 +87,28 @@ export const authConfig = {
             }
 
             if (isLoggedIn) {
-                const userRole = auth.user.role
-
-                const isLogistikRoute = nextUrl.pathname.startsWith('/logistik')
+                const userRole = (auth.user.role as string) || ''
+                const permissions = ((auth.user as any)?.permissions as string[]) || []
+                const roleLower = userRole.toLowerCase()
+                const isCrusherRole =
+                    roleLower === 'operatorcrusher' ||
+                    roleLower === 'admincrusher' ||
+                    roleLower.includes('crusher') ||
+                    roleLower.startsWith('sc')
 
                 // Root path redirects to appropriate dashboard
                 if (nextUrl.pathname === '/') {
-                    let target = '/operator'
-                    if (['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole as string)) target = '/admin'
-                    else if (userRole === 'AdminLogistik') target = '/logistik'
-                    else if (userRole === 'OperatorCrusher') target = '/crusher'
+                    const target = resolveUserDashboard(userRole, permissions)
                     return Response.redirect(new URL(target, nextUrl))
                 }
 
-                if (isAdminRoute && !['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
-                    const permissions = (auth.user as any)?.permissions as string[] | undefined || []
-
-                    // AdminLogistik or any role with relevant admin permissions can access admin subroutes
-                    const hasAdminAccess = userRole === 'AdminLogistik' ||
+                if (isAdminRoute && !['AdminBP', 'SuperAdminBP', 'CEO', 'FVP'].includes(userRole)) {
+                    // AdminLogistik, Crusher, or any role with relevant admin/logistik permissions can access admin subroutes
+                    const hasAdminAccess =
+                        userRole === 'AdminLogistik' ||
+                        isCrusherRole ||
                         permissions.some(p =>
+                            p.startsWith('LOGISTIK_') ||
                             p.startsWith('MUTU_') ||
                             p.startsWith('ITEM_PEKERJAAN_') ||
                             p.startsWith('INSENTIF_') ||
@@ -70,46 +123,63 @@ export const authConfig = {
                             p.startsWith('BILLING_') ||
                             p.startsWith('PLANNING_') ||
                             p.startsWith('CUSTOMER_') ||
+                            p.startsWith('FINANCE_') ||
                             p.startsWith('CRUSHER_')
                         )
 
                     if (hasAdminAccess) {
                         // If accessing root /admin overview without DASHBOARD_VIEW permission, redirect appropriately
-                        if (nextUrl.pathname === '/admin' && userRole === 'AdminLogistik' && !permissions.includes('DASHBOARD_VIEW')) {
-                            return Response.redirect(new URL('/logistik', nextUrl))
+                        if (nextUrl.pathname === '/admin' && !permissions.includes('DASHBOARD_VIEW')) {
+                            const target = resolveUserDashboard(userRole, permissions)
+                            if (target !== '/admin') {
+                                return Response.redirect(new URL(target, nextUrl))
+                            }
                         }
                         return true
                     }
 
-                    const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorCrusher' ? '/crusher' : '/operator')
-                    return Response.redirect(new URL(target, nextUrl))
+                    const target = resolveUserDashboard(userRole, permissions)
+                    return Response.redirect(new URL(target === '/admin' ? '/logistik' : target, nextUrl))
                 }
-                if (isOperatorRoute && !['OperatorBP', 'SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(userRole as string)) {
-                    const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorCrusher' ? '/crusher' : '/admin')
-                    return Response.redirect(new URL(target, nextUrl))
-                }
-                if (isLogistikRoute) {
-                    const permissions = (auth.user as any)?.permissions as string[] | undefined
-                    const allowedRoles = ['SuperAdminBP', 'AdminLogistik', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP', 'Approver']
-                    const hasAccess = allowedRoles.includes(userRole as string) ||
-                        (permissions && (
-                            permissions.includes('LOGISTIK_VIEW') ||
-                            permissions.includes('LOGISTIK_CREATE') ||
-                            permissions.includes('LOGISTIK_APPROVE') ||
-                            permissions.some(p => p.startsWith('CRUSHER_'))
-                        ))
-                    if (!hasAccess) {
-                        const target = userRole === 'OperatorBP' ? '/operator' : (userRole === 'OperatorCrusher' ? '/crusher' : '/admin')
-                        return Response.redirect(new URL(target, nextUrl))
+
+                if (isOperatorRoute) {
+                    const isAllowed =
+                        ['OperatorBP', 'SuperAdminBP', 'AdminBP', 'CEO', 'FVP'].includes(userRole) ||
+                        permissions.includes('PRODUKSI_CREATE') ||
+                        permissions.includes('PRODUKSI_VIEW')
+
+                    if (!isAllowed) {
+                        const target = resolveUserDashboard(userRole, permissions)
+                        return Response.redirect(new URL(target === '/operator' ? '/admin' : target, nextUrl))
                     }
                 }
-                if (isCrusherRoute) {
-                    const permissions = (auth.user as any)?.permissions as string[] | undefined
-                    const hasAccess = ['SuperAdminBP', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP'].includes(userRole as string) ||
-                        (permissions && permissions.some(p => p.startsWith('CRUSHER_')))
+
+                if (isLogistikRoute) {
+                    const allowedRoles = ['SuperAdminBP', 'AdminLogistik', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP', 'Approver']
+                    const hasAccess =
+                        allowedRoles.includes(userRole) ||
+                        isCrusherRole ||
+                        permissions.includes('LOGISTIK_VIEW') ||
+                        permissions.includes('LOGISTIK_CREATE') ||
+                        permissions.includes('LOGISTIK_APPROVE') ||
+                        permissions.some(p => p.startsWith('CRUSHER_'))
+
                     if (!hasAccess) {
-                        const target = userRole === 'AdminLogistik' ? '/logistik' : (userRole === 'OperatorBP' ? '/operator' : '/admin')
-                        return Response.redirect(new URL(target, nextUrl))
+                        const target = resolveUserDashboard(userRole, permissions)
+                        return Response.redirect(new URL(target === '/logistik' ? '/admin' : target, nextUrl))
+                    }
+                }
+
+                if (isCrusherRoute) {
+                    const allowedCrusherRoles = ['SuperAdminBP', 'AdminBP', 'AdminCrusher', 'OperatorCrusher', 'CEO', 'FVP']
+                    const hasAccess =
+                        allowedCrusherRoles.includes(userRole) ||
+                        isCrusherRole ||
+                        permissions.some(p => p.startsWith('CRUSHER_'))
+
+                    if (!hasAccess) {
+                        const target = resolveUserDashboard(userRole, permissions)
+                        return Response.redirect(new URL(target === '/crusher' ? '/admin' : target, nextUrl))
                     }
                 }
             }

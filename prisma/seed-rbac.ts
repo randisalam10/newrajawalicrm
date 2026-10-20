@@ -248,6 +248,39 @@ export const ROLES = [
             'DASHBOARD_VIEW', 'LOGISTIK_VIEW', 'LOGISTIK_APPROVE', 'REPORTS_VIEW',
         ],
     },
+    {
+        name: 'AdminCrusher',
+        label: 'Admin Stone Crusher',
+        description: 'Pengelola operasional Stone Crusher, material quarry, solar BBM, dan pengadaan sparepart/PO SC.',
+        isSystem: true,
+        scope: 'OWN_BRANCH' as const,
+        permissions: [
+            'DASHBOARD_VIEW',
+            'CRUSHER_VIEW',
+            'CRUSHER_DAILY_CREATE',
+            'CRUSHER_DAILY_EDIT',
+            'CRUSHER_BBM_CREATE',
+            'CRUSHER_MASTER_MANAGE',
+            'CRUSHER_WAGES_VIEW',
+            'LOGISTIK_VIEW',
+            'LOGISTIK_CREATE',
+            'LOGISTIK_EDIT',
+        ],
+    },
+    {
+        name: 'OperatorCrusher',
+        label: 'Operator Stone Crusher',
+        description: 'Petugas lapangan yang mencatat operasional harian, BBM solar, material masuk dan keluar di Stone Crusher.',
+        isSystem: true,
+        scope: 'OWN_BRANCH' as const,
+        permissions: [
+            'CRUSHER_VIEW',
+            'CRUSHER_DAILY_CREATE',
+            'CRUSHER_DAILY_EDIT',
+            'CRUSHER_BBM_CREATE',
+            'CRUSHER_MASTER_MANAGE',
+        ],
+    },
 ]
 
 async function main() {

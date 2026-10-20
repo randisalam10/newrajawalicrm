@@ -18,10 +18,17 @@ export default async function CrusherOperatorPage(props: {
 
     const userRole = session.user.role || ""
     const permissions = session.user.permissions || []
-    const hasAccess = ["SuperAdminBP", "AdminBP", "OperatorCrusher", "CEO", "FVP", "AdminLogistik"].includes(userRole) ||
+    const userRoleLower = userRole.toLowerCase()
+    const isCrusherRole = userRoleLower === "operatorcrusher" || userRoleLower === "admincrusher" || userRoleLower.includes("crusher") || userRoleLower.startsWith("sc")
+
+    const hasAccess = ["SuperAdminBP", "AdminBP", "AdminCrusher", "OperatorCrusher", "CEO", "FVP", "AdminLogistik"].includes(userRole) ||
+        isCrusherRole ||
         permissions.some(p => p.startsWith("CRUSHER_") || p.startsWith("RETASE_"))
 
-    if (!hasAccess) redirect("/admin")
+    if (!hasAccess) {
+        if (permissions.includes("LOGISTIK_VIEW")) redirect("/logistik")
+        redirect("/admin")
+    }
 
     const searchParams = props.searchParams ? await props.searchParams : {}
     const todayStr = searchParams.date || new Date().toISOString().split("T")[0]

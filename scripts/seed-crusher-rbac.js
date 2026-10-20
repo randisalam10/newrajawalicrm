@@ -38,11 +38,11 @@ async function seedCrusherRbac() {
         },
     });
 
-    const dbPerms = await prisma.permission.findMany({
+    const operatorPerms = await prisma.permission.findMany({
         where: { code: { in: CRUSHER_PERMISSIONS.filter(p => p.code !== 'CRUSHER_WAGES_VIEW').map(p => p.code) } },
     });
 
-    for (const perm of dbPerms) {
+    for (const perm of operatorPerms) {
         await prisma.rolePermission.upsert({
             where: {
                 roleId_permissionId: {
@@ -58,6 +58,72 @@ async function seedCrusherRbac() {
         });
     }
     console.log("✓ OperatorCrusher Role permissions linked.");
+
+    // Create or update AdminCrusher role
+    const adminCrusherRole = await prisma.role.upsert({
+        where: { name: 'AdminCrusher' },
+        update: {
+            label: 'Admin Stone Crusher',
+            description: 'Pengelola operasional Stone Crusher, material quarry, solar BBM, dan pengadaan sparepart/PO SC.',
+            scope: 'OWN_BRANCH',
+        },
+        create: {
+            name: 'AdminCrusher',
+            label: 'Admin Stone Crusher',
+            description: 'Pengelola operasional Stone Crusher, material quarry, solar BBM, dan pengadaan sparepart/PO SC.',
+            scope: 'OWN_BRANCH',
+            isSystem: true,
+        },
+    });
+
+    const adminPerms = await prisma.permission.findMany({
+        where: {
+            OR: [
+                { module: 'CRUSHER' },
+                { code: { in: ['LOGISTIK_VIEW', 'LOGISTIK_CREATE', 'LOGISTIK_EDIT', 'DASHBOARD_VIEW'] } }
+            ]
+        }
+    });
+
+    for (const perm of adminPerms) {
+        await prisma.rolePermission.upsert({
+            where: {
+                roleId_permissionId: {
+                    roleId: adminCrusherRole.id,
+                    permissionId: perm.id,
+                },
+            },
+            update: {},
+            create: {
+                roleId: adminCrusherRole.id,
+                permissionId: perm.id,
+            },
+        });
+    }
+    console.log("✓ AdminCrusher Role permissions linked.");
+
+    // Also auto-link Crusher permissions to SCHARAPAN role if exists
+    const scharapanRole = await prisma.role.findFirst({
+        where: { name: { in: ['SCHARAPAN', 'scharapan'] } }
+    });
+    if (scharapanRole) {
+        for (const perm of adminPerms) {
+            await prisma.rolePermission.upsert({
+                where: {
+                    roleId_permissionId: {
+                        roleId: scharapanRole.id,
+                        permissionId: perm.id,
+                    },
+                },
+                update: {},
+                create: {
+                    roleId: scharapanRole.id,
+                    permissionId: perm.id,
+                },
+            });
+        }
+        console.log("✓ SCHARAPAN Role permissions updated with Crusher permissions.");
+    }
 
     // Seed initial default Quarry Material Source if empty
     const existingSources = await prisma.crusherMaterialSource.count();

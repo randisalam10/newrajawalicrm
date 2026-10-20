@@ -35,8 +35,11 @@ type AppSidebarProps = {
 export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
     const [mounted, setMounted] = useState(false)
+    const userRoleLower = (user?.role || "").toLowerCase()
+    const isCrusherRole = userRoleLower === "operatorcrusher" || userRoleLower === "admincrusher" || userRoleLower.includes("crusher") || userRoleLower.startsWith("sc")
+
     const [openGroup, setOpenGroup] = useState<string | null>(
-        user?.role === "OperatorCrusher" ? "Stone Crusher" : "Operasional & Transaksi"
+        isCrusherRole ? "Stone Crusher" : "Operasional & Transaksi"
     )
     const [isLoggingOut, startTransition] = useTransition()
 
@@ -83,8 +86,8 @@ export function AppSidebar({ user }: AppSidebarProps) {
         if (code === "RETASE_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
         if (code === "PLANNING_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
         if (code === "CUSTOMER_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "CRUSHER_VIEW" && ["AdminBP", "OperatorCrusher", "CEO", "FVP"].includes(role)) return true
-        if (code === "DASHBOARD_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP", "Approver"].includes(role)) return true
+        if (code === "CRUSHER_VIEW" && (["AdminBP", "OperatorCrusher", "AdminCrusher", "CEO", "FVP"].includes(role) || isCrusherRole)) return true
+        if (code === "DASHBOARD_VIEW" && (["AdminBP", "OperatorBP", "CEO", "FVP", "Approver"].includes(role) || isCrusherRole)) return true
 
         return false
     }
@@ -100,9 +103,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Monitoring",
             defaultOpen: true,
             items: [
-                ...((hasPerm("DASHBOARD_VIEW") || user?.role === "OperatorCrusher") ? [{
+                ...((hasPerm("DASHBOARD_VIEW") || isCrusherRole) ? [{
                     title: "Dashboard",
-                    url: user?.role === "OperatorBP" ? "/operator" : (user?.role === "OperatorCrusher" ? "/crusher" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin")),
+                    url: user?.role === "OperatorBP" ? "/operator" : (isCrusherRole ? "/crusher" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin")),
                     icon: LayoutDashboard,
                     isSuperAdminOnly: false,
                 }] : []),
@@ -140,7 +143,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(isSuperAdmin || user?.role === "AdminLogistik" || (hasPerm("LOGISTIK_VIEW") && user?.role !== "OperatorCrusher") ? [
                     { title: "PO Umum", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
                 ] : []),
-                ...(isSuperAdmin || user?.role === "AdminLogistik" || user?.role === "OperatorCrusher" || hasPerm("CRUSHER_VIEW") ? [
+                ...(isSuperAdmin || user?.role === "AdminLogistik" || isCrusherRole || hasPerm("CRUSHER_VIEW") ? [
                     { title: "PO Stone Crusher", url: "/crusher/po", icon: ShoppingCart, badge: "SC", isSuperAdminOnly: false },
                 ] : []),
                 ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
