@@ -106,6 +106,7 @@ docker run --rm \
         npx prisma migrate resolve --applied 20260930000000_add_custom_material_name 2>/dev/null || true
         npx prisma migrate resolve --applied 20261003000000_add_missing_models_and_columns 2>/dev/null || true
         npx prisma migrate resolve --rolled-back 20261018000000_add_crusher_operator_helper_retase 2>/dev/null || true
+        npx prisma migrate resolve --rolled-back 20261024040000_add_vehicle_fuel_log_and_plant_kop 2>/dev/null || true
     " || true
 
 echo -e "${YELLOW}   Menjalankan prisma migrate deploy (hanya migrasi baru)...${NC}"

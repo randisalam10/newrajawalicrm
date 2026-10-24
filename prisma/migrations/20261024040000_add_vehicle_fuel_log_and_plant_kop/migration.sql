@@ -1,4 +1,4 @@
-﻿-- Migration: 20261024040000_add_vehicle_fuel_log_and_plant_kop
+-- Migration: 20261024040000_add_vehicle_fuel_log_and_plant_kop
 
 -- 1. AlterEnum RetaseCalcMode (Add PER_TRIP safely)
 DO $$ BEGIN
