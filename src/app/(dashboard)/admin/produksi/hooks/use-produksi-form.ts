@@ -45,40 +45,40 @@ export function useProduksiForm({
     }, [projects])
 
     const activeProjects = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? validProjects.filter((p) => p.customer?.locationId === selectedLocationId)
             : validProjects
-    }, [userRole, selectedLocationId, validProjects])
+    }, [selectedLocationId, validProjects])
 
     const activeVehicles = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? (vehicles || []).filter((v) => v.locationId === selectedLocationId)
             : vehicles || []
-    }, [userRole, selectedLocationId, vehicles])
+    }, [selectedLocationId, vehicles])
 
     const activeDrivers = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? (drivers || []).filter((d) => d.locationId === selectedLocationId)
             : drivers || []
-    }, [userRole, selectedLocationId, drivers])
+    }, [selectedLocationId, drivers])
 
     const activeQualities = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? (qualities || []).filter((q) => q.locationId === selectedLocationId)
             : qualities || []
-    }, [userRole, selectedLocationId, qualities])
+    }, [selectedLocationId, qualities])
 
     const activeWorkItems = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? (workItems || []).filter((w) => w.locationId === selectedLocationId)
             : workItems || []
-    }, [userRole, selectedLocationId, workItems])
+    }, [selectedLocationId, workItems])
 
     const activeOperators = useMemo(() => {
-        return userRole === "SuperAdminBP" && selectedLocationId
+        return selectedLocationId
             ? (operators || []).filter((o) => o.locationId === selectedLocationId)
             : operators || []
-    }, [userRole, selectedLocationId, operators])
+    }, [selectedLocationId, operators])
 
     // Combobox states
     const [openCustomer, setOpenCustomer] = useState(false)

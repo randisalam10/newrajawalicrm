@@ -26,12 +26,13 @@ const itemSchema = z.object({
     locationId: z.string().optional().or(z.literal("")),
 })
 
+import { hasPermission } from "@/lib/rbac"
+
 function canManageMasterBarang(user: any) {
     if (!user) return false
-    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    if (["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(user.role)) return true
-    const perms: string[] = user.permissions || []
-    return perms.includes("LOGISTIK_CREATE") || perms.includes("LOGISTIK_EDIT") || perms.includes("CRUSHER_VIEW")
+    return hasPermission(user, "LOGISTIK", "CREATE") ||
+        hasPermission(user, "LOGISTIK", "EDIT") ||
+        hasPermission(user, "CRUSHER", "EDIT")
 }
 
 export async function getMasterItems(params?: LogistikFilterParams) {
@@ -75,7 +76,7 @@ export async function createMasterItem(formData: FormData) {
 
     const userId = session.user.id
     const isCentral = isLogistikCentralUser(session.user)
-    const isCrusher = session.user.role === "OperatorCrusher" || session.user.role === "AdminCrusher"
+    const isCrusher = session.user.locationType === "STONE_CRUSHER" || session.user.role === "OperatorCrusher" || session.user.role === "AdminCrusher"
 
     let target_business = parsed.data.target_business
     let is_global = isCentral ? (parsed.data.is_global ?? false) : false

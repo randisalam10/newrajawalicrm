@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission, resolveTargetLocationId } from "@/lib/rbac"
 
 const kendaraanSchema = z.object({
     id: z.string().optional(),
@@ -37,50 +37,10 @@ const kendaraanSchema = z.object({
 
 export async function canManageKendaraan(user: any): Promise<boolean> {
     if (!user) return false
-    if (user.role === "SuperAdminBP") return true
-    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    if (user.role === "AdminBP") return true
-
-    const perms: string[] = user.permissions || []
-    if (
-        perms.includes("VEHICLE_CREATE") ||
-        perms.includes("VEHICLE_EDIT") ||
-        perms.includes("MASTER_DATA_CREATE") ||
-        perms.includes("MASTER_DATA_EDIT")
-    ) {
-        return true
-    }
-
-    // Real-time check from DB in case token is not yet refreshed
-    if (user.id) {
-        try {
-            const dbUser = await prisma.user.findUnique({
-                where: { id: user.id },
-                select: {
-                    role: true,
-                    roleRef: {
-                        include: {
-                            permissions: {
-                                include: { permission: true }
-                            }
-                        }
-                    }
-                }
-            })
-            if (dbUser?.role === "SuperAdminBP" || dbUser?.role === "AdminBP") return true
-            const dbPerms = dbUser?.roleRef?.permissions.map(rp => rp.permission.code) || []
-            return (
-                dbPerms.includes("VEHICLE_CREATE") ||
-                dbPerms.includes("VEHICLE_EDIT") ||
-                dbPerms.includes("MASTER_DATA_CREATE") ||
-                dbPerms.includes("MASTER_DATA_EDIT")
-            )
-        } catch {
-            return false
-        }
-    }
-
-    return false
+    return hasPermission(user, "KENDARAAN", "CREATE") ||
+        hasPermission(user, "KENDARAAN", "EDIT") ||
+        hasPermission(user, "VEHICLE_CREATE") ||
+        hasPermission(user, "VEHICLE_EDIT")
 }
 
 // ─── Vehicle Category Server Actions ─────────────────────────────────────────
@@ -272,10 +232,12 @@ export async function createKendaraan(formData: FormData) {
     }
 
     try {
-        const isCorp = isCorporateUser(session.user)
-        const finalLocationId = parsed.data.locationId || session.user.locationId
-
-        if (!finalLocationId) return { success: false, error: "Cabang pangkalan wajib dipilih." }
+        let finalLocationId: string
+        try {
+            finalLocationId = resolveTargetLocationId(session.user, parsed.data.locationId)
+        } catch (locErr: any) {
+            return { success: false, error: locErr.message || "Cabang pangkalan wajib dipilih." }
+        }
 
         const { locationId, categoryId, vehicle_type, ...insertData } = parsed.data
 

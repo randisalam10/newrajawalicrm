@@ -8,7 +8,7 @@ import { PoPaymentMethod } from "@prisma/client"
 import { pusherServer, getChannelName } from "@/lib/pusher"
 import { sendPushNotification } from "@/lib/firebase/admin"
 import { sendWebPushToUsers } from "@/lib/web-push"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 import { buildSupplierBranchFilter, buildMasterItemBranchFilter } from "@/lib/logistik-scoping"
 
 const poItemSchema = z.object({
@@ -416,8 +416,8 @@ export async function createPurchaseOrder(data: {
 }) {
     const session = await auth()
     if (!session?.user) return { success: false, error: "Unauthorized" }
-    if (["CEO", "FVP", "Approver"].includes(session.user.role)) {
-        return { success: false, error: "Akses ditolak: Role Approver / Corporate tidak diizinkan membuat PO." }
+    if (!hasPermission(session.user, "LOGISTIK", "CREATE") && !hasPermission(session.user, "PO", "CREATE")) {
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin untuk membuat PO." }
     }
 
     const { items, jabatan_kepala } = data
@@ -718,10 +718,9 @@ export async function updatePoStatus(
     if (!session?.user?.id) return { success: false, error: "Unauthorized" }
 
     const userRole = session.user.role as string
-    const userPermissions = (session.user as any)?.permissions || []
-    const hasApprovePerm = userPermissions.includes('LOGISTIK_APPROVE')
+    const hasApprovePerm = hasPermission(session.user, "LOGISTIK", "APPROVE") || hasPermission(session.user, "PO", "APPROVE")
 
-    if (!['SuperAdminBP', 'CEO', 'FVP', 'Approver', 'AdminLogistik', 'AdminBP'].includes(userRole) && !hasApprovePerm) {
+    if (!hasApprovePerm && !isCorporateUser(session.user)) {
         return { success: false, error: "Forbidden: Anda tidak memiliki izin untuk mengubah status PO" }
     }
 
@@ -796,10 +795,8 @@ export async function updatePoStatus(
                     updateData.isBypassed = false
                 }
             } else if (
-                userRole === 'SuperAdminBP' || 
-                userRole === 'AdminLogistik' || 
-                userRole === 'AdminBP' || 
-                hasApprovePerm
+                hasApprovePerm || 
+                isCorporateUser(session.user)
             ) {
                 // Admin bypass: Sesuai instruksi, admin yg approve TIDAK menambahkan gambar TTD
                 updateData.fvpApprovedAt = now
@@ -938,9 +935,10 @@ export async function getPoFormData(targetLocationId?: string, peruntukan?: stri
     const session = await auth()
 
     let businessUnitParam: "ALL" | "BP" | "CRUSHER" = "ALL"
-    if (peruntukan === "CRUSHER" || session?.user?.role === "OperatorCrusher" || session?.user?.role === "AdminCrusher") {
+    const userLocType = session?.user?.locationType
+    if (peruntukan === "CRUSHER" || userLocType === "STONE_CRUSHER") {
         businessUnitParam = "CRUSHER"
-    } else if (peruntukan === "BP" || session?.user?.role === "AdminBP" || session?.user?.role === "AdminTenggarong") {
+    } else if (peruntukan === "BP" || userLocType === "BATCHING_PLANT") {
         businessUnitParam = "BP"
     }
 

@@ -3,7 +3,7 @@
 // Data source: ProductionTransaction with includes
 
 import {
-    Document, Page, Text, View, StyleSheet
+    Document, Page, Text, View, StyleSheet, Image
 } from "@react-pdf/renderer"
 import { COLORS } from "./pdf-shared"
 import { format } from "date-fns"
@@ -27,7 +27,25 @@ export type SuratJalanData = {
     createdBy: { name: string }
     concreteQuality: { name: string }
     workItem: { name: string }
-    location: { name: string }
+    location: {
+        name: string
+        company_name?: string | null
+        company_sub?: string | null
+        address?: string | null
+        phone?: string | null
+        email?: string | null
+        logo_url?: string | null
+        kop_footer?: string | null
+    }
+    kop_snapshot?: {
+        company_name?: string | null
+        company_sub?: string | null
+        address?: string | null
+        phone?: string | null
+        email?: string | null
+        logo_url?: string | null
+        kop_footer?: string | null
+    } | null
 }
 
 // ─── Compact Styles untuk 3 rangkap ───────────────────────────────────────────
@@ -90,8 +108,21 @@ const s = StyleSheet.create({
         paddingBottom: 4,
         marginBottom: 4,
     },
-    companyName: { fontSize: 12, fontFamily: "Helvetica-Bold", color: COLORS.primary },
-    companySub: { fontSize: 7, color: COLORS.muted, marginTop: 1 },
+    headerBrand: {
+        flexDirection: "row",
+        alignItems: "center",
+        flex: 1,
+        marginRight: 8,
+    },
+    logo: {
+        width: 32,
+        height: 32,
+        objectFit: "contain",
+        marginRight: 6,
+    },
+    companyName: { fontSize: 10, fontFamily: "Helvetica-Bold", color: COLORS.primary },
+    companySub: { fontSize: 6.5, color: COLORS.muted, marginTop: 1 },
+    companyContact: { fontSize: 6, color: COLORS.muted, marginTop: 0.5 },
     docTitleBox: { alignItems: "flex-end" },
     docTitle: { fontSize: 10, fontFamily: "Helvetica-Bold", color: COLORS.primary, textTransform: "uppercase" },
     noSJ: { fontSize: 7, fontFamily: "Helvetica", color: COLORS.mid, marginTop: 2 },
@@ -138,6 +169,26 @@ function KV({ k, v }: { k: string; v: string }) {
 }
 
 function SuratJalanCopy({ tx, copyLabel, noSJ, tanggal, waktu }: { tx: SuratJalanData, copyLabel: string, noSJ: string, tanggal: string, waktu: string }) {
+    // Resolving Kop Data: Priority 1: kop_snapshot, Priority 2: Location master data, Fallback: Default PT. Rajawali Puncak Jayawijaya
+    const kop: any = tx.kop_snapshot || tx.location || {}
+    const companyName = kop.company_name || "PT. Rajawali Puncak Jayawijaya"
+    const companySub = kop.company_sub || `Batching Plant & Beton Cor Readymix • Cabang: ${tx.location?.name || ""}`
+    const addressText = kop.address ? String(kop.address) : null
+    const contactParts: string[] = []
+    if (kop.phone) contactParts.push(`Telp: ${kop.phone}`)
+    if (kop.email) contactParts.push(`Email: ${kop.email}`)
+    const contactText = contactParts.length > 0 ? contactParts.join(" | ") : null
+
+    let logoSrc: string | null = null
+    if (kop.logo_url) {
+        if (typeof window !== "undefined" && kop.logo_url.startsWith("/")) {
+            logoSrc = `${window.location.origin}${kop.logo_url}`
+        } else {
+            logoSrc = kop.logo_url
+        }
+    }
+    const kopFooter = kop.kop_footer ? String(kop.kop_footer) : null
+
     return (
         <View style={s.copyContainer}>
             <View style={s.copyLabelBadge}>
@@ -146,10 +197,16 @@ function SuratJalanCopy({ tx, copyLabel, noSJ, tanggal, waktu }: { tx: SuratJala
 
             {/* Header */}
             <View style={s.headerRow}>
-                <View>
-                    <Text style={s.companyName}>PT. Rajawali Puncak Jayawijaya</Text>
-                    <Text style={s.companySub}>Batching Plant &amp; Beton Cor Readymix</Text>
-                    <Text style={s.companySub}>Cabang: {tx.location.name}</Text>
+                <View style={s.headerBrand}>
+                    {logoSrc && (
+                        <Image src={logoSrc} style={s.logo} />
+                    )}
+                    <View style={{ flex: 1 }}>
+                        <Text style={s.companyName}>{companyName}</Text>
+                        <Text style={s.companySub}>{companySub}</Text>
+                        {addressText && <Text style={s.companyContact}>{addressText}</Text>}
+                        {contactText && <Text style={s.companyContact}>{contactText}</Text>}
+                    </View>
                 </View>
                 <View style={s.docTitleBox}>
                     <Text style={s.docTitle}>Surat Jalan</Text>
@@ -195,7 +252,11 @@ function SuratJalanCopy({ tx, copyLabel, noSJ, tanggal, waktu }: { tx: SuratJala
             </View>
 
             <Text style={s.sectionTitle}>CATATAN TAMBAHAN</Text>
-            <View style={s.noteBox}></View>
+            <View style={s.noteBox}>
+                {kopFooter ? (
+                    <Text style={{ fontSize: 6, color: COLORS.muted }}>{kopFooter}</Text>
+                ) : null}
+            </View>
 
             {/* Signatures */}
             <View style={s.signRow}>

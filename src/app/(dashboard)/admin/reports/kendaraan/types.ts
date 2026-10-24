@@ -35,6 +35,10 @@ export interface VehicleStats {
     rentalRevenue?: number
     rentalDays?: number
     netProfit?: number
+    nonRblFuelLiters?: number
+    nonRblFuelCost?: number
+    rblFuelLiters?: number
+    rblFuelCost?: number
     minKm: number | null
     maxKm: number | null
     kmDistance: number
@@ -50,10 +54,11 @@ export interface VehicleStats {
 export interface MeterEvent {
     id: string
     date: Date | string
-    type: "RBL" | "PO"
+    type: "RBL" | "PO" | "NON_RBL" | "CRUSHER" | string
     referenceNo: string
     description: string
     meter: number
+    amount?: number
     isBackdateAnomaly?: boolean
     [key: string]: any
 }

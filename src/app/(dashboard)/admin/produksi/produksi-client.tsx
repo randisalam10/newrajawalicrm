@@ -40,7 +40,7 @@ export function ProduksiClient({
                     <input type="hidden" name="qualityId" value={form.selectedQualityId} />
                     <input type="hidden" name="workItemId" value={form.selectedWorkItemId} />
 
-                    {userRole === "SuperAdminBP" && (
+                    {locations && locations.length > 0 && (
                         <LocationSection
                             locations={locations}
                             openLocation={form.openLocation}

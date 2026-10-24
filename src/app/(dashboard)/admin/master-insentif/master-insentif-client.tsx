@@ -39,6 +39,7 @@ import { id as idLocale } from "date-fns/locale"
 import {
     ROLE_CATEGORIES,
     FORMULA_TEMPLATES,
+    getFormulaOptionsForRole,
 } from "./constants"
 import {
     upsertMasterIncentive,
@@ -121,10 +122,15 @@ export function MasterInsentifClient({
         })
     }, [rates, filterRole, filterBranch, searchQuery])
 
+    // Available formula templates based on current role
+    const availableFormulas = useMemo(() => {
+        return getFormulaOptionsForRole(formData.kategori_peran)
+    }, [formData.kategori_peran])
+
     // Find active formula template info
     const activeFormula = useMemo(() => {
-        return FORMULA_TEMPLATES.find(f => f.value === formData.formula_type) || FORMULA_TEMPLATES[0]
-    }, [formData.formula_type])
+        return availableFormulas.find(f => f.value === formData.formula_type) || FORMULA_TEMPLATES.find(f => f.value === formData.formula_type) || FORMULA_TEMPLATES[0]
+    }, [availableFormulas, formData.formula_type])
 
     // Live calculation simulation
     const simulationText = useMemo(() => {
@@ -135,7 +141,9 @@ export function MasterInsentifClient({
             case "PER_M3":
                 return `Jika volume cor 100 m³: 100 m³ × Rp ${fmtNum(tarif)} = Rp ${fmtNum(100 * tarif)}`
             case "PER_TRIP":
-                return `Jika menjalankan 2 trip pengecoran: 2 Trip × Rp ${fmtNum(tarif)} = Rp ${fmtNum(2 * tarif)}`
+                return formData.kategori_peran === "SOPIR_MIXER"
+                    ? `Jika 1x kirim beton ke pelanggan: 1 Pengiriman = Rp ${fmtNum(tarif)} (Flat per 1x jalan)`
+                    : `Jika menjalankan 2 trip kegiatan cor: 2 Trip × Rp ${fmtNum(tarif)} = Rp ${fmtNum(2 * tarif)}`
             case "PER_JAM_HM":
                 return `Jika jam operasional alat 8 jam (HM): 8 Jam × Rp ${fmtNum(tarif)} = Rp ${fmtNum(8 * tarif)}`
             case "PER_HARI":
@@ -149,7 +157,7 @@ export function MasterInsentifClient({
             default:
                 return `Tarif acuan: Rp ${fmtNum(tarif)}`
         }
-    }, [formData.formula_type, formData.tarif_utama, formData.tarif_sekunder])
+    }, [formData.formula_type, formData.kategori_peran, formData.tarif_utama, formData.tarif_sekunder])
 
     const handleOpenAdd = () => {
         setEditingItem(null)
@@ -563,7 +571,7 @@ export function MasterInsentifClient({
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {FORMULA_TEMPLATES.map(ft => (
+                                        {availableFormulas.map(ft => (
                                             <SelectItem key={ft.value} value={ft.value}>{ft.label}</SelectItem>
                                         ))}
                                     </SelectContent>
@@ -575,12 +583,20 @@ export function MasterInsentifClient({
                         <div className={formData.formula_type === "DT_TIERED" ? "grid grid-cols-2 gap-3" : "space-y-1"}>
                             <div className="space-y-1">
                                 <Label className="text-xs font-semibold text-slate-700">
-                                    {formData.formula_type === "DT_TIERED" ? "Tarif DT Besar (Rp)" : `Tarif (${activeFormula.unit})`}
+                                    {formData.formula_type === "DT_TIERED"
+                                        ? "Tarif DT Besar (Rp)"
+                                        : formData.kategori_peran === "SOPIR_MIXER" && formData.formula_type === "PER_TRIP"
+                                            ? "Tarif Flat per 1x Jalan (Rp/Trip)"
+                                            : `Tarif (${activeFormula.unit})`}
                                 </Label>
                                 <Input
                                     type="number"
                                     min="0"
-                                    placeholder="0"
+                                    placeholder={
+                                        formData.kategori_peran === "SOPIR_MIXER" && formData.formula_type === "PER_TRIP"
+                                            ? "Misal: 30000"
+                                            : "0"
+                                    }
                                     value={formData.tarif_utama}
                                     onChange={e => setFormData(f => ({ ...f, tarif_utama: e.target.value }))}
                                     className="h-8 text-xs font-mono"
@@ -616,15 +632,15 @@ export function MasterInsentifClient({
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="ALL">Semua Cabang (Global)</SelectItem>
+                                            <SelectItem value="ALL">Semua Cabang (Standar Global)</SelectItem>
                                             {locations.map((loc: any) => (
-                                                <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
+                                                <SelectItem key={loc.id} value={loc.id}>{loc.name} (Khusus Plant Ini)</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
                                 ) : (
                                     <div className="h-8 px-3 rounded-md bg-slate-100 border border-slate-200 text-xs flex items-center font-medium text-slate-700">
-                                        {locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"}
+                                        {locations.find((l: any) => l.id === userLocationId)?.name || "Cabang Anda"} (Khusus Plant Ini)
                                     </div>
                                 )}
                             </div>

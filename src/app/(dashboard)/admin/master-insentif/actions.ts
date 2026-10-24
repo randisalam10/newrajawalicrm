@@ -115,15 +115,23 @@ export async function upsertMasterIncentive(data: {
                         }
                     }).catch(() => null)
                 } else if (data.kategori_peran === "SOPIR_MIXER") {
+                    const mixerCalcMode = data.formula_type === "PER_TRIP"
+                        ? "PER_TRIP"
+                        : data.formula_type === "PER_M3_KM"
+                            ? "DISTANCE_AND_VOLUME"
+                            : "DISTANCE_ONLY"
+
                     await (prisma as any).retaseSetting?.upsert({
                         where: { locationId: cleanLocationId },
                         update: {
                             price_per_cubic_km: Number(data.tarif_utama) || 0,
+                            calculation_mode: mixerCalcMode,
                             effective_from: effectiveDateObj,
                         },
                         create: {
                             locationId: cleanLocationId,
                             price_per_cubic_km: Number(data.tarif_utama) || 0,
+                            calculation_mode: mixerCalcMode,
                             operator_rate_per_cubic: 0,
                             effective_from: effectiveDateObj,
                         }
@@ -187,15 +195,23 @@ export async function upsertMasterIncentive(data: {
                         }
                     }).catch(() => null)
                 } else if (data.kategori_peran === "SOPIR_MIXER") {
+                    const mixerCalcMode = data.formula_type === "PER_TRIP"
+                        ? "PER_TRIP"
+                        : data.formula_type === "PER_M3_KM"
+                            ? "DISTANCE_AND_VOLUME"
+                            : "DISTANCE_ONLY"
+
                     await (prisma as any).retaseSetting?.upsert({
                         where: { locationId: cleanLocationId },
                         update: {
                             price_per_cubic_km: Number(data.tarif_utama) || 0,
+                            calculation_mode: mixerCalcMode,
                             effective_from: effectiveDateObj,
                         },
                         create: {
                             locationId: cleanLocationId,
                             price_per_cubic_km: Number(data.tarif_utama) || 0,
+                            calculation_mode: mixerCalcMode,
                             operator_rate_per_cubic: 0,
                             effective_from: effectiveDateObj,
                         }
@@ -420,6 +436,12 @@ export async function syncExistingRetaseSettingsToMasterIncentives() {
 
                 // A. Sinkronkan Price KM Mixer jika ada (> 0)
                 if (s.price_per_cubic_km && Number(s.price_per_cubic_km) > 0) {
+                    const formulaType = s.calculation_mode === "PER_TRIP"
+                        ? "PER_TRIP"
+                        : s.calculation_mode === "DISTANCE_AND_VOLUME"
+                            ? "PER_M3_KM"
+                            : "PER_KM"
+
                     const existingMixer = await (prisma as any).masterIncentiveRate.findFirst({
                         where: {
                             kategori_peran: "SOPIR_MIXER",
@@ -432,20 +454,24 @@ export async function syncExistingRetaseSettingsToMasterIncentives() {
                             data: {
                                 nama_insentif: `Retase Sopir Truk Mixer (${locName})`,
                                 kategori_peran: "SOPIR_MIXER",
-                                formula_type: "PER_KM",
+                                formula_type: formulaType,
                                 tarif_utama: Number(s.price_per_cubic_km),
                                 tarif_sekunder: 0,
                                 locationId: s.locationId,
                                 effective_date: effectiveDate,
-                                keterangan: `Sinkronisasi otomatis dari tarif per KM cabang ${locName}`,
+                                keterangan: `Sinkronisasi otomatis dari setting tarif retase mixer ${locName}`,
                                 isActive: true,
                             }
                         })
-                    } else if (Number(existingMixer.tarif_utama) !== Number(s.price_per_cubic_km)) {
+                    } else if (
+                        Number(existingMixer.tarif_utama) !== Number(s.price_per_cubic_km) ||
+                        existingMixer.formula_type !== formulaType
+                    ) {
                         await (prisma as any).masterIncentiveRate.update({
                             where: { id: existingMixer.id },
                             data: {
                                 tarif_utama: Number(s.price_per_cubic_km),
+                                formula_type: formulaType,
                                 effective_date: effectiveDate,
                             }
                         })

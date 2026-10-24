@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { getTransactions, getRetaseSettings } from "./actions"
 import { getCustomersForReport } from "@/app/(dashboard)/admin/reports/retase/actions"
 import { getMasterIncentives } from "@/app/(dashboard)/admin/master-insentif/actions"
+import { getProductionMasters } from "@/app/(dashboard)/admin/produksi/actions"
 import { prisma } from "@/lib/prisma"
 import { RetaseClient } from "./retase-client"
 import { isCorporateUser, hasPermission } from "@/lib/rbac"
@@ -16,9 +17,10 @@ export default async function RetasePage() {
     const role = session.user.role || ""
     const isCorp = isCorporateUser(session.user)
 
-    const hasEdit = hasPermission(session.user, "RETASE", "EDIT") || ["SuperAdminBP", "AdminBP"].includes(role)
+    const hasEdit = hasPermission(session.user, "RETASE", "EDIT") || hasPermission(session.user, "PRODUKSI", "EDIT") || ["SuperAdminBP", "AdminBP"].includes(role)
     const canConfirm = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
-    const canDelete = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
+    const canEdit = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
+    const canDelete = (hasEdit || hasPermission(session.user, "RETASE", "DELETE") || hasPermission(session.user, "PRODUKSI", "DELETE")) && !["CEO", "FVP", "Approver"].includes(role)
     const canManageSettings = hasEdit && !["CEO", "FVP", "Approver"].includes(role)
 
     const [
@@ -27,12 +29,14 @@ export default async function RetasePage() {
         settings,
         customers,
         masterIncentives,
+        productionMasters,
     ] = await Promise.all([
         getTransactions("Pending"),
         getTransactions("Confirmed"),
         getRetaseSettings(),
         getCustomersForReport(),
         getMasterIncentives(),
+        getProductionMasters(),
     ])
 
     // Fetch locations for corporate users or branch admin
@@ -61,7 +65,9 @@ export default async function RetasePage() {
                 locations={locations}
                 userRole={role}
                 customers={customers}
+                productionMasters={productionMasters}
                 canConfirm={canConfirm}
+                canEdit={canEdit}
                 canDelete={canDelete}
                 canManageSettings={canManageSettings}
             />

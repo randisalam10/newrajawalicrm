@@ -9,7 +9,7 @@ export default async function BillingPage() {
     const session = await auth()
     if (!session?.user) redirect("/login")
 
-    const canView = hasPermission(session.user, "BILLING", "VIEW") || ["AdminBP", "CEO", "FVP"].includes(session.user.role ?? "")
+    const canView = hasPermission(session.user, "BILLING", "VIEW")
     if (!canView) {
         redirect("/admin")
     }
@@ -24,14 +24,10 @@ export default async function BillingPage() {
         ? allLocations
         : allLocations.filter(loc => loc.id === session.user.locationId)
 
-    // FVP and CEO are read-only; SuperAdminBP, AdminBP, or users with BILLING permissions can manage
-    const canManage = (
-        session.user.role === "SuperAdminBP" ||
-        session.user.role === "AdminBP" ||
-        hasPermission(session.user, "BILLING", "CREATE") ||
+    // Dynamic permission check for managing invoices/payments
+    const canManage = hasPermission(session.user, "BILLING", "CREATE") ||
         hasPermission(session.user, "BILLING", "EDIT") ||
         hasPermission(session.user, "BILLING", "APPROVE")
-    ) && !["CEO", "FVP", "Approver"].includes(session.user.role ?? "")
 
     return (
         <div className="space-y-6">

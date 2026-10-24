@@ -3,14 +3,16 @@
 import React from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
-import { CheckCircle2, Printer, Calculator, Settings } from "lucide-react"
+import { CheckCircle2, Printer, Calculator, Settings, Building2 } from "lucide-react"
 import { RetaseLaporanClient } from "./retase-laporan-client"
 import { useRetaseSettings } from "./hooks/use-retase-settings"
 import { useRetaseTransactions } from "./hooks/use-retase-transactions"
 import { RetasePendingTab } from "./components/retase-pending-tab"
 import { RetaseConfirmedTab } from "./components/retase-confirmed-tab"
 import { RetaseSettingsTab } from "./components/retase-settings-tab"
+import { RetaseKopTab } from "./components/retase-kop-tab"
 import { RetaseDialogs } from "./components/retase-dialogs"
+import { RetaseEditModal } from "./components/retase-edit-modal"
 import { RetaseClientProps } from "./types"
 
 export function RetaseClient({
@@ -21,7 +23,9 @@ export function RetaseClient({
     locations,
     userRole,
     customers,
+    productionMasters,
     canConfirm = true,
+    canEdit = true,
     canDelete = true,
     canManageSettings = true,
 }: RetaseClientProps) {
@@ -44,7 +48,7 @@ export function RetaseClient({
         <div className="space-y-6">
             <Tabs defaultValue="pending">
                 <TabsList
-                    className={`grid w-full ${canManageSettings ? "grid-cols-4 max-w-3xl" : "grid-cols-3 max-w-2xl"
+                    className={`grid w-full ${canManageSettings ? "grid-cols-5 max-w-4xl" : "grid-cols-3 max-w-2xl"
                         } mb-6`}
                 >
                     <TabsTrigger value="pending" className="flex items-center gap-1.5 text-xs">
@@ -65,6 +69,12 @@ export function RetaseClient({
                             <span>Pengaturan Tarif</span>
                         </TabsTrigger>
                     )}
+                    {canManageSettings && (
+                        <TabsTrigger value="kop" className="flex items-center gap-1.5 text-xs">
+                            <Building2 className="w-3.5 h-3.5" />
+                            <span>Kop Surat & Logo</span>
+                        </TabsTrigger>
+                    )}
                 </TabsList>
 
                 {/* ── TAB 1: RETASE MIXER (PENDING) ── */}
@@ -73,7 +83,11 @@ export function RetaseClient({
                         pendingTransactions={pendingTransactions}
                         isCorporate={isCorporate}
                         canConfirm={canConfirm}
+                        canEdit={canEdit}
+                        canDelete={canDelete}
                         onOpenConfirm={tx.handleOpenConfirm}
+                        onOpenEdit={tx.handleOpenEdit}
+                        onDeleteRequest={(id) => tx.setDeleteId(id)}
                     />
                 </TabsContent>
 
@@ -82,6 +96,7 @@ export function RetaseClient({
                     <RetaseConfirmedTab
                         filteredConfirmed={tx.filteredConfirmed}
                         isCorporate={isCorporate}
+                        canEdit={canEdit}
                         canDelete={canDelete}
                         locations={locations}
                         filterCabang={tx.filterCabang}
@@ -95,6 +110,7 @@ export function RetaseClient({
                             tx.setFilterCabang("all")
                             tx.setFilterCustomer("all")
                         }}
+                        onOpenEdit={tx.handleOpenEdit}
                         onDeleteRequest={(id) => tx.setDeleteId(id)}
                     />
                 </TabsContent>
@@ -142,6 +158,16 @@ export function RetaseClient({
                         />
                     </TabsContent>
                 )}
+
+                {/* ── TAB 5: PENGATURAN KOP SURAT & LOGO ── */}
+                {canManageSettings && (
+                    <TabsContent value="kop" className="space-y-4">
+                        <RetaseKopTab
+                            userRole={userRole}
+                            locations={locations}
+                        />
+                    </TabsContent>
+                )}
             </Tabs>
 
             {/* Modal Dialogs (Confirmation, Deletion, Backdate Alerts) */}
@@ -173,6 +199,14 @@ export function RetaseClient({
                 operatorEffectiveDate={st.operatorEffectiveDate}
                 isSavingOperator={st.isSavingOperator}
                 onExecuteSaveOperator={st.executeSaveOperator}
+            />
+
+            {/* Modal Edit Transaksi Produksi / Tiket Cor */}
+            <RetaseEditModal
+                isOpen={!!tx.editingTx}
+                onClose={tx.handleCloseEdit}
+                transaction={tx.editingTx}
+                productionMasters={productionMasters}
             />
         </div>
     )

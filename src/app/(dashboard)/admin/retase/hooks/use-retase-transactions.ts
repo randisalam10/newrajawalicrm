@@ -21,6 +21,9 @@ export function useRetaseTransactions({
     // Delete State
     const [deleteId, setDeleteId] = useState<string | null>(null)
 
+    // Edit State
+    const [editingTx, setEditingTx] = useState<any | null>(null)
+
     // Filter for Confirmed tab
     const [filterCabang, setFilterCabang] = useState("all")
     const [filterCustomer, setFilterCustomer] = useState("all")
@@ -84,6 +87,14 @@ export function useRetaseTransactions({
         }
     }
 
+    const handleOpenEdit = (t: any) => {
+        setEditingTx(t)
+    }
+
+    const handleCloseEdit = () => {
+        setEditingTx(null)
+    }
+
     return {
         isConfirming,
         setIsConfirming,
@@ -92,6 +103,10 @@ export function useRetaseTransactions({
         isLoading,
         deleteId,
         setDeleteId,
+        editingTx,
+        setEditingTx,
+        handleOpenEdit,
+        handleCloseEdit,
         filterCabang,
         setFilterCabang,
         filterCustomer,
@@ -105,3 +120,4 @@ export function useRetaseTransactions({
         handleDelete,
     }
 }
+

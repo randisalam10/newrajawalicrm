@@ -37,6 +37,9 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
     const [currentKm, setCurrentKm] = useState("")
     const [lastMeter, setLastMeter] = useState<number | null>(null)
     const [notes, setNotes] = useState("")
+    const [fuelSource, setFuelSource] = useState<"NON_RBL" | "RBL">("NON_RBL")
+    const [costPerLiter, setCostPerLiter] = useState<string>("")
+    const [totalCost, setTotalCost] = useState<string>("")
 
     // Group vehicles into heavy equipment vs dump trucks
     const { heavyEquipments, dumpTrucks } = useMemo(() => {
@@ -139,20 +142,29 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
 
         startTransition(async () => {
             try {
+                const litersNum = Number(liters)
+                const cplNum = costPerLiter ? Number(costPerLiter) : 0
+                const totNum = totalCost ? Number(totalCost) : (litersNum * cplNum)
+
                 await addCrusherFuelLog(reportTarget, {
                     unit_name: unitName.trim(),
                     unit_category: unitCategory,
                     vehicleId: selectedVehicleId || undefined,
-                    liters: Number(liters),
+                    liters: litersNum,
                     current_hm: currentHm ? Number(currentHm) : undefined,
                     current_km: currentKm ? Number(currentKm) : undefined,
                     notes: notes.trim() || undefined,
+                    fuel_source: fuelSource,
+                    cost_per_liter: cplNum,
+                    total_cost: totNum,
                 })
                 toast.success(`BBM solar ${unitName} (${liters} L) berhasil dicatat`)
                 setUnitName("")
                 setLiters("")
                 setCurrentHm("")
                 setCurrentKm("")
+                setCostPerLiter("")
+                setTotalCost("")
                 setNotes("")
                 setSelectedVehicleId("")
                 setLastMeter(null)
@@ -256,8 +268,62 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                                 inputMode="numeric"
                                 placeholder="e.g. 50"
                                 value={liters}
-                                onChange={(e) => setLiters(e.target.value)}
+                                onChange={(e) => {
+                                    const val = e.target.value
+                                    setLiters(val)
+                                    if (costPerLiter && val) {
+                                        setTotalCost(String(Math.round(Number(val) * Number(costPerLiter))))
+                                    }
+                                }}
                                 className="h-9 text-xs bg-white dark:bg-slate-900 font-bold text-amber-700 dark:text-amber-400"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Sumber BBM & Harga Manual */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-slate-200 dark:border-slate-700">
+                        <div className="space-y-1">
+                            <Label className="text-xs font-medium">Sumber BBM</Label>
+                            <Select value={fuelSource} onValueChange={(val: any) => setFuelSource(val)}>
+                                <SelectTrigger className="h-9 text-xs bg-white dark:bg-slate-900 font-semibold">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="NON_RBL">Non-RBL (Tangki Duduk / Vendor)</SelectItem>
+                                    <SelectItem value="RBL">RBL (Kas Kecil Cabang)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                            <Label className="text-xs font-medium">Harga per Liter (Rp - Manual)</Label>
+                            <Input
+                                type="number"
+                                step="100"
+                                inputMode="numeric"
+                                placeholder="e.g. 13500 (Free Input)"
+                                value={costPerLiter}
+                                onChange={(e) => {
+                                    const val = e.target.value
+                                    setCostPerLiter(val)
+                                    if (liters && val) {
+                                        setTotalCost(String(Math.round(Number(liters) * Number(val))))
+                                    }
+                                }}
+                                className="h-9 text-xs bg-white dark:bg-slate-900 font-mono"
+                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <Label className="text-xs font-medium">Total Biaya (Rp)</Label>
+                            <Input
+                                type="number"
+                                step="1000"
+                                inputMode="numeric"
+                                placeholder="Total Biaya"
+                                value={totalCost}
+                                onChange={(e) => setTotalCost(e.target.value)}
+                                className="h-9 text-xs bg-white dark:bg-slate-900 font-mono font-semibold"
                             />
                         </div>
                     </div>
@@ -374,8 +440,13 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                                         </span>
                                     </div>
                                     <div className="text-[11px] text-slate-500 flex flex-wrap gap-x-2.5 gap-y-0.5 mt-0.5">
-                                        {f.current_hm ? <span>HM Pengisian: <b>{formatNumber(f.current_hm, 1)}</b></span> : null}
-                                        {f.current_km ? <span>KM Pengisian: <b>{formatNumber(f.current_km, 0)}</b></span> : null}
+                                        <span className="font-semibold text-slate-700 dark:text-slate-300">
+                                            {f.fuel_source === "RBL" ? "Kas RBL" : "Non-RBL"}
+                                        </span>
+                                        {f.cost_per_liter ? <span>@ Rp {formatNumber(f.cost_per_liter, 0)}/L</span> : null}
+                                        {f.total_cost ? <span className="font-mono text-slate-700 dark:text-slate-300 font-semibold">(Rp {formatNumber(f.total_cost, 0)})</span> : null}
+                                        {f.current_hm ? <span>HM: <b>{formatNumber(f.current_hm, 1)}</b></span> : null}
+                                        {f.current_km ? <span>KM: <b>{formatNumber(f.current_km, 0)}</b></span> : null}
                                         {f.notes ? <span>• {f.notes}</span> : null}
                                     </div>
                                 </div>

@@ -49,7 +49,7 @@ export function useRetaseSettings({
 
     // 1. Mixer Retase State
     const [mixerPrice, setMixerPrice] = useState(initialMixerPrice)
-    const [mixerCalcMode, setMixerCalcMode] = useState<"DISTANCE_ONLY" | "DISTANCE_AND_VOLUME">(
+    const [mixerCalcMode, setMixerCalcMode] = useState<"DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP">(
         initialSetting?.calculation_mode || "DISTANCE_ONLY"
     )
     const [mixerApplyScope, setMixerApplyScope] = useState<"FUTURE" | "BACKDATE">("FUTURE")
@@ -71,12 +71,23 @@ export function useRetaseSettings({
         const mixerRate = resolveRate(val, "SOPIR_MIXER", 0)
         const opRate = resolveRate(val, "OPERATOR_BP", 0)
 
+        // Find master incentive rate item for formula
+        const activeMixerMaster = (masterIncentives || []).find(
+            (r: any) => r.kategori_peran === "SOPIR_MIXER" && (r.locationId === val || !r.locationId) && r.isActive
+        )
+        const masterMode: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP" = 
+            activeMixerMaster?.formula_type === "PER_TRIP"
+                ? "PER_TRIP"
+                : activeMixerMaster?.formula_type === "PER_M3_KM"
+                    ? "DISTANCE_AND_VOLUME"
+                    : "DISTANCE_ONLY"
+
         if (existing && Number(existing.price_per_cubic_km) > 0) {
             setMixerPrice(String(existing.price_per_cubic_km))
-            setMixerCalcMode(existing.calculation_mode || "DISTANCE_ONLY")
+            setMixerCalcMode(existing.calculation_mode || masterMode)
         } else {
             setMixerPrice(String(mixerRate))
-            setMixerCalcMode("DISTANCE_ONLY")
+            setMixerCalcMode(masterMode)
         }
 
         if (existing && Number(existing.operator_rate_per_cubic) > 0) {

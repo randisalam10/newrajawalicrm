@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission, resolveTargetLocationId } from "@/lib/rbac"
 
 const workItemSchema = z.object({
     id: z.string().optional(),
@@ -14,22 +14,14 @@ const workItemSchema = z.object({
 
 function canManageWorkItem(user: any) {
     if (!user) return false
-    if (user.role === "SuperAdminBP") return true
-    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    const perms: string[] = user.permissions || []
-    return user.role === "AdminBP" || perms.includes("ITEM_PEKERJAAN_CREATE") || perms.includes("ITEM_PEKERJAAN_EDIT")
+    return hasPermission(user, "ITEM_PEKERJAAN", "CREATE") || hasPermission(user, "ITEM_PEKERJAAN", "EDIT")
 }
 
 export async function getWorkItems() {
     const session = await auth()
     if (!session?.user) return []
 
-    const userRole = session.user.role || ""
-    const perms: string[] = session.user.permissions || []
-    const canView = userRole === "SuperAdminBP" ||
-        perms.includes("ITEM_PEKERJAAN_VIEW") ||
-        (["AdminBP", "CEO", "FVP"].includes(userRole) && userRole !== "AdminLogistik")
-
+    const canView = hasPermission(session.user, "ITEM_PEKERJAAN", "VIEW")
     if (!canView) return []
 
     const isCorp = isCorporateUser(session.user)
@@ -56,10 +48,12 @@ export async function createWorkItem(formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
-
-        if (!finalLocationId) return { success: false, error: "Location is required" }
+        let finalLocationId: string
+        try {
+            finalLocationId = resolveTargetLocationId(session.user, parsed.data.locationId)
+        } catch (locErr: any) {
+            return { success: false, error: locErr.message || "Location is required" }
+        }
 
         const { locationId, ...insertData } = parsed.data
 
@@ -93,14 +87,14 @@ export async function updateWorkItem(id: string, formData: FormData) {
     }
 
     try {
-        const isSuperAdmin = session.user.role === 'SuperAdminBP'
+        const isCorp = isCorporateUser(session.user)
         const existing = await prisma.workItem.findUnique({ where: { id } })
 
-        if (!isSuperAdmin && existing?.locationId !== session.user.locationId) {
+        if (!isCorp && existing?.locationId !== session.user.locationId) {
             return { success: false, error: "Unauthorized" }
         }
 
-        const finalLocationId = isSuperAdmin && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
+        const finalLocationId = isCorp && parsed.data.locationId ? parsed.data.locationId : existing?.locationId
 
         if (!finalLocationId) return { success: false, error: "Location is required" }
 

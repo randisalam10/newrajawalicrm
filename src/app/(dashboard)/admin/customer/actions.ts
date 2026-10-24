@@ -5,13 +5,10 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
-import { hasPermission } from "@/lib/rbac"
+import { hasPermission, isCorporateUser, resolveTargetLocationId } from "@/lib/rbac"
 
 function isCorporate(session: any): boolean {
-    if (!session?.user) return false
-    const role = session.user.role || ""
-    const scope = session.user.roleScope || ""
-    return role === "SuperAdminBP" || scope === "ALL_BRANCHES" || ["CEO", "FVP", "Approver"].includes(role)
+    return isCorporateUser(session?.user)
 }
 
 async function canManageCustomer(
@@ -19,39 +16,7 @@ async function canManageCustomer(
     action: "CREATE" | "EDIT" | "DELETE" = "CREATE"
 ): Promise<boolean> {
     if (!session?.user) return false
-    const user = session.user
-    const role = user.role || ""
-    if (["CEO", "FVP", "Approver"].includes(role)) return false
-    if (role === "SuperAdminBP" || role === "AdminBP") return true
-
-    // 1. Cek permission dari token session
-    if (hasPermission(user, "CUSTOMER", action)) return true
-
-    // 2. Real-time check dari database (mencegah isu token session belum ter-refresh)
-    if (user.id) {
-        try {
-            const dbUser = await prisma.user.findUnique({
-                where: { id: user.id },
-                select: {
-                    role: true,
-                    roleRef: {
-                        include: {
-                            permissions: {
-                                include: { permission: true }
-                            }
-                        }
-                    }
-                }
-            })
-            if (dbUser?.role === "SuperAdminBP" || dbUser?.role === "AdminBP") return true
-            const dbPerms = dbUser?.roleRef?.permissions.map(p => p.permission.code) || []
-            if (dbPerms.includes(`CUSTOMER_${action.toUpperCase()}`)) return true
-        } catch (e) {
-            console.error("Error checking permissions from DB:", e)
-        }
-    }
-
-    return false
+    return hasPermission(session.user, "CUSTOMER", action)
 }
 
 const projectSchema = z.object({
@@ -118,11 +83,11 @@ export async function createCustomer(formData: FormData) {
     }
 
     try {
-        const canManageAll = isCorporate(session)
-        const finalLocationId = canManageAll && parsed.data.locationId ? parsed.data.locationId : session.user.locationId
-
-        if (!finalLocationId) {
-            return { success: false, error: "Cabang (Lokasi) wajib dipilih." }
+        let finalLocationId: string
+        try {
+            finalLocationId = resolveTargetLocationId(session.user, parsed.data.locationId)
+        } catch (locErr: any) {
+            return { success: false, error: locErr.message || "Cabang (Lokasi) wajib dipilih." }
         }
 
         // Exclude locationId and sharedLocationIds from the actual insert data

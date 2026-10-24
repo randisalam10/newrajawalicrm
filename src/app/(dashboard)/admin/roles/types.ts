@@ -50,7 +50,8 @@ export const MODULE_GROUPS: ModuleGroupDef[] = [
             "SEWA",
             "MATERIAL_SEMEN",
             "MATERIAL_AGREGAT",
-            "MATERIAL_USAGE"
+            "MATERIAL_USAGE",
+            "FUEL"
         ]
     },
     {
@@ -127,6 +128,7 @@ export const MODULE_LABELS: Record<string, { title: string; desc: string }> = {
     MATERIAL_SEMEN: { title: "Semen Masuk & Stok", desc: "Pencatatan penerimaan semen masuk & monitoring kartu stok" },
     MATERIAL_AGREGAT: { title: "Material Agregat", desc: "Penerimaan pasir & batu split serta penyesuaian stok agregat" },
     MATERIAL_USAGE: { title: "Penggunaan Material", desc: "Monitoring rasio pemakaian aktual bahan baku terhadap rencana mutu" },
+    FUEL: { title: "Monitoring BBM Armada", desc: "Pencatatan konsumsi BBM solar armada (RBL maupun Non-RBL dengan harga manual) & pelacakan KM/HM" },
     CRUSHER: { title: "Stone Crusher (SC)", desc: "Dashboard SC, PO Crusher, jam mesin/downtime, BBM solar, material masuk & keluar, dan master quarry" },
     LOGISTIK: { title: "Logistik, PO & Perusahaan (KOP)", desc: "Pengadaan barang, Purchase Order (BP/SC), persetujuan direksi, master barang/supplier, dan otorisasi Daftar Perusahaan (KOP Surat)" },
     BILLING: { title: "Tagihan & Invoice", desc: "Pembuatan invoice, penerbitan, pencatatan pembayaran & saldo deposit" },

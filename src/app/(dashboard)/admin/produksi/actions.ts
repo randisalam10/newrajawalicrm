@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
+import { hasPermission, isCorporateUser, resolveTargetLocationId } from "@/lib/rbac"
 import { syncExistingRetaseSettingsToMasterIncentives } from "../master-insentif/actions"
 
 const productionSchema = z.object({
@@ -24,7 +25,7 @@ export async function getProductionMasters() {
     const session = await auth()
     if (!session?.user) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
 
-    const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ['CEO', 'FVP'].includes(session.user.role || '')
+    const isCorp = isCorporateUser(session.user)
     if (!session.user.employeeId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
     if (!session.user.locationId && !isCorp) return { projects: [], vehicles: [], drivers: [], qualities: [], workItems: [], operators: [] }
 
@@ -80,7 +81,7 @@ export async function getRecentProductions() {
     const session = await auth()
     if (!session?.user) return []
 
-    const isCorp = session.user.role === 'SuperAdminBP' || session.user.roleScope === 'ALL_BRANCHES' || ['CEO', 'FVP'].includes(session.user.role || '')
+    const isCorp = isCorporateUser(session.user)
     if (!session.user.employeeId && !isCorp) return []
     if (!session.user.locationId && !isCorp) return []
 
@@ -105,21 +106,27 @@ export async function createProduction(formData: FormData) {
     const session = await auth()
     if (!session?.user) return { success: false, error: "Unauthorized" }
 
-    // Enforce permission guard: FVP, CEO, Approver only have VIEW access
-    const canCreate = session.user.role === 'SuperAdminBP' ||
-        (session.user.permissions && session.user.permissions.includes('PRODUKSI_CREATE')) ||
-        ['OperatorBP', 'AdminBP'].includes(session.user.role)
+    // Enforce dynamic permission guard
+    const canCreate = hasPermission(session.user, "PRODUKSI", "CREATE")
 
     if (!canCreate) {
         return {
             success: false,
-            error: "Akses Ditolak: Akun Anda (" + session.user.role + ") hanya memiliki izin pemantauan (Hanya Lihat). Anda tidak diizinkan membuat transaksi produksi."
+            error: "Akses Ditolak: Akun Anda tidak memiliki izin [PRODUKSI_CREATE] untuk membuat transaksi produksi."
         }
     }
 
     const data = Object.fromEntries(formData.entries())
-    const locationId = session.user.role === 'SuperAdminBP' ? data.locationId as string : (session.user.locationId || data.locationId as string);
-    if (!locationId) return { success: false, error: "Location must be set to create production." }
+
+    // Strict location resolution:
+    // If corporate (ALL_BRANCHES): uses chosen branch
+    // If branch admin (OWN_BRANCH): strictly locks to user's assigned branch
+    let locationId: string
+    try {
+        locationId = resolveTargetLocationId(session.user, data.locationId as string)
+    } catch (locErr: any) {
+        return { success: false, error: locErr.message || "Lokasi cabang harus ditentukan." }
+    }
 
     const parsed = productionSchema.safeParse(data)
 
@@ -158,19 +165,26 @@ export async function createProduction(formData: FormData) {
         const dayStartUTC = new Date(localMidnightMs - WIB_OFFSET_MS) // UTC equivalent of WIB 00:00
         const dayEndUTC = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000 - 1) // WIB 23:59:59.999
 
-        // Query transaksi yang sudah ada di hari + project + mutu + lokasi yang sama
+        // Query transaksi yang sudah ada di hari + project + lokasi yang sama
+        // CATATAN: qualityId TIDAK dimasukkan ke filter agar urutan ritase TM
+        // (TM-1, TM-2, dst.) berjalan urut per proyek pengiriman harian, bukan di-reset per mutu beton.
         const existingTransactions = await prisma.productionTransaction.findMany({
             where: {
                 projectId,
-                qualityId,
                 locationId,                                   // scope per cabang
                 date: { gte: dayStartUTC, lte: dayEndUTC }   // scope per hari WIB
+            },
+            select: {
+                volume_cubic: true,
+                trip_sequence: true
             }
         })
 
-        const previousCumulative = existingTransactions.reduce((acc: number, t: any) => acc + t.volume_cubic, 0)
+        const previousCumulative = existingTransactions.reduce((acc: number, t: any) => acc + (t.volume_cubic ?? 0), 0)
         const newCumulative = previousCumulative + volume_cubic
-        const tripSequence = existingTransactions.length + 1  // TM-1, TM-2, dst. → reset tiap hari baru
+        // Cari urutan sequence tertinggi hari ini agar tidak bentrok atau menduplikasi TM jika ada transaksi terhapus
+        const maxSequence = existingTransactions.reduce((max: number, t: any) => Math.max(max, t.trip_sequence ?? 0), 0)
+        const tripSequence = maxSequence + 1  // TM-1, TM-2, dst. → urut per hari baru
 
         // Resolve Operator Batching Plant:
         let finalOperatorId = parsed.data.operatorId || null
@@ -189,6 +203,33 @@ export async function createProduction(formData: FormData) {
             }
         }
 
+        // Snapshot Kop Surat Cabang pada detik pembuatan Surat Jalan (Immutable Legal Document)
+        const location = await prisma.location.findUnique({
+            where: { id: locationId },
+            select: {
+                id: true,
+                name: true,
+                company_name: true,
+                company_sub: true,
+                address: true,
+                phone: true,
+                email: true,
+                logo_url: true,
+                kop_footer: true,
+            }
+        })
+
+        const kopSnapshot = location ? {
+            company_name: location.company_name || "PT. Rajawali Puncak Jayawijaya",
+            company_sub: location.company_sub || "Batching Plant & Beton Cor Readymix",
+            branch_name: location.name,
+            address: location.address || undefined,
+            phone: location.phone || undefined,
+            email: location.email || undefined,
+            logo_url: location.logo_url || undefined,
+            kop_footer: location.kop_footer || undefined,
+        } : null
+
         const transaction = await prisma.productionTransaction.create({
             data: {
                 date: transactionDate,
@@ -205,6 +246,7 @@ export async function createProduction(formData: FormData) {
                 // @ts-ignore
                 trip_sequence: tripSequence,
                 locationId,
+                kop_snapshot: kopSnapshot as any,
                 createdById: session.user.employeeId,
                 status: "Pending" // Will be confirmed in Phase 4
             },

@@ -13,6 +13,8 @@ declare module "next-auth" {
             permissions?: string[]
             employeeId: string
             locationId: string | null
+            locationType?: string | null
+            locationName?: string | null
         }
     }
 
@@ -26,6 +28,8 @@ declare module "next-auth" {
         permissions?: string[]
         employeeId: string
         locationId: string | null
+        locationType?: string | null
+        locationName?: string | null
     }
 }
 
@@ -40,5 +44,7 @@ declare module "next-auth/jwt" {
         permissions?: string[]
         employeeId: string
         locationId: string | null
+        locationType?: string | null
+        locationName?: string | null
     }
 }

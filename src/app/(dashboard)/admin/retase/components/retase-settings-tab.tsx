@@ -18,8 +18,8 @@ interface RetaseSettingsTabProps {
     // Mixer State
     mixerPrice: string
     onMixerPriceChange: (val: string) => void
-    mixerCalcMode: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME"
-    onMixerCalcModeChange: (val: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME") => void
+    mixerCalcMode: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP"
+    onMixerCalcModeChange: (val: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP") => void
     mixerApplyScope: "FUTURE" | "BACKDATE"
     onMixerApplyScopeChange: (val: "FUTURE" | "BACKDATE") => void
     mixerEffectiveDate: string
@@ -169,10 +169,11 @@ export function RetaseSettingsTab({
                     </CardHeader>
                     <CardContent className="pt-5">
                         <form onSubmit={onSaveMixer} className="space-y-5">
-                            {/* PILIHAN RUMUS PERHITUNGAN MIXER */}
+                            {/* PILIHAN RUMUS PERHITUNGAN MIXER (3 OPSI) */}
                             <div className="space-y-2.5">
                                 <Label className="font-semibold text-slate-800 text-xs">Metode & Rumus Perhitungan</Label>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                                    {/* Opsi 1: Jarak (KM) */}
                                     <div
                                         onClick={() => onMixerCalcModeChange("DISTANCE_ONLY")}
                                         className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
@@ -183,9 +184,8 @@ export function RetaseSettingsTab({
                                     >
                                         <div className="flex items-start justify-between">
                                             <div className="space-y-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-slate-900 text-xs">Harga × Jarak (KM)</span>
-                                                    <Badge className="bg-blue-600 text-white text-[9px] px-1 py-0">Default</Badge>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-bold text-slate-900 text-xs">Harga × KM</span>
                                                 </div>
                                                 <p className="text-[11px] text-slate-500 leading-tight">
                                                     Dihitung per kilometer jarak tempuh. Volume tidak mempengaruhi.
@@ -200,6 +200,7 @@ export function RetaseSettingsTab({
                                         </div>
                                     </div>
 
+                                    {/* Opsi 2: Jarak × M³ */}
                                     <div
                                         onClick={() => onMixerCalcModeChange("DISTANCE_AND_VOLUME")}
                                         className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
@@ -210,9 +211,8 @@ export function RetaseSettingsTab({
                                     >
                                         <div className="flex items-start justify-between">
                                             <div className="space-y-1">
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-slate-900 text-xs">Harga × Jarak × M³</span>
-                                                    <Badge variant="outline" className="text-[9px] text-slate-600 px-1 py-0">Rumus Lama</Badge>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-bold text-slate-900 text-xs">Harga × KM × M³</span>
                                                 </div>
                                                 <p className="text-[11px] text-slate-500 leading-tight">
                                                     Dihitung proporsional jarak tempuh dan kubikasi (Rp/M³/KM).
@@ -226,15 +226,45 @@ export function RetaseSettingsTab({
                                             />
                                         </div>
                                     </div>
+
+                                    {/* Opsi 3: Flat per 1x Jalan (Per Trip / Rit) */}
+                                    <div
+                                        onClick={() => onMixerCalcModeChange("PER_TRIP")}
+                                        className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                                            mixerCalcMode === "PER_TRIP"
+                                                ? "border-blue-600 bg-blue-50/60 shadow-sm ring-1 ring-blue-600"
+                                                : "border-slate-200 hover:border-slate-300 bg-white"
+                                        }`}
+                                    >
+                                        <div className="flex items-start justify-between">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="font-bold text-slate-900 text-xs">Per 1x Jalan</span>
+                                                    <Badge className="bg-emerald-600 text-white text-[8px] px-1 py-0">Flat/Trip</Badge>
+                                                </div>
+                                                <p className="text-[11px] text-slate-500 leading-tight">
+                                                    Flat per 1x kirim beton ke pelanggan (misal: Rp 30.000). Jarak & m³ tidak mempengaruhi.
+                                                </p>
+                                            </div>
+                                            <input
+                                                type="radio"
+                                                checked={mixerCalcMode === "PER_TRIP"}
+                                                onChange={() => onMixerCalcModeChange("PER_TRIP")}
+                                                className="mt-0.5 accent-blue-600"
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
                             {/* INPUT HARGA DASAR MIXER */}
                             <div className="space-y-1.5">
                                 <Label className="font-semibold text-slate-800 text-xs">
-                                    {mixerCalcMode === "DISTANCE_ONLY"
-                                        ? "Harga Dasar Retase per KM (Rp/KM) *"
-                                        : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
+                                    {mixerCalcMode === "PER_TRIP"
+                                        ? "Tarif Flat per 1x Pengiriman (Rp/Trip) *"
+                                        : mixerCalcMode === "DISTANCE_ONLY"
+                                            ? "Harga Dasar Retase per KM (Rp/KM) *"
+                                            : "Harga Dasar Retase per M³ per KM (Rp/M³/KM) *"}
                                 </Label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-2.5 text-sm font-semibold text-slate-400">Rp</span>
@@ -245,16 +275,24 @@ export function RetaseSettingsTab({
                                         step="any"
                                         value={mixerPrice}
                                         onChange={(e) => onMixerPriceChange(e.target.value)}
-                                        placeholder={mixerCalcMode === "DISTANCE_ONLY" ? "Misal: 10000" : "Misal: 1500"}
+                                        placeholder={
+                                            mixerCalcMode === "PER_TRIP"
+                                                ? "Misal: 30000"
+                                                : mixerCalcMode === "DISTANCE_ONLY"
+                                                    ? "Misal: 10000"
+                                                    : "Misal: 1500"
+                                        }
                                         className="pl-10 text-base font-semibold"
                                     />
                                 </div>
                                 <p className="text-[11px] text-slate-500">
                                     Rumus aktif:{" "}
                                     <span className="font-semibold text-slate-700">
-                                        {mixerCalcMode === "DISTANCE_ONLY"
-                                            ? "Jarak Tempuh (KM) × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")
-                                            : "Jarak (KM) × M³ × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")}
+                                        {mixerCalcMode === "PER_TRIP"
+                                            ? "1 Trip Pengiriman = Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")
+                                            : mixerCalcMode === "DISTANCE_ONLY"
+                                                ? "Jarak Tempuh (KM) × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")
+                                                : "Jarak (KM) × M³ × Rp " + (Number(mixerPrice) || 0).toLocaleString("id-ID")}
                                     </span>
                                 </p>
                             </div>
@@ -263,20 +301,24 @@ export function RetaseSettingsTab({
                             <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-1.5">
                                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                                     <Calculator className="w-3.5 h-3.5 text-blue-600" />
-                                    Simulasi Live (Contoh: Jarak 10 KM, Muatan 7 M³)
+                                    Simulasi Live (Contoh Pengiriman Beton ke Pelanggan)
                                 </div>
                                 <div className="flex items-center justify-between pt-1">
                                     <span className="text-xs text-slate-600">
-                                        {mixerCalcMode === "DISTANCE_ONLY"
-                                            ? `10 KM × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`
-                                            : `10 KM × 7 M³ × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`}
+                                        {mixerCalcMode === "PER_TRIP"
+                                            ? `1x Pengiriman Beton = Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`
+                                            : mixerCalcMode === "DISTANCE_ONLY"
+                                                ? `10 KM × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`
+                                                : `10 KM × 7 M³ × Rp ${(Number(mixerPrice) || 0).toLocaleString("id-ID")}`}
                                     </span>
                                     <div className="text-sm font-black text-blue-700">
                                         Rp{" "}
                                         {(
-                                            mixerCalcMode === "DISTANCE_ONLY"
-                                                ? 10 * (Number(mixerPrice) || 0)
-                                                : 10 * 7 * (Number(mixerPrice) || 0)
+                                            mixerCalcMode === "PER_TRIP"
+                                                ? Number(mixerPrice) || 0
+                                                : mixerCalcMode === "DISTANCE_ONLY"
+                                                    ? 10 * (Number(mixerPrice) || 0)
+                                                    : 10 * 7 * (Number(mixerPrice) || 0)
                                         ).toLocaleString("id-ID")}
                                     </div>
                                 </div>

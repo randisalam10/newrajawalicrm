@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { isCorporateUser, getLocationFilter } from "@/lib/rbac"
+import { isCorporateUser, getLocationFilter, hasPermission, resolveTargetLocationId } from "@/lib/rbac"
 import { getMaterialPriceAtDate, simulatePriceAtDate } from "../master-material/actions"
 import { AGGREGATE_TYPE_TO_MATERIAL_CODE } from "./columns"
 
@@ -135,14 +135,11 @@ export async function createAggregateIncoming(formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "CREATE") && !hasPermission(session.user, "MATERIAL_AGREGAT", "CREATE")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mencatat material masuk.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        const targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         const rawData = {
             date: formData.get("date"),
@@ -274,14 +271,11 @@ export async function updateAggregateIncoming(id: string, formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "EDIT") && !hasPermission(session.user, "MATERIAL_AGREGAT", "EDIT")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mengupdate material masuk.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        const targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         const rawData = {
             date: formData.get("date"),
@@ -477,8 +471,8 @@ export async function deleteAggregateIncoming(id: string) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        if (!hasPermission(session.user, "MATERIAL", "DELETE") && !hasPermission(session.user, "MATERIAL_AGREGAT", "DELETE")) {
+            return { error: "Akses Ditolak: Anda tidak memiliki izin untuk menghapus data material." }
         }
 
         await prisma.aggregateIncoming.delete({ where: { id } })
@@ -522,14 +516,11 @@ export async function createAggregateOutgoing(formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "CREATE") && !hasPermission(session.user, "MATERIAL_AGREGAT", "CREATE")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mencatat material keluar.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        const targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         const rawData = {
             date: formData.get("date") as string,
@@ -671,14 +662,11 @@ export async function updateAggregateOutgoing(id: string, formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "EDIT") && !hasPermission(session.user, "MATERIAL_AGREGAT", "EDIT")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mengupdate material keluar.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        const targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        const targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         const rawData = {
             date: formData.get("date") as string,
@@ -820,8 +808,8 @@ export async function deleteAggregateOutgoing(id: string) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        if (!hasPermission(session.user, "MATERIAL", "DELETE") && !hasPermission(session.user, "MATERIAL_AGREGAT", "DELETE")) {
+            return { error: "Akses Ditolak: Anda tidak memiliki izin untuk menghapus data material." }
         }
 
         await prisma.aggregateOutgoing.delete({ where: { id } })

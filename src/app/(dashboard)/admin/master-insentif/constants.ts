@@ -65,3 +65,33 @@ export const FORMULA_TEMPLATES = [
         description: "Insentif bertingkat disesuaikan dengan jenis armada pengangkut agregat."
     },
 ] as const
+
+export function getFormulaOptionsForRole(roleCategory: string) {
+    if (roleCategory === "SOPIR_MIXER") {
+        return [
+            {
+                value: "PER_KM",
+                label: "Harga × Jarak (KM) - Rp/KM",
+                unit: "Rp / KM",
+                formula: "Jarak Tempuh (KM) × Tarif",
+                description: "Dihitung per kilometer jarak tempuh. Volume tidak mempengaruhi.",
+            },
+            {
+                value: "PER_M3_KM",
+                label: "Harga × Jarak × M³ - Rp/(m³·KM)",
+                unit: "Rp / (m³·KM)",
+                formula: "Volume (m³) × Jarak (KM) × Tarif",
+                description: "Dihitung proporsional jarak tempuh dan kubikasi.",
+            },
+            {
+                value: "PER_TRIP",
+                label: "Harga per 1x Jalan - Rp/Trip (Flat / Rit)",
+                unit: "Rp / Trip",
+                formula: "1 Pengiriman (Trip) × Tarif",
+                description: "Flat per 1x pengiriman beton ke pelanggan (misal: Rp 30.000). Jarak dan volume tidak mempengaruhi.",
+            },
+        ]
+    }
+    return FORMULA_TEMPLATES
+}
+

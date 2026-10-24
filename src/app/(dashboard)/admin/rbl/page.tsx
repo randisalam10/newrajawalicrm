@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { getActiveBudget, getBudgetHistory, getRblSummaryData, getRblCategories, getRblVehicles } from "./actions"
 import { getLocations } from "../cabang/actions"
 import { RblClient } from "./rbl-client"
-import { hasPermission } from "@/lib/rbac"
+import { hasPermission, isCorporateUser } from "@/lib/rbac"
 
 export const dynamic = "force-dynamic"
 
@@ -15,17 +15,13 @@ export default async function RblPage({
     const session = await auth()
     if (!session?.user) redirect("/login")
 
-    const canView = hasPermission(session.user, "RBL", "VIEW") ||
-        ["SuperAdminBP", "AdminBP", "AdminLogistik", "CEO", "FVP"].includes(session.user.role ?? "")
-
+    const canView = hasPermission(session.user, "RBL", "VIEW")
     if (!canView) {
         redirect("/admin")
     }
 
     const { locationId, year } = await searchParams
-    const isCorporate = session.user.role === "SuperAdminBP" ||
-        session.user.roleScope === "ALL_BRANCHES" ||
-        ["CEO", "FVP"].includes(session.user.role ?? "")
+    const isCorporate = isCorporateUser(session.user)
     const parsedYear = year ? parseInt(year) : new Date().getFullYear()
 
     // Corporate users can view all or specific branch; branch-scoped users locked to locationId
@@ -52,12 +48,11 @@ export default async function RblPage({
         : allLocations.filter(loc => loc.id === session.user.locationId)
 
     const user = session.user
-    const isSuperAdminBP = user.role === "SuperAdminBP"
-    const canCreate = isSuperAdminBP || hasPermission(user, "RBL", "CREATE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
-    const canEdit = isSuperAdminBP || hasPermission(user, "RBL", "EDIT") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
-    const canDelete = isSuperAdminBP || hasPermission(user, "RBL", "DELETE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
-    const canClose = isSuperAdminBP || hasPermission(user, "RBL", "CLOSE") || ["AdminBP", "AdminLogistik"].includes(user.role ?? "")
-    const canExport = isSuperAdminBP || hasPermission(user, "RBL", "EXPORT") || ["AdminBP", "AdminLogistik", "CEO", "FVP"].includes(user.role ?? "")
+    const canCreate = hasPermission(user, "RBL", "CREATE")
+    const canEdit = hasPermission(user, "RBL", "EDIT")
+    const canDelete = hasPermission(user, "RBL", "DELETE")
+    const canClose = hasPermission(user, "RBL", "CLOSE")
+    const canExport = hasPermission(user, "RBL", "EXPORT") || isCorporate
 
     return (
         <div className="space-y-6">

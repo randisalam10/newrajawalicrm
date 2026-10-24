@@ -6,20 +6,19 @@ import { auth } from "@/auth"
 import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 
+import { isCorporateUser, hasPermission, resolveTargetLocationId } from "@/lib/rbac"
+
 // ─── Helpers & Permission Guards ──────────────────────────────────────────────
 function isCorporateOrSuperAdmin(session: any): boolean {
-    if (!session?.user) return false
-    return session.user.role === "SuperAdminBP" ||
-        session.user.roleScope === "ALL_BRANCHES" ||
-        ["CEO", "FVP"].includes(session.user.role || "")
+    return isCorporateUser(session?.user)
 }
 
 function getTargetLocationId(session: any, requestedLocationId?: string): string {
-    const isCorp = isCorporateOrSuperAdmin(session)
-    if (isCorp && requestedLocationId && requestedLocationId !== "all") {
-        return requestedLocationId
+    try {
+        return resolveTargetLocationId(session?.user, requestedLocationId)
+    } catch {
+        return session?.user?.locationId || ""
     }
-    return session.user.locationId || ""
 }
 
 function getLocationCode(name: string): string {
@@ -43,6 +42,26 @@ export async function getRblVehicles() {
                     date: true,
                     itemDescription: true,
                     receiptNo: true
+                }
+            },
+            vehicleFuelLogs: {
+                orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+                take: 1,
+                select: {
+                    current_meter: true,
+                    date: true,
+                    fuel_source: true,
+                    receipt_no: true,
+                }
+            },
+            crusherFuelLogs: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: {
+                    current_hm: true,
+                    current_km: true,
+                    createdAt: true,
+                    unit_name: true,
                 }
             },
             poItems: {
@@ -72,6 +91,8 @@ export async function getRblVehicles() {
     return vehicles.map(v => {
         const lastRbl = v.rblExpenses[0]
         const lastPo = v.poItems?.[0]
+        const lastFuel = (v as any).vehicleFuelLogs?.[0]
+        const lastCrusher = (v as any).crusherFuelLogs?.[0]
 
         let rblKm: number | null = lastRbl?.kmMeter ?? null
         let rblDate: Date | null = lastRbl?.date ?? null
@@ -88,35 +109,34 @@ export async function getRblVehicles() {
             }
         }
 
+        let fuelKm: number | null = lastFuel?.current_meter ?? null
+        let fuelDate: Date | null = lastFuel?.date ?? null
+        let fuelDesc = lastFuel ? `BBM (${lastFuel.fuel_source}): ${lastFuel.receipt_no || 'Log BBM'}` : null
+
+        let crusherKm: number | null = lastCrusher?.current_hm ?? lastCrusher?.current_km ?? null
+        let crusherDate: Date | null = lastCrusher?.createdAt ?? null
+        let crusherDesc = lastCrusher ? `Crusher BBM: ${lastCrusher.unit_name || 'Alat'}` : null
+
+        // Tentukan kandidat meter tertinggi / teraktual
+        const candidates = [
+            { meter: rblKm, date: rblDate, desc: rblDesc, source: "RBL" as const },
+            { meter: poKm, date: poDate, desc: poDesc, source: "PO" as const },
+            { meter: fuelKm, date: fuelDate, desc: fuelDesc, source: "RBL" as const },
+            { meter: crusherKm, date: crusherDate, desc: crusherDesc, source: "RBL" as const },
+        ].filter(c => c.meter !== null && c.meter !== undefined && c.meter > 0)
+
         let lastKmMeter: number | null = null
         let lastKmDate: Date | null = null
         let lastKmDescription: string | null = null
         let lastKmSource: "RBL" | "PO" | null = null
 
-        if (rblKm !== null && poKm !== null) {
-            const rblTime = rblDate ? new Date(rblDate).getTime() : 0
-            const poTime = poDate ? new Date(poDate).getTime() : 0
-            if (poTime >= rblTime || poKm > rblKm) {
-                lastKmMeter = Math.max(poKm, rblKm)
-                lastKmDate = poTime >= rblTime ? poDate : rblDate
-                lastKmDescription = poTime >= rblTime ? poDesc : rblDesc
-                lastKmSource = poKm >= rblKm ? "PO" : "RBL"
-            } else {
-                lastKmMeter = rblKm
-                lastKmDate = rblDate
-                lastKmDescription = rblDesc
-                lastKmSource = "RBL"
-            }
-        } else if (poKm !== null) {
-            lastKmMeter = poKm
-            lastKmDate = poDate
-            lastKmDescription = poDesc
-            lastKmSource = "PO"
-        } else if (rblKm !== null) {
-            lastKmMeter = rblKm
-            lastKmDate = rblDate
-            lastKmDescription = rblDesc
-            lastKmSource = "RBL"
+        if (candidates.length > 0) {
+            // Sort kandidat berdasarkan meter terbesar (untuk mencegah backdate)
+            candidates.sort((a, b) => (b.meter || 0) - (a.meter || 0))
+            lastKmMeter = candidates[0].meter
+            lastKmDate = candidates[0].date
+            lastKmDescription = candidates[0].desc
+            lastKmSource = candidates[0].source
         }
 
         return {
@@ -1336,16 +1356,75 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         console.error("Failed to fetch sewaTransactions for vehicle report:", e)
     }
 
-    // 7. Aggregate per vehicle
+    // 7. Fetch VehicleFuelLogs (BBM Universal & Non-RBL dengan Harga Manual)
+    const fuelWhere: any = {
+        vehicleId: { in: vehicleIds },
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        fuelWhere.date = dateWhere
+    }
+    let vehicleFuelLogs: any[] = []
+    try {
+        vehicleFuelLogs = await prisma.vehicleFuelLog.findMany({
+            where: fuelWhere,
+            include: {
+                driver: { select: { id: true, name: true } },
+                location: { select: { id: true, name: true } },
+            },
+            orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        })
+    } catch (e) {
+        console.error("Failed to fetch vehicleFuelLogs for vehicle report:", e)
+    }
+
+    // 8. Fetch CrusherFuelLogs (BBM Stone Crusher)
+    const crusherFuelWhere: any = {
+        vehicleId: { in: vehicleIds },
+    }
+    if (Object.keys(dateWhere).length > 0) {
+        crusherFuelWhere.report = {
+            date: dateWhere,
+        }
+    }
+    let crusherFuelLogs: any[] = []
+    try {
+        crusherFuelLogs = await prisma.crusherFuelLog.findMany({
+            where: crusherFuelWhere,
+            include: {
+                report: {
+                    select: {
+                        date: true,
+                        location: { select: { id: true, name: true } },
+                    },
+                },
+            },
+            orderBy: { createdAt: "desc" },
+        })
+    } catch (e) {
+        console.error("Failed to fetch crusherFuelLogs for vehicle report:", e)
+    }
+
+    // 9. Aggregate per vehicle
     const vehicleAnalytics = vehicles.map(veh => {
         const vehExpenses = expenses.filter(e => e.vehicleId === veh.id)
         const vehTransactions = transactions.filter(t => t.vehicleId === veh.id)
         const vehPoItems = poItems.filter(p => p.vehicleId === veh.id)
         const vehSewaTransactions = sewaTransactions.filter(s => s.vehicleId === veh.id)
+        const vehFuelLogs = vehicleFuelLogs.filter(f => f.vehicleId === veh.id)
+        const vehCrusherFuelLogs = crusherFuelLogs.filter(c => c.vehicleId === veh.id)
 
-        // RBL Costs Breakdown
+        // Set linked RBL IDs to prevent double counting
+        const linkedRblIds = new Set<string>()
+        vehFuelLogs.forEach(f => { if (f.rblExpenseId) linkedRblIds.add(f.rblExpenseId) })
+        vehCrusherFuelLogs.forEach(c => { if (c.rblExpenseId) linkedRblIds.add(c.rblExpenseId) })
+
+        // Costs Breakdown
         let fuelLiters = 0
         let fuelCost = 0
+        let nonRblFuelLiters = 0
+        let nonRblFuelCost = 0
+        let rblFuelLiters = 0
+        let rblFuelCost = 0
         let lubricantQty = 0
         let lubricantCost = 0
         let otherCost = 0
@@ -1354,26 +1433,78 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         let minKm: number | null = null
         let maxKm: number | null = null
 
+        // 1. RBL Expenses
         for (const e of vehExpenses) {
             rblTotalCost += e.amount || 0
             const catName = (e.category || "").toLowerCase()
-            if (catName.includes("bbm") || catName.includes("solar") || catName.includes("bakar")) {
-                fuelLiters += e.quantity || 0
-                fuelCost += e.amount || 0
-            } else if (catName.includes("oli") || catName.includes("pelumas")) {
+            const isFuel = catName.includes("bbm") || catName.includes("solar") || catName.includes("bakar")
+            const isLubricant = catName.includes("oli") || catName.includes("pelumas")
+
+            if (isFuel) {
+                // Anti-Double Count: jika pengeluaran ini sudah terhubung ke VehicleFuelLog, jangan dihitung 2x
+                if (!linkedRblIds.has(e.id)) {
+                    fuelLiters += e.quantity || 0
+                    fuelCost += e.amount || 0
+                    rblFuelLiters += e.quantity || 0
+                    rblFuelCost += e.amount || 0
+                }
+            } else if (isLubricant) {
                 lubricantQty += e.quantity || 0
                 lubricantCost += e.amount || 0
             } else {
                 otherCost += e.amount || 0
             }
 
-            if (e.kmMeter !== null && e.kmMeter !== undefined) {
+            if (e.kmMeter !== null && e.kmMeter !== undefined && e.kmMeter > 0) {
                 if (minKm === null || e.kmMeter < minKm) minKm = e.kmMeter
                 if (maxKm === null || e.kmMeter > maxKm) maxKm = e.kmMeter
             }
         }
 
-        // PO Sparepart & Equipment Costs Breakdown & Meter Synchronization
+        // 2. Vehicle Fuel Logs (Plant / Universal Non-RBL & RBL dengan Harga Manual)
+        for (const f of vehFuelLogs) {
+            const fLiters = f.liters || 0
+            const fCost = f.total_cost || 0
+            fuelLiters += fLiters
+            fuelCost += fCost
+
+            if (f.fuel_source === "RBL") {
+                rblFuelLiters += fLiters
+                rblFuelCost += fCost
+            } else {
+                nonRblFuelLiters += fLiters
+                nonRblFuelCost += fCost
+            }
+
+            if (f.current_meter !== null && f.current_meter !== undefined && f.current_meter > 0) {
+                if (minKm === null || f.current_meter < minKm) minKm = f.current_meter
+                if (maxKm === null || f.current_meter > maxKm) maxKm = f.current_meter
+            }
+        }
+
+        // 3. Stone Crusher Fuel Logs
+        for (const c of vehCrusherFuelLogs) {
+            const cLiters = c.liters || 0
+            const cCost = c.total_cost || ((c.cost_per_liter || 0) * cLiters)
+            fuelLiters += cLiters
+            fuelCost += cCost
+
+            if (c.fuel_source === "RBL") {
+                rblFuelLiters += cLiters
+                rblFuelCost += cCost
+            } else {
+                nonRblFuelLiters += cLiters
+                nonRblFuelCost += cCost
+            }
+
+            const cMeter = c.current_hm || c.current_km
+            if (cMeter !== null && cMeter !== undefined && cMeter > 0) {
+                if (minKm === null || cMeter < minKm) minKm = cMeter
+                if (maxKm === null || cMeter > maxKm) maxKm = cMeter
+            }
+        }
+
+        // 4. PO Sparepart & Equipment Costs Breakdown & Meter Synchronization
         let sparepartCost = 0
         for (const p of vehPoItems) {
             const itemSubtotal = p.subtotal || ((p.harga_satuan || 0) * (p.quantity || 0))
@@ -1390,10 +1521,10 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             }
         }
 
-        // Unified Meter & Event Timeline for Vehicle Inspection (Audit Trail KM/HM)
+        // 5. Unified Meter & Event Timeline for Vehicle Inspection (Audit Trail KM/HM)
         const meterEvents: Array<{
             id: string
-            type: "RBL" | "PO"
+            type: "RBL" | "PO" | "NON_RBL" | "CRUSHER" | string
             date: Date | string
             meter: number
             description: string
@@ -1402,6 +1533,7 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             isBackdateAnomaly?: boolean
         }> = []
 
+        // Events dari RBL
         for (const e of vehExpenses) {
             if (e.kmMeter !== null && e.kmMeter !== undefined && e.kmMeter > 0) {
                 meterEvents.push({
@@ -1416,6 +1548,38 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             }
         }
 
+        // Events dari VehicleFuelLog (Non-RBL / RBL Plant)
+        for (const f of vehFuelLogs) {
+            if (f.current_meter !== null && f.current_meter !== undefined && f.current_meter > 0) {
+                meterEvents.push({
+                    id: `fuel_${f.id}`,
+                    type: f.fuel_source === "RBL" ? "RBL" : "NON_RBL",
+                    date: f.date,
+                    meter: f.current_meter,
+                    description: `BBM ${f.fuel_source === "RBL" ? "Kas RBL" : "Non-RBL"}: ${f.liters} L${f.cost_per_liter ? ` @ Rp ${f.cost_per_liter.toLocaleString("id-ID")}` : ""}${f.driver?.name ? ` (Driver: ${f.driver.name})` : ""}`,
+                    referenceNo: f.receipt_no || "LOG-BBM",
+                    amount: f.total_cost || 0,
+                })
+            }
+        }
+
+        // Events dari Stone Crusher Fuel Logs
+        for (const c of vehCrusherFuelLogs) {
+            const cMeter = c.current_hm || c.current_km
+            if (cMeter !== null && cMeter !== undefined && cMeter > 0) {
+                meterEvents.push({
+                    id: `crusher_fuel_${c.id}`,
+                    type: "CRUSHER",
+                    date: c.report?.date || c.createdAt,
+                    meter: cMeter,
+                    description: `BBM Crusher (${c.fuel_source || "Non-RBL"}): ${c.liters} L${c.cost_per_liter ? ` @ Rp ${c.cost_per_liter.toLocaleString("id-ID")}` : ""}${c.unit_name ? ` [${c.unit_name}]` : ""}`,
+                    referenceNo: c.report?.location?.name ? `Crusher ${c.report.location.name}` : "CRUSHER-SOLAR",
+                    amount: c.total_cost || 0,
+                })
+            }
+        }
+
+        // Events dari PO
         for (const p of vehPoItems) {
             const rawMeter = p.km_hm || p.purchaseOrder?.km_hm_kendaraan
             if (rawMeter) {
@@ -1439,7 +1603,7 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         // Sort meter events chronologically (date ascending)
         meterEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-        // Check for backdate anomalies (where a later date has a smaller meter)
+        // Check for backdate anomalies
         let runningMaxMeter = 0
         for (const evt of meterEvents) {
             if (runningMaxMeter > 0 && evt.meter < runningMaxMeter) {
@@ -1449,8 +1613,8 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             }
         }
 
-        // Grand Total Cost (Total Cost of Ownership = RBL Operasional + PO Sparepart/Alat)
-        const grandTotalCost = rblTotalCost + sparepartCost
+        // Grand Total Cost (Total Cost of Ownership = RBL Operasional + PO Sparepart + Non-RBL Fuel Cost)
+        const grandTotalCost = rblTotalCost + sparepartCost + nonRblFuelCost
 
         // Sewa & Rental Revenue Breakdown
         let rentalRevenue = 0
@@ -1479,6 +1643,10 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
                 grandTotalCost,
                 fuelLiters,
                 fuelCost,
+                nonRblFuelLiters,
+                nonRblFuelCost,
+                rblFuelLiters,
+                rblFuelCost,
                 lubricantQty,
                 lubricantCost,
                 otherCost,
@@ -1504,6 +1672,8 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
             recentTransactions: (filters.vehicleId && filters.vehicleId !== "all") ? vehTransactions : vehTransactions.slice(0, 25),
             recentPoItems: (filters.vehicleId && filters.vehicleId !== "all") ? vehPoItems : vehPoItems.slice(0, 25),
             recentSewaTransactions: (filters.vehicleId && filters.vehicleId !== "all") ? vehSewaTransactions : vehSewaTransactions.slice(0, 25),
+            recentFuelLogs: vehFuelLogs,
+            recentCrusherFuelLogs: vehCrusherFuelLogs,
         }
     })
 
@@ -1515,6 +1685,10 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         grandTotalCost: vehicleAnalytics.reduce((s, v) => s + v.stats.grandTotalCost, 0),
         totalFuelLiters: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelLiters, 0),
         totalFuelCost: vehicleAnalytics.reduce((s, v) => s + v.stats.fuelCost, 0),
+        totalNonRblFuelLiters: vehicleAnalytics.reduce((s, v) => s + (v.stats.nonRblFuelLiters || 0), 0),
+        totalNonRblFuelCost: vehicleAnalytics.reduce((s, v) => s + (v.stats.nonRblFuelCost || 0), 0),
+        totalRblFuelLiters: vehicleAnalytics.reduce((s, v) => s + (v.stats.rblFuelLiters || 0), 0),
+        totalRblFuelCost: vehicleAnalytics.reduce((s, v) => s + (v.stats.rblFuelCost || 0), 0),
         totalTrips: vehicleAnalytics.reduce((s, v) => s + v.stats.totalTrips, 0),
         totalVolume: vehicleAnalytics.reduce((s, v) => s + v.stats.totalVolume, 0),
         totalPoItems: poItems.length,
@@ -1532,6 +1706,8 @@ export async function getVehicleReportData(filters: VehicleReportFilters = {}) {
         allTransactions: transactions,
         allPoItems: poItems,
         allSewaTransactions: sewaTransactions,
+        allFuelLogs: vehicleFuelLogs,
+        allCrusherFuelLogs: crusherFuelLogs,
         vehicles,
     }
 }

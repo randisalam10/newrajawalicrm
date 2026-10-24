@@ -22,13 +22,10 @@ export default async function RetaseCrusherPage(props: {
     const permissions = session.user.permissions || []
 
     const hasAccess =
-        ["SuperAdminBP", "AdminBP", "CEO", "FVP", "Finance"].includes(userRole) ||
+        ["SuperAdminBP", "CEO", "FVP", "Finance"].includes(userRole) ||
         permissions.some(
             (p) =>
-                p.startsWith("RETASE_") ||
-                p.startsWith("CRUSHER_") ||
-                p.startsWith("FINANCE_") ||
-                p.startsWith("REPORTS_")
+                p.startsWith("CRUSHER_")
         )
 
     if (!hasAccess) redirect("/admin")

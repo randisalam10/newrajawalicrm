@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
-import { MoreHorizontal, Printer, Edit, Trash2, ChevronsUpDown, Check } from "lucide-react"
+import { MoreHorizontal, Printer, Lock, Trash2, ChevronsUpDown, Check } from "lucide-react"
 import { format } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
 import { RetaseLocation } from "../types"
@@ -18,6 +18,7 @@ import { RetaseLocation } from "../types"
 interface RetaseConfirmedTabProps {
     filteredConfirmed: any[]
     isCorporate: boolean
+    canEdit?: boolean
     canDelete: boolean
     locations: RetaseLocation[]
     filterCabang: string
@@ -28,12 +29,14 @@ interface RetaseConfirmedTabProps {
     onCustomerPopoverOpenChange: (open: boolean) => void
     uniqueCustomers: Array<{ id: string; name: string }>
     onResetFilters: () => void
+    onOpenEdit?: (t: any) => void
     onDeleteRequest: (id: string) => void
 }
 
 export function RetaseConfirmedTab({
     filteredConfirmed,
     isCorporate,
+    canEdit = false,
     canDelete,
     locations,
     filterCabang,
@@ -44,6 +47,7 @@ export function RetaseConfirmedTab({
     onCustomerPopoverOpenChange,
     uniqueCustomers,
     onResetFilters,
+    onOpenEdit,
     onDeleteRequest,
 }: RetaseConfirmedTabProps) {
     return (
@@ -235,13 +239,16 @@ export function RetaseConfirmedTab({
                                                     <DropdownMenuItem onClick={() => window.open(`/print/produksi/${t.id}`, '_blank')} className="cursor-pointer">
                                                         <Printer className="mr-2 h-4 w-4" /> Cetak Surat Jalan
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem disabled>
-                                                        <Edit className="mr-2 h-4 w-4" /> Edit Transaksi
-                                                    </DropdownMenuItem>
-                                                    {canDelete && (
-                                                        <DropdownMenuItem onClick={() => onDeleteRequest(t.id)} className="text-red-600 focus:bg-red-50 cursor-pointer">
-                                                            <Trash2 className="mr-2 h-4 w-4" /> Hapus Transaksi (Log)
+                                                    {t.invoiceItem ? (
+                                                        <DropdownMenuItem disabled className="text-xs text-slate-400">
+                                                            <Lock className="mr-2 h-4 w-4 text-slate-400" /> Terkunci (Sudah Masuk Invoice)
                                                         </DropdownMenuItem>
+                                                    ) : (
+                                                        canDelete && (
+                                                            <DropdownMenuItem onClick={() => onDeleteRequest(t.id)} className="text-red-600 focus:bg-red-50 cursor-pointer">
+                                                                <Trash2 className="mr-2 h-4 w-4" /> Hapus Transaksi (Log)
+                                                            </DropdownMenuItem>
+                                                        )
                                                     )}
                                                 </DropdownMenuContent>
                                             </DropdownMenu>

@@ -148,7 +148,7 @@ export function VehicleDetailInspection({
                         </TabsTrigger>
                         <TabsTrigger value="meter" className="text-xs h-6 px-2.5 gap-1.5 data-[state=active]:bg-white data-[state=active]:shadow-2xs">
                             <Gauge className="h-3 w-3 text-slate-700" />
-                            <span>Audit Meter (RBL + PO) ({meterEvents?.length || 0})</span>
+                            <span>Audit Meter & Odometer ({meterEvents?.length || 0})</span>
                             {stats.hasBackdateAnomaly && (
                                 <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-100 text-rose-700 border border-rose-300 ml-1">
                                     Backdate!
@@ -551,10 +551,20 @@ export function VehicleDetailInspection({
                                                                 "inline-block px-1.5 py-0.2 rounded text-[10px] font-semibold border",
                                                                 evt.type === "RBL"
                                                                     ? "bg-amber-50 text-amber-800 border-amber-200"
-                                                                    : "bg-blue-50 text-blue-800 border-blue-200"
+                                                                    : evt.type === "NON_RBL"
+                                                                    ? "bg-sky-50 text-sky-800 border-sky-200"
+                                                                    : evt.type === "CRUSHER"
+                                                                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                                                                    : "bg-indigo-50 text-indigo-800 border-indigo-200"
                                                             )}
                                                         >
-                                                            {evt.type === "RBL" ? "RBL BBM/Operasional" : "PO Suku Cadang"}
+                                                            {evt.type === "RBL"
+                                                                ? "RBL Kas Kecil"
+                                                                : evt.type === "NON_RBL"
+                                                                ? "BBM Non-RBL"
+                                                                : evt.type === "CRUSHER"
+                                                                ? "BBM Stone Crusher"
+                                                                : "PO Suku Cadang"}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell className="font-mono text-slate-600 text-[11px] py-1">

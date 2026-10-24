@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { auth } from "@/auth"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
-import { isCorporateUser, getLocationFilter } from "@/lib/rbac"
+import { isCorporateUser, getLocationFilter, hasPermission, resolveTargetLocationId } from "@/lib/rbac"
 
 const incomingSchema = z.object({
     id: z.string().optional(),
@@ -68,14 +68,11 @@ export async function createIncomingMaterial(formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "CREATE") && !hasPermission(session.user, "MATERIAL_IN", "CREATE")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mencatat penerimaan material.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        let targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        let targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         let purchaseOrderId = (formData.get("purchaseOrderId") as string) || null
         let poItemId = (formData.get("poItemId") as string) || null
@@ -87,7 +84,9 @@ export async function createIncomingMaterial(formData: FormData) {
                 select: { id: true, locationId: true, items: { select: { id: true } } }
             })
             if (linkedPo) {
-                targetLocationId = linkedPo.locationId
+                if (linkedPo.locationId) {
+                    targetLocationId = linkedPo.locationId
+                }
                 if (!poItemId && linkedPo.items.length === 1) {
                     poItemId = linkedPo.items[0].id
                 }
@@ -143,14 +142,11 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            throw new Error("Akses Ditolak: Anda berada dalam mode pemantauan.")
+        if (!hasPermission(session.user, "MATERIAL", "EDIT") && !hasPermission(session.user, "MATERIAL_IN", "EDIT")) {
+            throw new Error("Akses Ditolak: Anda tidak memiliki izin untuk mengupdate penerimaan material.")
         }
 
-        const isCorp = isCorporateUser(session.user)
-        let targetLocationId = (isCorp || session.user.role === "SuperAdminBP")
-            ? (formData.get("locationId") as string)
-            : session.user.locationId
+        let targetLocationId = resolveTargetLocationId(session.user, formData.get("locationId") as string)
 
         let purchaseOrderId = (formData.get("purchaseOrderId") as string) || null
         let poItemId = (formData.get("poItemId") as string) || null
@@ -162,7 +158,9 @@ export async function updateIncomingMaterial(id: string, formData: FormData) {
                 select: { id: true, locationId: true, items: { select: { id: true } } }
             })
             if (linkedPo) {
-                targetLocationId = linkedPo.locationId
+                if (linkedPo.locationId) {
+                    targetLocationId = linkedPo.locationId
+                }
                 if (!poItemId && linkedPo.items.length === 1) {
                     poItemId = linkedPo.items[0].id
                 }
@@ -218,8 +216,8 @@ export async function deleteIncomingMaterial(id: string) {
         const session = await auth()
         if (!session?.user) throw new Error("Unauthorized")
 
-        if (["CEO", "FVP", "Approver"].includes(session.user.role || "")) {
-            return { error: "Akses Ditolak: Anda berada dalam mode pemantauan." }
+        if (!hasPermission(session.user, "MATERIAL", "DELETE") && !hasPermission(session.user, "MATERIAL_IN", "DELETE")) {
+            return { error: "Akses Ditolak: Anda tidak memiliki izin untuk menghapus data material." }
         }
 
         await prisma.materialIncoming.delete({ where: { id } })

@@ -38,7 +38,7 @@ interface RetaseDialogsProps {
     showMixerBackdateAlert: boolean
     onCloseMixerBackdateAlert: () => void
     mixerPrice: string
-    mixerCalcMode: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME"
+    mixerCalcMode: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP"
     mixerEffectiveDate: string
     isSavingMixer: boolean
     onExecuteSaveMixer: () => void
@@ -104,7 +104,11 @@ export function RetaseDialogs({
                         const dist = Number(distanceInput) || 0
                         const vol = selectedTx.volume_cubic || 0
                         const estimatedCommission =
-                            mode === "DISTANCE_ONLY" ? dist * unitPrice : dist * vol * unitPrice
+                            mode === "PER_TRIP"
+                                ? unitPrice
+                                : mode === "DISTANCE_ONLY"
+                                    ? dist * unitPrice
+                                    : dist * vol * unitPrice
 
                         return (
                             <div className="space-y-3 my-2">
@@ -144,16 +148,18 @@ export function RetaseDialogs({
                                     <div className="flex items-center justify-between">
                                         <span className="text-slate-500">Rumus Cabang:</span>
                                         <Badge variant="secondary" className="text-[11px] font-semibold">
-                                            {mode === "DISTANCE_ONLY"
-                                                ? "Jarak Saja (KM × Tarif)"
-                                                : "Jarak & Kubikasi (KM × M³ × Tarif)"}
+                                            {mode === "PER_TRIP"
+                                                ? "Per 1x Jalan (Flat per Trip)"
+                                                : mode === "DISTANCE_ONLY"
+                                                    ? "Jarak Saja (KM × Tarif)"
+                                                    : "Jarak & Kubikasi (KM × M³ × Tarif)"}
                                         </Badge>
                                     </div>
                                     <div className="flex items-center justify-between">
                                         <span className="text-slate-500">Tarif Dasar Cabang:</span>
                                         <span className="font-semibold text-slate-800">
                                             Rp {unitPrice.toLocaleString("id-ID")}{" "}
-                                            {mode === "DISTANCE_ONLY" ? "/ KM" : "/ M³ / KM"}
+                                            {mode === "PER_TRIP" ? "/ Trip" : mode === "DISTANCE_ONLY" ? "/ KM" : "/ M³ / KM"}
                                         </span>
                                     </div>
                                     <div className="flex items-center justify-between pt-1 border-t">
@@ -216,7 +222,7 @@ export function RetaseDialogs({
                         <DialogTitle className="text-slate-900">Konfirmasi Tanggal Berlaku Tarif Mixer</DialogTitle>
                         <DialogDescription className="text-sm text-slate-600 leading-relaxed pt-2">
                             Tarif Sopir Mixer <strong>Rp {Number(mixerPrice).toLocaleString("id-ID")}</strong>{" "}
-                            ({mixerCalcMode === "DISTANCE_ONLY" ? "Jarak Saja" : "Jarak & Kubikasi"}) akan mulai berlaku untuk pengiriman per tanggal{" "}
+                            ({mixerCalcMode === "PER_TRIP" ? "Flat per 1x Jalan" : mixerCalcMode === "DISTANCE_ONLY" ? "Jarak Saja" : "Jarak & Kubikasi"}) akan mulai berlaku untuk pengiriman per tanggal{" "}
                             <span className="font-bold text-slate-900">
                                 {mixerEffectiveDate ? format(new Date(mixerEffectiveDate), "dd MMMM yyyy", { locale: idLocale }) : "-"}
                             </span>{" "}

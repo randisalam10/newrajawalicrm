@@ -396,6 +396,10 @@ export async function addCrusherFuelLog(
         current_km?: number
         work_hours?: number
         notes?: string
+        fuel_source?: string
+        cost_per_liter?: number
+        total_cost?: number
+        rblExpenseId?: string
     }
 ) {
     const session = await auth()
@@ -416,22 +420,31 @@ export async function addCrusherFuelLog(
         throw new Error("Laporan harian tidak ditemukan atau lokasi belum dipilih")
     }
 
+    const liters = Number(item.liters) || 0
+    const costPerLiter = item.cost_per_liter !== undefined && item.cost_per_liter !== null ? Number(item.cost_per_liter) : 0
+    const totalCost = item.total_cost !== undefined && item.total_cost !== null ? Number(item.total_cost) : (liters * costPerLiter)
+
     await prisma.crusherFuelLog.create({
         data: {
             reportId: targetReportId,
             unit_name: item.unit_name,
             unit_category: item.unit_category,
             vehicleId: item.vehicleId || null,
-            liters: Number(item.liters) || 0,
+            liters,
             current_hm: item.current_hm ? Number(item.current_hm) : null,
             current_km: item.current_km ? Number(item.current_km) : null,
             work_hours: item.work_hours ? Number(item.work_hours) : null,
             notes: item.notes || null,
+            fuel_source: item.fuel_source || "NON_RBL",
+            cost_per_liter: costPerLiter,
+            total_cost: totalCost,
+            rblExpenseId: item.rblExpenseId || null,
         },
     })
 
     revalidatePath("/crusher")
     revalidatePath("/crusher/solar")
+    revalidatePath("/admin/reports/kendaraan")
     return { success: true }
 }
 

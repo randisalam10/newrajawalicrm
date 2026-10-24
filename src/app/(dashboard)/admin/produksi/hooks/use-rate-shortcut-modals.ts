@@ -110,7 +110,7 @@ export function useRateShortcutModals({
             id: mixerForm.id || undefined,
             nama_insentif: mixerForm.nama_insentif,
             kategori_peran: "SOPIR_MIXER",
-            formula_type: "PER_KM",
+            formula_type: activeMixerRateItem?.formula_type || "PER_KM",
             tarif_utama: Number(mixerForm.tarif_utama) || 0,
             tarif_sekunder: 0,
             locationId: activeLocId || null,

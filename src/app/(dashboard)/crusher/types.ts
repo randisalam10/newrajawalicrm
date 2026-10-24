@@ -19,6 +19,10 @@ export type CrusherFuelLogItem = {
     current_km?: number | null
     work_hours?: number | null
     notes?: string | null
+    fuel_source?: string | null
+    cost_per_liter?: number | null
+    total_cost?: number | null
+    rblExpenseId?: string | null
 }
 
 export type CrusherMaterialInItem = {

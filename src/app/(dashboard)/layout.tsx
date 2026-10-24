@@ -21,9 +21,13 @@ export default async function DashboardLayout({
         redirect("/login")
     }
 
-    // Fetch fresh user role & permissions from DB so sidebar is 100% real-time dynamic
+    // Fetch fresh user role, permissions, roleScope, and location context from DB so sidebar is 100% real-time dynamic
     let freshPermissions: string[] = session.user.permissions || []
     let userRole = session.user.role
+    let userRoleScope: "ALL_BRANCHES" | "OWN_BRANCH" | string = session.user.roleScope || (userRole === "SuperAdminBP" ? "ALL_BRANCHES" : "OWN_BRANCH")
+    let userLocationId = session.user.locationId || null
+    let userLocationType: string | null = null
+    let userLocationName: string | null = null
 
     if (session.user.id) {
         const dbUser = await prisma.user.findUnique({
@@ -31,9 +35,27 @@ export default async function DashboardLayout({
             select: {
                 role: true,
                 roleRef: {
-                    include: {
+                    select: {
+                        name: true,
+                        scope: true,
                         permissions: {
-                            include: { permission: true }
+                            select: {
+                                permission: {
+                                    select: { code: true }
+                                }
+                            }
+                        }
+                    }
+                },
+                employee: {
+                    select: {
+                        locationId: true,
+                        location: {
+                            select: {
+                                id: true,
+                                name: true,
+                                type: true
+                            }
                         }
                     }
                 }
@@ -42,8 +64,16 @@ export default async function DashboardLayout({
 
         if (dbUser) {
             userRole = dbUser.role
-            if (dbUser.roleRef?.permissions) {
-                freshPermissions = dbUser.roleRef.permissions.map(rp => rp.permission.code)
+            if (dbUser.roleRef) {
+                userRoleScope = dbUser.roleRef.scope
+                if (dbUser.roleRef.permissions) {
+                    freshPermissions = dbUser.roleRef.permissions.map(rp => rp.permission.code)
+                }
+            }
+            if (dbUser.employee?.location) {
+                userLocationId = dbUser.employee.location.id
+                userLocationType = dbUser.employee.location.type
+                userLocationName = dbUser.employee.location.name
             }
         }
     }
@@ -51,6 +81,10 @@ export default async function DashboardLayout({
     const userForSidebar = {
         ...session.user,
         role: userRole,
+        roleScope: userRoleScope as "ALL_BRANCHES" | "OWN_BRANCH",
+        locationId: userLocationId,
+        locationType: userLocationType,
+        locationName: userLocationName,
         permissions: freshPermissions
     }
 

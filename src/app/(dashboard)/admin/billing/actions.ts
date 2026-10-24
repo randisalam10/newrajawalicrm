@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { InvoiceStatus } from "@prisma/client"
-import { isCorporateUser } from "@/lib/rbac"
+import { isCorporateUser, hasPermission } from "@/lib/rbac"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -406,8 +406,8 @@ export async function createInvoice(params: {
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "CREATE"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin [BILLING_CREATE]." }
 
     try {
         // Fetch both Sewa and Production transactions (sorted ascending by date)
@@ -609,8 +609,8 @@ export async function recordPayment(params: {
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "CREATE") && !hasPermission(session.user, "BILLING", "EDIT"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin pencatatan pembayaran." }
 
     try {
         const invoice = await prisma.invoice.findUnique({ where: { id: params.invoiceId } })
@@ -670,8 +670,8 @@ export async function recordPayment(params: {
 export async function cancelPayment(paymentId: string, reason: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "DELETE") && !hasPermission(session.user, "BILLING", "EDIT"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin membatalkan pembayaran." }
     if (!reason.trim()) return { success: false, error: "Alasan cancel wajib diisi" }
 
     try {
@@ -728,8 +728,8 @@ export async function cancelPayment(paymentId: string, reason: string) {
 export async function cancelInvoice(invoiceId: string, reason: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "DELETE") && !hasPermission(session.user, "BILLING", "EDIT"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin membatalkan invoice." }
     if (!reason.trim()) return { success: false, error: "Alasan cancel wajib diisi" }
 
     try {
@@ -882,8 +882,8 @@ export async function addDeposit(params: {
 }) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "CREATE") && !hasPermission(session.user, "BILLING", "EDIT"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin menambah deposit." }
 
     try {
         await prisma.deposit.create({
@@ -911,8 +911,8 @@ export async function addDeposit(params: {
 export async function updatePaymentProof(paymentId: string, proofUrl: string) {
     const session = await auth()
     if (!session?.user?.employeeId) return { success: false, error: "Unauthorized" }
-    if (!["AdminBP", "SuperAdminBP"].includes(session.user.role ?? ""))
-        return { success: false, error: "Akses ditolak" }
+    if (!hasPermission(session.user, "BILLING", "EDIT"))
+        return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengupdate bukti bayar." }
 
     try {
         const payment = await prisma.payment.findUnique({

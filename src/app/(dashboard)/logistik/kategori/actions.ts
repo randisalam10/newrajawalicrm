@@ -11,12 +11,13 @@ const categorySchema = z.object({
     require_hm_km: z.string().optional().transform(v => v === "on"),
 })
 
+import { hasPermission } from "@/lib/rbac"
+
 function canManageCategory(user: any) {
     if (!user) return false
-    if (["CEO", "FVP", "Approver"].includes(user.role)) return false
-    if (["SuperAdminBP", "AdminBP", "AdminLogistik", "OperatorCrusher", "AdminCrusher"].includes(user.role)) return true
-    const perms: string[] = user.permissions || []
-    return perms.includes("LOGISTIK_CREATE") || perms.includes("LOGISTIK_EDIT") || perms.includes("CRUSHER_VIEW")
+    return hasPermission(user, "LOGISTIK", "CREATE") ||
+        hasPermission(user, "LOGISTIK", "EDIT") ||
+        hasPermission(user, "CRUSHER", "EDIT")
 }
 
 export async function getPoCategories() {

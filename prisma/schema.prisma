@@ -181,6 +181,9 @@ model User {
   // Stone Crusher Relations
   crusherReportsCreated   CrusherDailyReport[] @relation("CrusherReportCreator")
   crusherEditLogs         CrusherReportEditLog[] @relation("CrusherEditLogger")
+
+  // Vehicle Fuel Logs
+  vehicleFuelLogsCreated  VehicleFuelLog[]     @relation("VehicleFuelLogCreator")
 }
 
 model WebPushSubscription {
@@ -221,6 +224,7 @@ model Employee {
   crusherDriverMaterialsIn     CrusherMaterialIn[]     @relation("CrusherDriverIn")
   crusherDriverMaterialsOut    CrusherMaterialOut[]    @relation("CrusherDriverOut")
   crusherOperatorMaterialsOut  CrusherMaterialOut[]   @relation("CrusherOperatorOut")
+  driverVehicleFuelLogs        VehicleFuelLog[]        @relation("DriverVehicleFuelLog")
 
   @@index([driverCategoryId])
 }
@@ -229,6 +233,16 @@ model Location {
   id                     String                  @id @default(uuid())
   name                   String                  @unique
   type                   String                  @default("BATCHING_PLANT") // "BATCHING_PLANT" | "STONE_CRUSHER" | "HEAD_OFFICE"
+
+  // Atribut Kop Surat & Identitas Resmi Plant
+  company_name           String?
+  company_sub            String?
+  address                String?
+  phone                  String?
+  email                  String?
+  logo_url               String?
+  kop_footer             String?
+
   employees              Employee[]
   vehicles               Vehicle[]
   customers              Customer[]              @relation("CustomerOwner") // Changed
@@ -267,6 +281,7 @@ model Location {
   sharedSuppliers           Supplier[]             @relation("SupplierSharedLocations")
   ownedMasterItems          MasterItem[]           @relation("MasterItemOwner")
   sharedMasterItems         MasterItem[]           @relation("MasterItemSharedLocations")
+  vehicleFuelLogs           VehicleFuelLog[]
 
   @@index([type])
 }
@@ -315,6 +330,7 @@ model Vehicle {
   crusherMaterialsOut CrusherMaterialOut[]
   crusherFuelLogs    CrusherFuelLog[]
   operatorWorkLogs   OperatorWorkLog[]
+  vehicleFuelLogs    VehicleFuelLog[]
 
   @@index([categoryId])
   @@index([is_for_rent])
@@ -432,6 +448,10 @@ model ProductionTransaction {
   operatorId        String?
   location          Location          @relation(fields: [locationId], references: [id])
   locationId        String
+
+  // Snapshot Kop Surat saat transaksi diterbitkan (Immutable Legal Document)
+  kop_snapshot      Json?
+
   retase            Retase?
   invoiceItem       InvoiceItem?
 
@@ -560,6 +580,7 @@ model AggregateOutgoing {
 enum RetaseCalcMode {
   DISTANCE_ONLY
   DISTANCE_AND_VOLUME
+  PER_TRIP
 }
 
 model Retase {
@@ -1081,6 +1102,9 @@ model RblExpense {
 
   createdById     String
   createdBy       User      @relation("RblExpenseCreatedBy", fields: [createdById], references: [id])
+
+  vehicleFuelLog  VehicleFuelLog?  @relation("VehicleFuelRblExpense")
+  crusherFuelLogs CrusherFuelLog[] @relation("CrusherFuelRblExpense")
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -1673,6 +1697,12 @@ model CrusherFuelLog {
   work_hours      Float?             // Jam kerja unit
   notes           String?
 
+  fuel_source     String?            @default("NON_RBL") // "NON_RBL" | "RBL" | "TANGKI_INDUK" | "PO_SUPPLIER" | "KUPON"
+  cost_per_liter  Float?             @default(0) // Input manual oleh user (Rp)
+  total_cost      Float?             @default(0) // Biaya solar (Rp)
+  rblExpenseId    String?
+  rblExpense      RblExpense?        @relation("CrusherFuelRblExpense", fields: [rblExpenseId], references: [id], onDelete: SetNull)
+
   createdAt       DateTime           @default(now())
 
   @@index([reportId])
@@ -1838,4 +1868,53 @@ model OperatorWorkLog {
   @@index([vehicleId])
   @@index([role_type])
   @@index([is_paid])
+}
+
+// ─── PENCATATAN PENGGUNAAN BBM UNIVERSAL (BATCHING PLANT & ARMADA CABANG) ──────
+model VehicleFuelLog {
+  id              String      @id @default(uuid())
+  date            DateTime    @default(now())
+
+  // Lokasi Cabang / Plant
+  locationId      String
+  location        Location    @relation(fields: [locationId], references: [id])
+
+  // Kendaraan / Alat Berat
+  vehicleId       String
+  vehicle         Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  // Driver / Operator
+  driverId        String?
+  driver          Employee?   @relation("DriverVehicleFuelLog", fields: [driverId], references: [id], onDelete: SetNull)
+  driver_name     String?
+
+  // Odometer (KM / HM)
+  meter_type      String      @default("KM") // "KM" | "HM"
+  current_meter   Float       // KM atau HM saat pengisian
+  last_meter      Float?      // Snapshot meter sebelumnya
+  meter_delta     Float?      // Selisih jarak atau jam
+  is_meter_reset  Boolean     @default(false) // Pergantian speedometer
+
+  // Volume & Harga Manual
+  liters          Float       // Volume solar (Liter)
+  fuel_source     String      @default("NON_RBL") // "NON_RBL" | "RBL" | "TANGKI_INDUK" | "PO_SUPPLIER" | "KUPON" | "LAINNYA"
+  cost_per_liter  Float       @default(0) // INPUT MANUAL OLEH USER (Rp/Liter)
+  total_cost      Float       @default(0) // Total biaya pengisian (Rp)
+
+  // Link ke RBL jika sumber dana = RBL
+  rblExpenseId    String?     @unique
+  rblExpense      RblExpense? @relation("VehicleFuelRblExpense", fields: [rblExpenseId], references: [id], onDelete: SetNull)
+
+  receipt_no      String?     // No Bon / DO / Struk SPBU
+  notes           String?     // Catatan
+
+  createdById     String
+  createdBy       User        @relation("VehicleFuelLogCreator", fields: [createdById], references: [id])
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([locationId, date])
+  @@index([vehicleId, date])
+  @@index([fuel_source])
 }

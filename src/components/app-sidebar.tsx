@@ -28,7 +28,10 @@ type AppSidebarProps = {
         username?: string | null
         role?: "AdminBP" | "OperatorBP" | string
         permissions?: string[]
-        roleScope?: string
+        roleScope?: "ALL_BRANCHES" | "OWN_BRANCH" | string
+        locationId?: string | null
+        locationType?: "BATCHING_PLANT" | "STONE_CRUSHER" | "HEAD_OFFICE" | string | null
+        locationName?: string | null
     }
 }
 
@@ -36,7 +39,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
     const pathname = usePathname()
     const [mounted, setMounted] = useState(false)
     const userRoleLower = (user?.role || "").toLowerCase()
-    const isCrusherRole = userRoleLower === "operatorcrusher" || userRoleLower === "admincrusher" || userRoleLower.includes("crusher") || userRoleLower.startsWith("sc")
+    const isCrusherLocation = user?.locationType === "STONE_CRUSHER"
+    const isBPLocation = user?.locationType === "BATCHING_PLANT"
+    const isCrusherRole = isCrusherLocation || userRoleLower === "operatorcrusher" || userRoleLower === "admincrusher" || userRoleLower.includes("crusher") || userRoleLower.startsWith("sc")
 
     const [openGroup, setOpenGroup] = useState<string | null>(
         isCrusherRole ? "Stone Crusher" : "Operasional & Transaksi"
@@ -54,41 +59,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
     }, [])
 
     const isSuperAdmin = user?.role === "SuperAdminBP"
+    const isCorporate = isSuperAdmin || user?.roleScope === "ALL_BRANCHES" || user?.role === "AdminLogistik" || ["CEO", "FVP", "Approver"].includes(user?.role || "")
 
+    // Real-time Database-driven Permission Check (Single Source of Truth)
     const hasPerm = (code: string) => {
         if (isSuperAdmin) return true
-
-        // 1. Check exact permission code from user session (database-driven RBAC)
-        if (user?.permissions?.includes(code)) return true
-
-        // 2. Safe role fallbacks ONLY if permissions array is still hydrating / empty
-        const role = user?.role || ""
-
-        // AdminLogistik only has access to Logistik, Material, Vehicle, and Reports
-        // NEVER grant MUTU, ITEM_PEKERJAAN, INSENTIF, or KARYAWAN to AdminLogistik!
-        if (role === "AdminLogistik") {
-            if (code.startsWith("LOGISTIK_") || code.startsWith("MATERIAL_") || code.startsWith("VEHICLE_") || code.startsWith("REPORTS_") || code === "RBL_VIEW") {
-                return true
-            }
-            return false
+        if (user?.permissions && Array.isArray(user.permissions)) {
+            return user.permissions.includes(code)
         }
-
-        if (code === "MUTU_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "ITEM_PEKERJAAN_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "INSENTIF_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "KARYAWAN_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "VEHICLE_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "SEWA_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "MASTER_CABANG_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "RBL_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "BILLING_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "PRODUKSI_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "RETASE_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "PLANNING_VIEW" && ["AdminBP", "OperatorBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "CUSTOMER_VIEW" && ["AdminBP", "CEO", "FVP"].includes(role)) return true
-        if (code === "CRUSHER_VIEW" && (["AdminBP", "OperatorCrusher", "AdminCrusher", "CEO", "FVP"].includes(role) || isCrusherRole)) return true
-        if (code === "DASHBOARD_VIEW" && (["AdminBP", "OperatorBP", "CEO", "FVP", "Approver"].includes(role) || isCrusherRole)) return true
-
         return false
     }
 
@@ -103,9 +81,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Monitoring",
             defaultOpen: true,
             items: [
-                ...((hasPerm("DASHBOARD_VIEW") || isCrusherRole) ? [{
+                ...((hasPerm("DASHBOARD_VIEW") || hasPerm("CRUSHER_VIEW")) ? [{
                     title: "Dashboard",
-                    url: user?.role === "OperatorBP" ? "/operator" : (isCrusherRole ? "/crusher" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin")),
+                    url: user?.role === "OperatorBP" ? "/operator" : (isCrusherLocation || (hasPerm("CRUSHER_VIEW") && !hasPerm("PRODUKSI_VIEW")) ? "/crusher" : (user?.role === "AdminLogistik" && !hasPerm("PRODUKSI_VIEW") ? "/logistik" : "/admin")),
                     icon: LayoutDashboard,
                     isSuperAdminOnly: false,
                 }] : []),
@@ -121,6 +99,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("RETASE_VIEW") ? [{ title: "Surat Jalan & Retase", url: "/admin/retase", icon: Truck, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("MATERIAL_SEMEN_VIEW") ? [{ title: "Semen Masuk / Kartu Stok", url: "/admin/material-in", icon: FileText, isSuperAdminOnly: false }] : []),
                 ...(hasPerm("MATERIAL_AGREGAT_VIEW") ? [{ title: "Material Agregat & Stok", url: "/admin/material-agregat", icon: Layers, isSuperAdminOnly: false }] : []),
+                ...(hasAnyPerm("FUEL_VIEW", "VEHICLE_VIEW", "RBL_VIEW") ? [{ title: "Monitoring BBM Armada", url: "/admin/fuel", icon: Fuel, isSuperAdminOnly: false }] : []),
             ]
         },
         ...(hasPerm("CRUSHER_VIEW") ? [{
@@ -139,22 +118,22 @@ export function AppSidebar({ user }: AppSidebarProps) {
             title: "Pengadaan & Logistik",
             defaultOpen: false,
             items: [
-                ...(hasPerm("LOGISTIK_VIEW") && user?.role !== "AdminLogistik" && user?.role !== "OperatorCrusher" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
-                ...(isSuperAdmin || user?.role === "AdminLogistik" || (hasPerm("LOGISTIK_VIEW") && user?.role !== "OperatorCrusher") ? [
+                ...(hasPerm("LOGISTIK_VIEW") && isCorporate && user?.role !== "AdminLogistik" ? [{ title: "Dashboard Logistik", url: "/logistik", icon: LayoutDashboard, isSuperAdminOnly: false }] : []),
+                ...(hasPerm("LOGISTIK_VIEW") && (isCorporate || isBPLocation || (!isCrusherLocation && !hasPerm("CRUSHER_VIEW"))) ? [
                     { title: "PO Umum", url: "/logistik/po", icon: FileText, isSuperAdminOnly: false },
                 ] : []),
-                ...(isSuperAdmin || user?.role === "AdminLogistik" || isCrusherRole || hasPerm("CRUSHER_VIEW") ? [
+                ...((hasPerm("CRUSHER_VIEW") || hasPerm("LOGISTIK_VIEW")) && (isCorporate || isCrusherLocation || hasPerm("CRUSHER_VIEW")) ? [
                     { title: "PO Stone Crusher", url: "/crusher/po", icon: ShoppingCart, badge: "SC", isSuperAdminOnly: false },
                 ] : []),
-                ...(hasPerm("LOGISTIK_APPROVE") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP', 'AdminLogistik'].includes(user?.role || '') ? [
+                ...(hasPerm("LOGISTIK_APPROVE") ? [
                     { title: "Persetujuan PO", url: "/logistik/approval", icon: CheckSquare, isSuperAdminOnly: false }
                 ] : []),
-                ...(isSuperAdmin || user?.role === "AdminLogistik" || user?.role === "OperatorCrusher" || hasAnyPerm("LOGISTIK_VIEW", "CRUSHER_VIEW") ? [
+                ...(hasPerm("LOGISTIK_VIEW") || hasPerm("CRUSHER_VIEW") ? [
                     { title: "Master Kategori PO", url: "/logistik/kategori", icon: KeyRound, isSuperAdminOnly: false },
                     { title: "Master Supplier", url: "/logistik/supplier", icon: Store, isSuperAdminOnly: false },
                     { title: "Master Barang", url: "/logistik/master-barang", icon: Box, isSuperAdminOnly: false },
                 ] : []),
-                ...(isSuperAdmin || user?.role === "AdminLogistik" || hasPerm("LOGISTIK_PERUSAHAAN_VIEW") || hasPerm("LOGISTIK_PERUSAHAAN_MANAGE") ? [
+                ...(hasPerm("LOGISTIK_PERUSAHAAN_VIEW") || hasPerm("LOGISTIK_PERUSAHAAN_MANAGE") || isSuperAdmin || user?.role === "AdminLogistik" ? [
                     { title: "Daftar Perusahaan", url: "/logistik/perusahaan", icon: Factory, isSuperAdminOnly: false },
                 ] : [])
             ]
@@ -175,7 +154,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                     { title: "Laporan Kendaraan & Alat", url: "/admin/reports/kendaraan", icon: Truck, isSuperAdminOnly: false },
                 ] : []),
                 ...(hasAnyPerm("REPORTS_VIEW", "RETASE_EXPORT", "INSENTIF_VIEW") ? [{ title: "Retase Batchingplant", url: "/admin/reports/retase", icon: BarChart3, isSuperAdminOnly: false }] : []),
-                ...((isSuperAdmin || hasPerm("FINANCE_VIEW") || hasPerm("RETASE_VIEW") || hasPerm("REPORTS_VIEW") || hasPerm("CRUSHER_VIEW") || ['CEO', 'FVP', 'Finance', 'SuperAdminBP'].includes(user?.role || '')) ? [
+                ...(hasAnyPerm("CRUSHER_VIEW", "CRUSHER_WAGES_VIEW") || isSuperAdmin || ["CEO", "FVP", "Finance"].includes(user?.role || "") ? [
                     { title: "Retase Stone Crusher", url: "/admin/retase-crusher", icon: Mountain, isSuperAdminOnly: false }
                 ] : []),
             ]
@@ -234,7 +213,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 ...(hasPerm("INSENTIF_VIEW") ? [
                     { title: "Master Insentif & Tarif", url: "/admin/master-insentif", icon: Calculator, isSuperAdminOnly: false },
                 ] : []),
-                ...(hasAnyPerm("MATERIAL_AGREGAT_VIEW", "PRODUKSI_VIEW", "MUTU_VIEW") || ['CEO', 'FVP', 'Approver', 'SuperAdminBP', 'AdminBP'].includes(user?.role || '') ? [
+                ...(hasAnyPerm("MATERIAL_AGREGAT_VIEW", "PRODUKSI_VIEW", "MUTU_VIEW") || isCorporate ? [
                     { title: "Master Harga Material", url: "/admin/master-material", icon: Tag, isSuperAdminOnly: false }
                 ] : []),
                 ...(hasPerm("MASTER_CABANG_VIEW") ? [{ title: "Master Cabang", url: "/admin/cabang", icon: Factory, isSuperAdminOnly: false }] : []),

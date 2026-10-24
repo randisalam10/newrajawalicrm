@@ -25,7 +25,7 @@ export interface RetaseSettingItem {
     locationId: string
     price_per_cubic_km?: number | string | null
     operator_rate_per_cubic?: number | string | null
-    calculation_mode?: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME"
+    calculation_mode?: "DISTANCE_ONLY" | "DISTANCE_AND_VOLUME" | "PER_TRIP"
     [key: string]: any
 }
 
@@ -37,7 +37,10 @@ export interface RetaseClientProps {
     locations: RetaseLocation[]
     userRole: string
     customers: RetaseCustomer[]
+    productionMasters?: any
     canConfirm?: boolean
+    canEdit?: boolean
     canDelete?: boolean
     canManageSettings?: boolean
 }
+

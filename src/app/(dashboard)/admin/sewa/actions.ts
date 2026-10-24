@@ -5,22 +5,17 @@ import { revalidatePath } from "next/cache"
 import { auth } from "@/auth"
 import { z } from "zod"
 
+import { hasPermission, isCorporateUser, resolveTargetLocationId } from "@/lib/rbac"
+
 // ─── Helpers & Permission Checks ─────────────────────────────────────────────
 
 function isCorporate(user: any): boolean {
-    if (!user) return false
-    return user.role === "SuperAdminBP" ||
-        user.roleScope === "ALL_BRANCHES" ||
-        ["CEO", "FVP", "Approver"].includes(user.role || "")
+    return isCorporateUser(user)
 }
 
 function canCreateOrEdit(user: any): boolean {
     if (!user) return false
-    if (["CEO", "FVP", "Approver"].includes(user.role || "")) return false
-    return user.role === "SuperAdminBP" ||
-        user.role === "AdminBP" ||
-        user.role === "OperatorBP" ||
-        (user.permissions && user.permissions.includes("SEWA_CREATE"))
+    return hasPermission(user, "SEWA", "CREATE") || hasPermission(user, "SEWA", "EDIT")
 }
 
 // ─── Auto Number Generator ───────────────────────────────────────────────────
@@ -280,13 +275,11 @@ export async function createSewaTransaction(formData: FormData) {
     }
 
     try {
-        const isCorp = isCorporate(session.user)
-        const finalLocationId = isCorp && parsed.data.locationId
-            ? parsed.data.locationId
-            : (session.user.locationId || parsed.data.locationId)
-
-        if (!finalLocationId) {
-            return { success: false, error: "Cabang (Location) wajib ditentukan" }
+        let finalLocationId: string
+        try {
+            finalLocationId = resolveTargetLocationId(session.user, parsed.data.locationId)
+        } catch (locErr: any) {
+            return { success: false, error: locErr.message || "Cabang (Location) wajib ditentukan" }
         }
 
         const startDate = new Date(parsed.data.start_date)

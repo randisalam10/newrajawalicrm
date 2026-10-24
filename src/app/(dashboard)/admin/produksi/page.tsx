@@ -4,18 +4,17 @@ import { ProduksiClient } from "./produksi-client"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { auth } from "@/auth"
+import { hasPermission, isCorporateUser } from "@/lib/rbac"
 
 export const dynamic = 'force-dynamic'
 
 export default async function ProduksiPage() {
     const session = await auth()
     const userRole = session?.user?.role || "OperatorBP"
-    const isAllBranches = userRole === "SuperAdminBP" || session?.user?.roleScope === "ALL_BRANCHES" || ["CEO", "FVP"].includes(userRole)
+    const isAllBranches = isCorporateUser(session?.user)
 
     // Check if current user has permission to create production records
-    const canCreate = userRole === "SuperAdminBP" ||
-        Boolean(session?.user?.permissions && session.user.permissions.includes("PRODUKSI_CREATE")) ||
-        ["OperatorBP", "AdminBP"].includes(userRole)
+    const canCreate = hasPermission(session?.user, "PRODUKSI", "CREATE")
 
     const [masters, recent, locations] = await Promise.all([
         getProductionMasters(),
