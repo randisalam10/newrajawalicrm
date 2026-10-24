@@ -81,7 +81,7 @@ export function CrusherKendaraanClient({
         setEditCategory(v.categoryName || "Dump Truck")
         setEditDumpSize((v.dump_truck_size as any) || "BESAR")
         setEditMerk(v.merk_model || "")
-        setEditMeterType((v.meter_type as any) || (v.categoryName?.toLowerCase().includes("loader") || v.categoryName?.toLowerCase().includes("excavator") ? "HM" : "KM"))
+        setEditMeterType((v.meter_type as any) || (v.categoryName?.toLowerCase().includes("loader") || v.categoryName?.toLowerCase().includes("excavator") || v.categoryName?.toLowerCase().includes("genset") || v.categoryName?.toLowerCase().includes("crusher") ? "HM" : "KM"))
         setIsEditOpen(true)
     }
 
@@ -153,11 +153,13 @@ export function CrusherKendaraanClient({
         if (filterCategory === "LOADER") return (v.categoryName || "").toLowerCase().includes("loader")
         if (filterCategory === "EXCAVATOR") return (v.categoryName || "").toLowerCase().includes("excavator")
         if (filterCategory === "GENSET") return (v.categoryName || "").toLowerCase().includes("genset")
+        if (filterCategory === "CRUSHER") return (v.categoryName || "").toLowerCase().includes("crusher")
         return true
     })
 
     const countDtBesar = vehicles.filter((v) => v.dump_truck_size === "BESAR").length
     const countDtKecil = vehicles.filter((v) => v.dump_truck_size === "KECIL").length
+    const countAlatBerat = vehicles.filter((v) => !v.dump_truck_size).length
 
     return (
         <div className="space-y-4 w-full">
@@ -179,7 +181,7 @@ export function CrusherKendaraanClient({
                         className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold h-9 gap-1.5"
                     >
                         <Plus className="h-4 w-4" />
-                        Tambah Armada / Dump Truck Baru
+                        Tambah Armada / Alat Crusher Baru
                     </Button>
                 </div>
 
@@ -209,9 +211,9 @@ export function CrusherKendaraanClient({
                     <div className="text-xl font-bold text-amber-700 mt-1">{countDtKecil} Unit</div>
                 </div>
                 <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="text-[11px] font-medium text-slate-500">Alat Berat / Lainnya</div>
+                    <div className="text-[11px] font-medium text-slate-500">Alat Berat / Mesin</div>
                     <div className="text-xl font-bold text-blue-700 mt-1">
-                        {vehicles.length - (countDtBesar + countDtKecil)} Unit
+                        {countAlatBerat} Unit
                     </div>
                 </div>
             </div>
@@ -237,6 +239,7 @@ export function CrusherKendaraanClient({
                         <SelectItem value="LOADER" className="text-xs">Wheel Loader</SelectItem>
                         <SelectItem value="EXCAVATOR" className="text-xs">Excavator</SelectItem>
                         <SelectItem value="GENSET" className="text-xs">Genset</SelectItem>
+                        <SelectItem value="CRUSHER" className="text-xs">Mesin Crusher</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -270,6 +273,9 @@ export function CrusherKendaraanClient({
                                             }`}
                                         >
                                             {v.categoryName || "Dump Truck"}
+                                        </Badge>
+                                        <Badge variant="outline" className="text-[10px] text-slate-500 bg-slate-50 border-slate-200 font-mono">
+                                            {v.meter_type || "KM"}
                                         </Badge>
                                     </div>
                                     <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
@@ -436,7 +442,17 @@ export function CrusherKendaraanClient({
 
                             <div className="space-y-1">
                                 <Label className="text-xs">Kategori Unit</Label>
-                                <Select value={editCategory} onValueChange={setEditCategory}>
+                                <Select
+                                    value={editCategory}
+                                    onValueChange={(val) => {
+                                        setEditCategory(val)
+                                        if (val === "Dump Truck") {
+                                            setEditMeterType("KM")
+                                        } else {
+                                            setEditMeterType("HM")
+                                        }
+                                    }}
+                                >
                                     <SelectTrigger className="h-9 text-xs" suppressHydrationWarning>
                                         <SelectValue />
                                     </SelectTrigger>

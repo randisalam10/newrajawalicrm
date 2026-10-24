@@ -1348,17 +1348,28 @@ export async function getCrusherVehicles(locationId?: string | null) {
     const session = await auth()
     if (!session?.user) throw new Error("Unauthorized")
 
-    const locId = locationId || session.user.locationId
-    const vehicles = await prisma.vehicle.findMany({
-        where: {
-            // B7: filter lokasi sebagai klausa utama (sebelumnya locId hanya untuk sorting,
-            // sehingga dump truck dari seluruh cabang ikut terambil).
-            ...(locId ? { locationId: locId } : {}),
+    const locId = locationId && locationId !== "ALL" ? locationId : (session.user.locationId && session.user.locationId !== "ALL" ? session.user.locationId : undefined)
+
+    const whereClause: any = locId
+        ? {
             OR: [
+                { locationId: locId },
                 { dump_truck_size: { in: ["BESAR", "KECIL"] } },
                 { category: { name: { contains: "Dump Truck", mode: "insensitive" } } },
             ],
-        },
+          }
+        : {
+            OR: [
+                { location: { type: "STONE_CRUSHER" } },
+                { location: { name: { contains: "Crusher", mode: "insensitive" } } },
+                { dump_truck_size: { in: ["BESAR", "KECIL"] } },
+                { category: { name: { contains: "Dump Truck", mode: "insensitive" } } },
+                { category: { name: { in: ["Excavator", "Wheel Loader", "Genset & Power Plant", "Stone Crusher", "Genset & Alat Berat"], mode: "insensitive" } } },
+            ],
+          }
+
+    const vehicles = await prisma.vehicle.findMany({
+        where: whereClause,
         orderBy: { plate_number: "asc" },
         include: {
             category: true,
@@ -1427,14 +1438,22 @@ export async function quickAddVehicle(data: {
         category = await prisma.vehicleCategory.create({
             data: {
                 name: catName,
-                code: "DT",
-                description: "Armada Dump Truck Pengangkut Material",
+                code: catName.slice(0, 3).toUpperCase(),
+                description: `Armada / Alat ${catName}`,
                 isSystem: true,
             },
         })
     }
 
-    const code = `DT-${cleanPlate.replace(/[^A-Z0-9]/g, "")}`
+    const cleanPlateUpper = cleanPlate.replace(/[^A-Z0-9]/g, "")
+    const isDT = catName.toLowerCase().includes("dump")
+    const isExca = catName.toLowerCase().includes("exca")
+    const isLoader = catName.toLowerCase().includes("loader")
+    const isGenset = catName.toLowerCase().includes("genset")
+    const isCrusher = catName.toLowerCase().includes("crusher")
+
+    const codePrefix = isExca ? "EXC" : isLoader ? "WL" : isGenset ? "GS" : isCrusher ? "CRU" : "DT"
+    const code = `${codePrefix}-${cleanPlateUpper}`
 
     const newVehicle = await prisma.vehicle.create({
         data: {
@@ -1442,10 +1461,10 @@ export async function quickAddVehicle(data: {
             code,
             vehicle_type: "Loader",
             categoryId: category.id,
-            dump_truck_size: data.dump_truck_size || "BESAR",
-            capacity_cubic: Number(data.capacity_cubic) || (data.dump_truck_size === "KECIL" ? 4.0 : 8.0),
+            dump_truck_size: isDT ? (data.dump_truck_size || "BESAR") : null,
+            capacity_cubic: isDT ? (Number(data.capacity_cubic) || (data.dump_truck_size === "KECIL" ? 4.0 : 8.0)) : 0,
             locationId: targetLocId,
-            meter_type: "KM",
+            meter_type: isDT ? "KM" : "HM",
             merk_model: data.merk_model || null,
         },
     })
@@ -1453,6 +1472,8 @@ export async function quickAddVehicle(data: {
     revalidatePath("/crusher")
     revalidatePath("/crusher/kendaraan")
     revalidatePath("/crusher/material-masuk")
+    revalidatePath("/crusher/operator")
+    revalidatePath("/crusher/solar")
     revalidatePath("/admin/kendaraan")
     return { success: true, vehicle: newVehicle }
 }
@@ -1508,6 +1529,7 @@ export async function updateCrusherVehicle(data: {
     revalidatePath("/crusher/kendaraan")
     revalidatePath("/crusher/material-masuk")
     revalidatePath("/crusher/operator")
+    revalidatePath("/crusher/solar")
     revalidatePath("/admin/kendaraan")
     return { success: true, vehicle: updated }
 }
