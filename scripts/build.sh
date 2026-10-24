@@ -9,7 +9,7 @@
 set -e
 
 IMAGE_NAME="randisalam1007/rajawali-bp-erp"
-TAG="${1:-v2.5.7}"
+TAG="${1:-v2.5.8}"
 
 
 
