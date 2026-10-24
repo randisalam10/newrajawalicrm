@@ -78,8 +78,8 @@ export function FuelPricingSection({
                         <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                             Harga per Liter (Rp)
                         </Label>
-                        <span className="text-[10px] text-slate-400 font-normal">
-                            Input Manual
+                        <span className="text-[10px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 font-medium">
+                            {costPerLiter ? "Tersimpan di Cache" : "Input Manual"}
                         </span>
                     </div>
                     <div className="relative">

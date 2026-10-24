@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,8 @@ type Props = {
 export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRefresh }: Props) {
     const [isPending, startTransition] = useTransition()
 
+    const STORAGE_KEY_FUEL_PRICE = "rajawali_crusher_fuel_price"
+
     const [unitName, setUnitName] = useState("")
     const [unitCategory, setUnitCategory] = useState<"EXCAVATOR" | "GENSET" | "DUMP_TRUCK" | "LAINNYA">("EXCAVATOR")
     const [selectedVehicleId, setSelectedVehicleId] = useState<string>("")
@@ -36,10 +38,28 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
     const [currentHm, setCurrentHm] = useState("")
     const [currentKm, setCurrentKm] = useState("")
     const [lastMeter, setLastMeter] = useState<number | null>(null)
+    const [lastMeterSource, setLastMeterSource] = useState<string>("")
+    const [lastMeterDate, setLastMeterDate] = useState<string>("")
     const [notes, setNotes] = useState("")
     const [fuelSource, setFuelSource] = useState<"NON_RBL" | "RBL">("NON_RBL")
     const [costPerLiter, setCostPerLiter] = useState<string>("")
     const [totalCost, setTotalCost] = useState<string>("")
+
+    // Muat harga tersimpan dari localStorage / cache saat halaman dibuka
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const cached = localStorage.getItem(STORAGE_KEY_FUEL_PRICE)
+            if (cached && !costPerLiter) {
+                setCostPerLiter(cached)
+            } else if (!costPerLiter && report?.fuelLogs && report.fuelLogs.length > 0) {
+                const lastWithCost = report.fuelLogs.find(f => f.cost_per_liter && f.cost_per_liter > 0)
+                if (lastWithCost?.cost_per_liter) {
+                    setCostPerLiter(String(lastWithCost.cost_per_liter))
+                    localStorage.setItem(STORAGE_KEY_FUEL_PRICE, String(lastWithCost.cost_per_liter))
+                }
+            }
+        }
+    }, [report?.fuelLogs])
 
     // Group vehicles into heavy equipment vs dump trucks
     const { heavyEquipments, dumpTrucks } = useMemo(() => {
@@ -60,6 +80,8 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
         if (!vehicleId || vehicleId === "MANUAL") {
             setSelectedVehicleId("")
             setLastMeter(null)
+            setLastMeterSource("")
+            setLastMeterDate("")
             return
         }
 
@@ -82,9 +104,9 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
             setUnitCategory("DUMP_TRUCK")
         }
 
-        // Ambil meter terakhir
+        // Ambil meter terakhir dari semua sumber data (BBM, RBL, Operator, PO)
         try {
-            const last = await getLastMeterForVehicle(v.id)
+            const last: any = await getLastMeterForVehicle(v.id)
             if (last) {
                 if (last.meter_type === "HM" && last.last_hm !== null) {
                     setLastMeter(last.last_hm)
@@ -93,9 +115,13 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                 } else {
                     setLastMeter(null)
                 }
+                setLastMeterSource(last.source || "")
+                setLastMeterDate(last.date || "")
             }
         } catch {
             setLastMeter(null)
+            setLastMeterSource("")
+            setLastMeterDate("")
         }
     }
 
@@ -122,6 +148,28 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
         }
     }
 
+    const handleCostChange = (val: string) => {
+        setCostPerLiter(val)
+        if (typeof window !== "undefined") {
+            if (val) localStorage.setItem(STORAGE_KEY_FUEL_PRICE, val)
+            else localStorage.removeItem(STORAGE_KEY_FUEL_PRICE)
+        }
+        if (liters && val) {
+            setTotalCost(String(Math.round(Number(liters) * Number(val))))
+        } else if (!val) {
+            setTotalCost("")
+        }
+    }
+
+    const handleLitersChange = (val: string) => {
+        setLiters(val)
+        if (costPerLiter && val) {
+            setTotalCost(String(Math.round(Number(val) * Number(costPerLiter))))
+        } else if (!val) {
+            setTotalCost("")
+        }
+    }
+
     const handleAdd = () => {
         const targetDate = selectedDate || report?.date || new Date().toISOString().split("T")[0]
         const targetLoc = locationId || report?.locationId
@@ -135,6 +183,20 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
             toast.error("Volume solar (liter) wajib diisi lebih dari 0")
             return
         }
+
+        // VALIDASI MANDATORY KM / HM
+        if (meterType === "KM") {
+            if (!currentKm || isNaN(Number(currentKm)) || Number(currentKm) <= 0) {
+                toast.error("KM Odometer Truk saat pengisian wajib diisi!")
+                return
+            }
+        } else {
+            if (!currentHm || isNaN(Number(currentHm)) || Number(currentHm) <= 0) {
+                toast.error("Hour Meter (HM) Alat Berat saat pengisian wajib diisi!")
+                return
+            }
+        }
+
         if (isBackdateMeter) {
             toast.error(`Nilai ${meterType} saat ini (${currentMeterVal}) tidak boleh lebih kecil dari ${meterType} sebelumnya (${lastMeter}). Hindari backdate!`)
             return
@@ -163,11 +225,13 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                 setLiters("")
                 setCurrentHm("")
                 setCurrentKm("")
-                setCostPerLiter("")
+                // Pertahankan costPerLiter agar admin tidak perlu input ulang harga!
                 setTotalCost("")
                 setNotes("")
                 setSelectedVehicleId("")
                 setLastMeter(null)
+                setLastMeterSource("")
+                setLastMeterDate("")
                 onRefresh()
             } catch (err: any) {
                 toast.error(err.message || "Gagal mencatat pengisian BBM")
@@ -268,13 +332,7 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                                 inputMode="numeric"
                                 placeholder="e.g. 50"
                                 value={liters}
-                                onChange={(e) => {
-                                    const val = e.target.value
-                                    setLiters(val)
-                                    if (costPerLiter && val) {
-                                        setTotalCost(String(Math.round(Number(val) * Number(costPerLiter))))
-                                    }
-                                }}
+                                onChange={(e) => handleLitersChange(e.target.value)}
                                 className="h-9 text-xs bg-white dark:bg-slate-900 font-bold text-amber-700 dark:text-amber-400"
                             />
                         </div>
@@ -296,20 +354,21 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                         </div>
 
                         <div className="space-y-1">
-                            <Label className="text-xs font-medium">Harga per Liter (Rp - Manual)</Label>
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium">Harga per Liter (Rp)</Label>
+                                {costPerLiter && (
+                                    <span className="text-[9px] text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-1.5 py-0.2 rounded border border-blue-200 dark:border-blue-800 font-medium">
+                                        Tersimpan di Cache
+                                    </span>
+                                )}
+                            </div>
                             <Input
                                 type="number"
                                 step="100"
                                 inputMode="numeric"
-                                placeholder="e.g. 13500 (Free Input)"
+                                placeholder="e.g. 13500 (Free Input / Tersimpan)"
                                 value={costPerLiter}
-                                onChange={(e) => {
-                                    const val = e.target.value
-                                    setCostPerLiter(val)
-                                    if (liters && val) {
-                                        setTotalCost(String(Math.round(Number(liters) * Number(val))))
-                                    }
-                                }}
+                                onChange={(e) => handleCostChange(e.target.value)}
                                 className="h-9 text-xs bg-white dark:bg-slate-900 font-mono"
                             />
                         </div>
@@ -362,25 +421,43 @@ export function TabFuelSolar({ report, selectedDate, locationId, vehicles, onRef
                             <div className="space-y-1">
                                 <div className="flex items-center justify-between">
                                     <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                                        {meterType === "HM" ? "HM Unit Saat Pengisian" : "KM Odometer Truk Saat Pengisian"}
+                                        {meterType === "HM" ? "HM Unit Saat Pengisian" : "KM Odometer Truk Saat Pengisian"}{" "}
+                                        <span className="text-rose-500 font-bold">* Wajib</span>
                                     </Label>
-                                    {lastMeter !== null && (
-                                        <span className="text-[10px] text-slate-500 font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-slate-200">
-                                            {meterType} Lalu: <b className="text-slate-800 dark:text-slate-200">{formatNumber(lastMeter, meterType === "HM" ? 1 : 0)}</b>
-                                        </span>
-                                    )}
+                                    <span className="text-[10px] text-slate-600 dark:text-slate-300 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200">
+                                        {lastMeter !== null ? (
+                                            <>
+                                                {meterType} Lalu: <b className="text-slate-900 dark:text-slate-100">{formatNumber(lastMeter, meterType === "HM" ? 1 : 0)}</b>
+                                                {lastMeterSource ? ` • ${lastMeterSource}` : ""}
+                                            </>
+                                        ) : (
+                                            <span className="text-slate-400 italic">{meterType} Lalu: 0 (Awal / Baru)</span>
+                                        )}
+                                    </span>
                                 </div>
                                 <Input
                                     type="number"
                                     step={meterType === "HM" ? "0.1" : "1"}
                                     inputMode="decimal"
-                                    placeholder={`Masukkan angka ${meterType} saat isi`}
+                                    placeholder={`Wajib diisi: angka ${meterType} saat isi`}
                                     value={meterType === "HM" ? currentHm : currentKm}
                                     onChange={(e) => handleMeterChange(e.target.value, meterType)}
                                     className={`h-9 text-xs bg-white dark:bg-slate-900 font-bold ${
                                         isBackdateMeter ? "border-rose-500 text-rose-600 focus-visible:ring-rose-400" : ""
                                     }`}
                                 />
+                                {meterDiff !== null && !isBackdateMeter && (
+                                    <div className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800 flex items-center justify-between mt-1">
+                                        <span>
+                                            Pemakaian: <b>+{formatNumber(meterDiff, meterType === "HM" ? 1 : 0)} {meterType}</b>
+                                        </span>
+                                        {liters && Number(liters) > 0 && meterDiff > 0 && (
+                                            <span>
+                                                Rasio: <b>{(Number(liters) / meterDiff).toFixed(2)} L/{meterType}</b>
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-1">

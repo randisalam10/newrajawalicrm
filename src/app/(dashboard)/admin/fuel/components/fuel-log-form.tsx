@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useMemo } from "react"
+import { useState, useTransition, useMemo, useEffect } from "react"
 import {
     Dialog,
     DialogContent,
@@ -68,9 +68,20 @@ export function FuelLogFormDialog({
     const [lastMeterDate, setLastMeterDate] = useState<string>("")
 
     // Fuel & Pricing (Strictly Non-RBL with Manual Free Input)
+    const STORAGE_KEY_FUEL_PRICE = "rajawali_vehicle_fuel_price"
     const [liters, setLiters] = useState("")
     const [costPerLiter, setCostPerLiter] = useState<string>("")
     const [totalCost, setTotalCost] = useState<string>("")
+
+    // Muat harga tersimpan dari localStorage / cache saat form dibuka
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const cached = localStorage.getItem(STORAGE_KEY_FUEL_PRICE)
+            if (cached && !costPerLiter) {
+                setCostPerLiter(cached)
+            }
+        }
+    }, [])
 
     // Notes
     const [receiptNo, setReceiptNo] = useState("")
@@ -151,9 +162,15 @@ export function FuelLogFormDialog({
 
     const handleCostPerLiterChange = (val: string) => {
         setCostPerLiter(val)
+        if (typeof window !== "undefined") {
+            if (val) localStorage.setItem(STORAGE_KEY_FUEL_PRICE, val)
+            else localStorage.removeItem(STORAGE_KEY_FUEL_PRICE)
+        }
         if (liters && val) {
             const calculated = Math.round(Number(liters) * Number(val))
             setTotalCost(String(calculated))
+        } else if (!val) {
+            setTotalCost("")
         }
     }
 
@@ -167,7 +184,7 @@ export function FuelLogFormDialog({
         setLastMeterSource("")
         setLastMeterDate("")
         setLiters("")
-        setCostPerLiter("")
+        // Pertahankan costPerLiter dari cache agar tidak perlu input berulang
         setTotalCost("")
         setReceiptNo("")
         setNotes("")

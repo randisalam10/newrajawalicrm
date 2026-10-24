@@ -421,6 +421,18 @@ export async function addCrusherFuelLog(
     }
 
     const liters = Number(item.liters) || 0
+    if (liters <= 0) {
+        throw new Error("Volume liter solar wajib diisi lebih dari 0")
+    }
+
+    const currentHm = item.current_hm !== undefined && item.current_hm !== null ? Number(item.current_hm) : null
+    const currentKm = item.current_km !== undefined && item.current_km !== null ? Number(item.current_km) : null
+
+    // Validasi Mandatory Odometer (KM / HM)
+    if ((currentHm === null || isNaN(currentHm) || currentHm <= 0) && (currentKm === null || isNaN(currentKm) || currentKm <= 0)) {
+        throw new Error("Angka Odometer (KM) atau Hour Meter (HM) saat pengisian wajib diisi!")
+    }
+
     const costPerLiter = item.cost_per_liter !== undefined && item.cost_per_liter !== null ? Number(item.cost_per_liter) : 0
     const totalCost = item.total_cost !== undefined && item.total_cost !== null ? Number(item.total_cost) : (liters * costPerLiter)
 
@@ -431,8 +443,8 @@ export async function addCrusherFuelLog(
             unit_category: item.unit_category,
             vehicleId: item.vehicleId || null,
             liters,
-            current_hm: item.current_hm ? Number(item.current_hm) : null,
-            current_km: item.current_km ? Number(item.current_km) : null,
+            current_hm: currentHm,
+            current_km: currentKm,
             work_hours: item.work_hours ? Number(item.work_hours) : null,
             notes: item.notes || null,
             fuel_source: item.fuel_source || "NON_RBL",
@@ -1911,24 +1923,74 @@ export async function getLastMeterForVehicle(vehicleId: string) {
     })
     if (!vehicle) return null
 
-    // Cek fuel log terakhir
-    const lastFuel = await prisma.crusherFuelLog.findFirst({
+    const meterType = (vehicle.meter_type as "KM" | "HM") || "KM"
+
+    // 1. Cek CrusherFuelLog terakhir
+    const lastCrusher = await prisma.crusherFuelLog.findFirst({
         where: { vehicleId },
         orderBy: { createdAt: "desc" },
-        select: { current_hm: true, current_km: true },
+        select: { current_hm: true, current_km: true, createdAt: true },
     })
 
-    // Cek operator log terakhir
+    // 2. Cek OperatorWorkLog terakhir
     const lastOp = await prisma.operatorWorkLog.findFirst({
         where: { vehicleId },
-        orderBy: { date: "desc" },
-        select: { hm_end: true },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        select: { hm_end: true, date: true },
     })
 
+    // 3. Cek VehicleFuelLog terakhir (BBM umum / Batching Plant)
+    const lastVehicleFuel = await prisma.vehicleFuelLog.findFirst({
+        where: { vehicleId },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        select: { current_meter: true, date: true, meter_type: true },
+    })
+
+    // 4. Cek RblExpense terakhir (BBM kas kecil / RBL)
+    const lastRbl = await prisma.rblExpense.findFirst({
+        where: { vehicleId, kmMeter: { not: null, gt: 0 } },
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        select: { kmMeter: true, date: true },
+    })
+
+    // Kumpulkan kandidat HM
+    const hmCandidates: Array<{ val: number; date?: Date | null; source: string }> = []
+    if (lastOp?.hm_end && lastOp.hm_end > 0) {
+        hmCandidates.push({ val: lastOp.hm_end, date: lastOp.date, source: "Laporan Operator" })
+    }
+    if (lastCrusher?.current_hm && lastCrusher.current_hm > 0) {
+        hmCandidates.push({ val: lastCrusher.current_hm, date: lastCrusher.createdAt, source: "BBM Stone Crusher" })
+    }
+    if (lastVehicleFuel?.current_meter && lastVehicleFuel.current_meter > 0 && lastVehicleFuel.meter_type === "HM") {
+        hmCandidates.push({ val: lastVehicleFuel.current_meter, date: lastVehicleFuel.date, source: "BBM Plant" })
+    }
+
+    // Kumpulkan kandidat KM
+    const kmCandidates: Array<{ val: number; date?: Date | null; source: string }> = []
+    if (lastCrusher?.current_km && lastCrusher.current_km > 0) {
+        kmCandidates.push({ val: lastCrusher.current_km, date: lastCrusher.createdAt, source: "BBM Stone Crusher" })
+    }
+    if (lastVehicleFuel?.current_meter && lastVehicleFuel.current_meter > 0 && lastVehicleFuel.meter_type === "KM") {
+        kmCandidates.push({ val: lastVehicleFuel.current_meter, date: lastVehicleFuel.date, source: "BBM Plant" })
+    }
+    if (lastRbl?.kmMeter && lastRbl.kmMeter > 0) {
+        kmCandidates.push({ val: lastRbl.kmMeter, date: lastRbl.date, source: "RBL Kas Kecil" })
+    }
+
+    hmCandidates.sort((a, b) => b.val - a.val)
+    kmCandidates.sort((a, b) => b.val - a.val)
+
+    const topHm = hmCandidates[0] || null
+    const topKm = kmCandidates[0] || null
+
+    const primaryCandidate = meterType === "HM" ? topHm : topKm
+
     return {
-        meter_type: vehicle.meter_type || "KM",
-        last_hm: lastOp?.hm_end ?? lastFuel?.current_hm ?? null,
-        last_km: lastFuel?.current_km ?? null,
+        meter_type: meterType,
+        last_hm: topHm?.val ?? null,
+        last_km: topKm?.val ?? null,
+        source: primaryCandidate?.source ?? "Riwayat Unit",
+        date: primaryCandidate?.date ? primaryCandidate.date.toISOString().split("T")[0] : null,
     }
 }
 
