@@ -1,8 +1,8 @@
-"use client"
-
 import React from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Tag, FileClock } from "lucide-react"
+import { Plus, Tag, FileClock, History } from "lucide-react"
+import { toast } from "sonner"
+import { deleteKendaraan } from "./actions"
 
 import { Vehicle, VehicleCategory } from "./types"
 import { useKendaraanCategories } from "./hooks/use-kendaraan-categories"
@@ -15,6 +15,9 @@ import { QuickCategoryDialog } from "./components/quick-category-dialog"
 import { ManageCategoriesDialog } from "./components/manage-categories-dialog"
 import { ComplianceHistoryDialog } from "./components/compliance-history-dialog"
 import { ComplianceRecordFormDialog } from "./components/compliance-record-form-dialog"
+import { VehicleUsageDialog } from "./components/vehicle-usage-dialog"
+import { VehicleDeleteDialog } from "./components/vehicle-delete-dialog"
+import { VehicleAuditLogDialog } from "./components/vehicle-audit-log-dialog"
 
 export function KendaraanClient({
     initialData = [],
@@ -131,11 +134,50 @@ export function KendaraanClient({
         handleDeleteComplianceRecord,
     } = useKendaraanCompliance(initialData)
 
+    const [vehiclesList, setVehiclesList] = React.useState<Vehicle[]>(initialData)
+    const [selectedUsageVehicle, setSelectedUsageVehicle] = React.useState<Vehicle | null>(null)
+    const [isUsageOpen, setIsUsageOpen] = React.useState(false)
+    const [selectedDeleteVehicle, setSelectedDeleteVehicle] = React.useState<Vehicle | null>(null)
+    const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+    const [isAuditLogOpen, setIsAuditLogOpen] = React.useState(false)
+    const [isDeleting, setIsDeleting] = React.useState(false)
+
+    React.useEffect(() => {
+        setVehiclesList(initialData)
+    }, [initialData])
+
+    const handleOpenUsage = (v: Vehicle) => {
+        setSelectedUsageVehicle(v)
+        setIsUsageOpen(true)
+    }
+
+    const handleRequestDelete = (v: Vehicle) => {
+        setSelectedDeleteVehicle(v)
+        setIsDeleteOpen(true)
+    }
+
+    const handleConfirmDelete = async (id: string, reason: string) => {
+        setIsDeleting(true)
+        try {
+            const res = await deleteKendaraan(id, reason)
+            if (res.success) {
+                toast.success("Unit kendaraan berhasil dihapus dan dicatat di Audit Log.")
+                setVehiclesList(prev => prev.filter(v => v.id !== id))
+            } else {
+                toast.error(res.error || "Gagal menghapus unit kendaraan.")
+            }
+        } catch (err: any) {
+            toast.error(err.message || "Terjadi kesalahan saat menghapus kendaraan.")
+        } finally {
+            setIsDeleting(false)
+        }
+    }
+
     return (
         <div className="space-y-4">
             {/* Top Toolbar */}
             <div className="flex justify-between items-center flex-wrap gap-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <Button
                         type="button"
                         variant="outline"
@@ -156,6 +198,16 @@ export function KendaraanClient({
                         <FileClock className="w-3.5 h-3.5 text-indigo-600" />
                         <span>Riwayat Pajak & KIR ({allComplianceRecords.length})</span>
                     </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setIsAuditLogOpen(true)}
+                        className="h-9 text-xs gap-1.5 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs font-medium"
+                    >
+                        <History className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Log Riwayat Hapus</span>
+                    </Button>
                 </div>
 
                 {canManage && (
@@ -173,12 +225,13 @@ export function KendaraanClient({
 
             {/* Main Vehicle Table */}
             <VehicleTable
-                data={initialData}
+                data={vehiclesList}
                 isCorporate={isCorporate}
                 canManage={canManage}
                 onOpenComplianceForVehicle={handleOpenComplianceForVehicle}
                 onOpenEdit={handleOpenEdit}
-                onDelete={handleDelete}
+                onOpenUsage={handleOpenUsage}
+                onRequestDelete={handleRequestDelete}
             />
 
             {/* Dialog: Tambah / Edit Kendaraan & Alat */}
@@ -287,6 +340,28 @@ export function KendaraanClient({
                 onCompNotesChange={setCompNotes}
                 isSubmitting={isSubmittingRecord}
                 onSubmit={handleSubmitComplianceRecord}
+            />
+
+            {/* Dialog: Rincian Catatan Riwayat Unit */}
+            <VehicleUsageDialog
+                open={isUsageOpen}
+                onOpenChange={setIsUsageOpen}
+                vehicle={selectedUsageVehicle}
+            />
+
+            {/* Dialog: Hapus Unit dengan Proteksi & Audit Trail */}
+            <VehicleDeleteDialog
+                open={isDeleteOpen}
+                onOpenChange={setIsDeleteOpen}
+                vehicle={selectedDeleteVehicle}
+                onConfirmDelete={handleConfirmDelete}
+                isDeleting={isDeleting}
+            />
+
+            {/* Dialog: Audit Log Riwayat Penghapusan Kendaraan */}
+            <VehicleAuditLogDialog
+                open={isAuditLogOpen}
+                onOpenChange={setIsAuditLogOpen}
             />
         </div>
     )

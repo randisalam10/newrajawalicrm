@@ -4,7 +4,10 @@ import { useState, useTransition } from "react"
 import Link from "next/link"
 import { VehicleOption } from "../types"
 import { CrusherPageHeader } from "../components/crusher-page-header"
-import { quickAddVehicle, updateCrusherVehicle, getCrusherVehicles } from "../actions"
+import { quickAddVehicle, updateCrusherVehicle, getCrusherVehicles, deleteCrusherVehicle } from "../actions"
+import { VehicleUsageDialog } from "@/app/(dashboard)/admin/kendaraan/components/vehicle-usage-dialog"
+import { VehicleDeleteDialog } from "@/app/(dashboard)/admin/kendaraan/components/vehicle-delete-dialog"
+import { VehicleAuditLogDialog } from "@/app/(dashboard)/admin/kendaraan/components/vehicle-audit-log-dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -24,7 +27,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Truck, Plus, Search, ExternalLink, Loader2, Pencil } from "lucide-react"
+import { Truck, Plus, Search, ExternalLink, Loader2, Pencil, Trash2, History, FileText, CheckCircle2 } from "lucide-react"
 
 type Props = {
     initialVehicles: VehicleOption[]
@@ -63,6 +66,14 @@ export function CrusherKendaraanClient({
     const [editMerk, setEditMerk] = useState("")
     const [editMeterType, setEditMeterType] = useState<"KM" | "HM">("KM")
 
+    // Dialogs: Catatan Riwayat, Safe Delete & Audit Log
+    const [selectedVehicleForUsage, setSelectedVehicleForUsage] = useState<VehicleOption | null>(null)
+    const [isUsageDialogOpen, setIsUsageDialogOpen] = useState(false)
+    const [selectedVehicleForDelete, setSelectedVehicleForDelete] = useState<VehicleOption | null>(null)
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+    const [isAuditLogOpen, setIsAuditLogOpen] = useState(false)
+    const [isDeleting, setIsDeleting] = useState(false)
+
     const refreshData = () => {
         startTransition(async () => {
             try {
@@ -72,6 +83,19 @@ export function CrusherKendaraanClient({
                 console.error("Gagal refresh data kendaraan", err)
             }
         })
+    }
+
+    const handleDeleteVehicle = async (id: string, reason: string) => {
+        setIsDeleting(true)
+        try {
+            await deleteCrusherVehicle(id, reason)
+            toast.success("Armada berhasil dihapus dan tercatat di Audit Log!")
+            refreshData()
+        } catch (err: any) {
+            toast.error(err.message || "Gagal menghapus armada kendaraan")
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const openEditDialog = (v: VehicleOption) => {
@@ -174,7 +198,7 @@ export function CrusherKendaraanClient({
 
             {/* Quick Action & HQ Link */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <Button
                         type="button"
                         onClick={() => setIsModalOpen(true)}
@@ -182,6 +206,16 @@ export function CrusherKendaraanClient({
                     >
                         <Plus className="h-4 w-4" />
                         Tambah Armada / Alat Crusher Baru
+                    </Button>
+
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setIsAuditLogOpen(true)}
+                        className="h-9 text-xs text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 border-slate-200 gap-1.5"
+                    >
+                        <History className="h-4 w-4 text-indigo-600" />
+                        <span>Log Riwayat Hapus</span>
                     </Button>
                 </div>
 
@@ -258,7 +292,7 @@ export function CrusherKendaraanClient({
                                 className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-slate-50 transition-colors"
                             >
                                 <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-sm font-bold text-slate-900">{v.plate_number}</span>
                                         {v.code && (
                                             <Badge variant="outline" className="text-[10px] bg-slate-50 text-slate-600">
@@ -277,6 +311,29 @@ export function CrusherKendaraanClient({
                                         <Badge variant="outline" className="text-[10px] text-slate-500 bg-slate-50 border-slate-200 font-mono">
                                             {v.meter_type || "KM"}
                                         </Badge>
+
+                                        {/* Badge Riwayat Catatan Transaksi */}
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedVehicleForUsage(v)
+                                                setIsUsageDialogOpen(true)
+                                            }}
+                                            className="inline-flex items-center gap-1 group text-left cursor-pointer transition-transform hover:scale-105"
+                                            title="Klik untuk melihat rincian catatan riwayat transaksi"
+                                        >
+                                            {(v.usageCounts?.total || 0) > 0 ? (
+                                                <Badge className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 transition-colors text-[10px] font-semibold gap-1">
+                                                    <FileText className="w-3 h-3 text-blue-500" />
+                                                    <span>{v.usageCounts?.total} Catatan</span>
+                                                </Badge>
+                                            ) : (
+                                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 transition-colors text-[10px] font-semibold gap-1">
+                                                    <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                    <span>0 Catatan (Kosong)</span>
+                                                </Badge>
+                                            )}
+                                        </button>
                                     </div>
                                     <div className="text-xs text-slate-500 flex flex-wrap items-center gap-2">
                                         {v.dump_truck_size && (
@@ -297,7 +354,7 @@ export function CrusherKendaraanClient({
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2 self-end sm:self-center">
+                                <div className="flex items-center gap-1.5 self-end sm:self-center">
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -308,9 +365,20 @@ export function CrusherKendaraanClient({
                                         <Pencil className="h-3 w-3" />
                                         <span>Edit</span>
                                     </Button>
-                                    <Badge variant="outline" className="text-[10px] text-slate-500 bg-slate-50 border-slate-200">
-                                        Master Vehicle
-                                    </Badge>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelectedVehicleForDelete(v)
+                                            setIsDeleteDialogOpen(true)
+                                        }}
+                                        className="h-7 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-slate-200 gap-1"
+                                        title="Hapus Unit / Cek Status Integritas"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                        <span>Hapus</span>
+                                    </Button>
                                 </div>
                             </div>
                         ))}
@@ -534,6 +602,28 @@ export function CrusherKendaraanClient({
                     </DialogContent>
                 </Dialog>
             )}
+
+            {/* Dialog Rincian Catatan Riwayat Transaksi */}
+            <VehicleUsageDialog
+                open={isUsageDialogOpen}
+                onOpenChange={setIsUsageDialogOpen}
+                vehicle={selectedVehicleForUsage}
+            />
+
+            {/* Dialog Hapus dengan Proteksi & Wajib Alasan */}
+            <VehicleDeleteDialog
+                open={isDeleteDialogOpen}
+                onOpenChange={setIsDeleteDialogOpen}
+                vehicle={selectedVehicleForDelete}
+                onConfirmDelete={handleDeleteVehicle}
+                isDeleting={isDeleting}
+            />
+
+            {/* Dialog Audit Log Penghapusan */}
+            <VehicleAuditLogDialog
+                open={isAuditLogOpen}
+                onOpenChange={setIsAuditLogOpen}
+            />
         </div>
     )
 }

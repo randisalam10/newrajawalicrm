@@ -187,6 +187,22 @@ export type VehicleOption = {
     merk_model?: string | null
     locationId?: string | null
     locationName?: string | null
+    usageCounts?: {
+        total: number
+        transactions?: number
+        rblExpenses?: number
+        aggregateIncomings?: number
+        aggregateOutgoings?: number
+        purchaseOrders?: number
+        poItems?: number
+        sewaTransactions?: number
+        complianceRecords?: number
+        crusherMaterialsIn?: number
+        crusherMaterialsOut?: number
+        crusherFuelLogs?: number
+        operatorWorkLogs?: number
+        vehicleFuelLogs?: number
+    }
 }
 
 export type EmployeeOption = {

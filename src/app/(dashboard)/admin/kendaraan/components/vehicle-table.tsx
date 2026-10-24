@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { SimpleDataTable, SortableHeader } from "@/components/ui/simple-data-table"
-import { FileClock, Pencil, Trash2, CheckCircle2, AlertCircle } from "lucide-react"
+import { FileClock, Pencil, Trash2, CheckCircle2, AlertCircle, FileText } from "lucide-react"
 import { format } from "date-fns"
 import { FilterTab, Vehicle, getCategoryBadgeClass } from "../types"
 
@@ -21,7 +21,8 @@ interface VehicleTableProps {
     canManage: boolean
     onOpenComplianceForVehicle: (vehicle: Vehicle) => void
     onOpenEdit: (vehicle: Vehicle) => void
-    onDelete: (id: string) => void
+    onOpenUsage: (vehicle: Vehicle) => void
+    onRequestDelete: (vehicle: Vehicle) => void
 }
 
 export function VehicleTable({
@@ -30,7 +31,8 @@ export function VehicleTable({
     canManage,
     onOpenComplianceForVehicle,
     onOpenEdit,
-    onDelete,
+    onOpenUsage,
+    onRequestDelete,
 }: VehicleTableProps) {
     const [filterTab, setFilterTab] = useState<FilterTab>("ALL")
 
@@ -123,13 +125,14 @@ export function VehicleTable({
                                     <SortableHeader label="Meter" sortKey="meter_type" sortConfig={sortConfig} onSort={toggleSort} />
                                 </TableHead>
                                 <TableHead className="min-w-[170px]">Pajak STNK & KIR</TableHead>
+                                <TableHead className="min-w-[130px]">Catatan Riwayat</TableHead>
                                 {canManage && <TableHead className="w-[90px] text-center">Aksi</TableHead>}
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {items.length === 0 && (
                                 <TableRow>
-                                    <TableCell colSpan={(isCorporate ? 1 : 0) + 5 + (canManage ? 1 : 0)} className="text-center text-muted-foreground h-24 text-xs">
+                                    <TableCell colSpan={(isCorporate ? 1 : 0) + 6 + (canManage ? 1 : 0)} className="text-center text-muted-foreground h-24 text-xs">
                                         Data kendaraan & alat tidak ditemukan.
                                     </TableCell>
                                 </TableRow>
@@ -253,6 +256,31 @@ export function VehicleTable({
                                                 )}
                                             </div>
                                         </TableCell>
+                                        <TableCell>
+                                            {(() => {
+                                                const totalUsage = item.usageCounts?.total || 0
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => onOpenUsage(item)}
+                                                        className="group text-left focus:outline-hidden"
+                                                        title="Klik untuk melihat rincian catatan transaksi unit ini"
+                                                    >
+                                                        {totalUsage > 0 ? (
+                                                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 group-hover:bg-blue-100 group-hover:border-blue-300 transition-colors cursor-pointer">
+                                                                <FileText className="w-3 h-3 text-blue-600" />
+                                                                <span>{totalUsage} Catatan</span>
+                                                            </span>
+                                                        ) : (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 group-hover:bg-emerald-100 transition-colors cursor-pointer">
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                                                <span>0 Catatan (Kosong)</span>
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                )
+                                            })()}
+                                        </TableCell>
                                         {canManage && (
                                             <TableCell className="text-center">
                                                 <div className="flex items-center justify-center gap-1">
@@ -268,7 +296,17 @@ export function VehicleTable({
                                                     <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-500 hover:text-blue-600" onClick={() => onOpenEdit(item)}>
                                                         <Pencil className="w-3.5 h-3.5" />
                                                     </Button>
-                                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-rose-600" onClick={() => onDelete(item.id)}>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className={`h-7 w-7 ${
+                                                            (item.usageCounts?.total || 0) > 0
+                                                                ? "text-slate-400 hover:text-amber-700 hover:bg-amber-50"
+                                                                : "text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                                        }`}
+                                                        title={(item.usageCounts?.total || 0) > 0 ? "Unit memiliki catatan transaksi aktif (Dilindungi dari penghapusan)" : "Hapus unit kosong / duplikat"}
+                                                        onClick={() => onRequestDelete(item)}
+                                                    >
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </Button>
                                                 </div>

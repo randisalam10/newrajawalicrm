@@ -36,6 +36,40 @@ export interface VehicleComplianceRecord {
     locationName?: string
 }
 
+export interface VehicleUsageCounts {
+    transactions: number
+    rblExpenses: number
+    aggregateIncomings: number
+    aggregateOutgoings: number
+    purchaseOrders: number
+    poItems: number
+    sewaTransactions: number
+    complianceRecords: number
+    crusherMaterialsIn: number
+    crusherMaterialsOut: number
+    crusherFuelLogs: number
+    operatorWorkLogs: number
+    vehicleFuelLogs: number
+    total: number
+}
+
+export interface VehicleAuditLog {
+    id: string
+    action: string
+    entity: string
+    recordId: string
+    old_values: string | null
+    new_values: string | null
+    userId: string
+    timestamp: Date | string
+    user?: {
+        username: string
+        employee?: {
+            name: string
+        } | null
+    } | null
+}
+
 export interface Vehicle {
     id: string
     code: string
@@ -62,6 +96,7 @@ export interface Vehicle {
     kir_expiry_date?: Date | string | null
     kir_period_months?: number | null
     complianceRecords?: VehicleComplianceRecord[]
+    usageCounts?: VehicleUsageCounts
 }
 
 export const getCategoryBadgeClass = (name: string = "") => {

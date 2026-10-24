@@ -184,23 +184,81 @@ export async function getKendaraan() {
     const filter = isCorp ? {} : (session.user.locationId ? { locationId: session.user.locationId } : {})
 
     try {
-        return await prisma.vehicle.findMany({
+        const vehicles = await prisma.vehicle.findMany({
             where: filter,
             include: { 
                 location: true,
                 category: true,
                 complianceRecords: {
                     orderBy: { valid_until: 'desc' }
+                },
+                _count: {
+                    select: {
+                        transactions: true,
+                        rblExpenses: true,
+                        aggregateIncomings: true,
+                        aggregateOutgoings: true,
+                        purchaseOrders: true,
+                        poItems: true,
+                        sewaTransactions: true,
+                        complianceRecords: true,
+                        crusherMaterialsIn: true,
+                        crusherMaterialsOut: true,
+                        crusherFuelLogs: true,
+                        operatorWorkLogs: true,
+                        vehicleFuelLogs: true,
+                    }
                 }
             },
             orderBy: { code: 'asc' }
+        })
+
+        return vehicles.map((v: any) => {
+            const counts = v._count || {}
+            const total = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+            return {
+                ...v,
+                usageCounts: {
+                    transactions: counts.transactions || 0,
+                    rblExpenses: counts.rblExpenses || 0,
+                    aggregateIncomings: counts.aggregateIncomings || 0,
+                    aggregateOutgoings: counts.aggregateOutgoings || 0,
+                    purchaseOrders: counts.purchaseOrders || 0,
+                    poItems: counts.poItems || 0,
+                    sewaTransactions: counts.sewaTransactions || 0,
+                    complianceRecords: counts.complianceRecords || 0,
+                    crusherMaterialsIn: counts.crusherMaterialsIn || 0,
+                    crusherMaterialsOut: counts.crusherMaterialsOut || 0,
+                    crusherFuelLogs: counts.crusherFuelLogs || 0,
+                    operatorWorkLogs: counts.operatorWorkLogs || 0,
+                    vehicleFuelLogs: counts.vehicleFuelLogs || 0,
+                    total
+                }
+            }
         })
     } catch {
         const vehicles = await prisma.vehicle.findMany({
             where: filter,
             include: { 
                 location: true,
-                category: true
+                category: true,
+                _count: {
+                    select: {
+                        transactions: true,
+                        rblExpenses: true,
+                        aggregateIncomings: true,
+                        aggregateOutgoings: true,
+                        purchaseOrders: true,
+                        poItems: true,
+                        sewaTransactions: true,
+                        complianceRecords: true,
+                        crusherMaterialsIn: true,
+                        crusherMaterialsOut: true,
+                        crusherFuelLogs: true,
+                        operatorWorkLogs: true,
+                        vehicleFuelLogs: true,
+                    }
+                }
             },
             orderBy: { code: 'asc' }
         })
@@ -208,10 +266,30 @@ export async function getKendaraan() {
             const allRecords: any[] = await prisma.$queryRawUnsafe(`
                 SELECT * FROM "VehicleComplianceRecord" ORDER BY "valid_until" DESC
             `)
-            return vehicles.map((v: any) => ({
-                ...v,
-                complianceRecords: allRecords.filter((r: any) => r.vehicleId === v.id)
-            }))
+            return vehicles.map((v: any) => {
+                const counts = v._count || {}
+                const total = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+                return {
+                    ...v,
+                    complianceRecords: allRecords.filter((r: any) => r.vehicleId === v.id),
+                    usageCounts: {
+                        transactions: counts.transactions || 0,
+                        rblExpenses: counts.rblExpenses || 0,
+                        aggregateIncomings: counts.aggregateIncomings || 0,
+                        aggregateOutgoings: counts.aggregateOutgoings || 0,
+                        purchaseOrders: counts.purchaseOrders || 0,
+                        poItems: counts.poItems || 0,
+                        sewaTransactions: counts.sewaTransactions || 0,
+                        complianceRecords: counts.complianceRecords || 0,
+                        crusherMaterialsIn: counts.crusherMaterialsIn || 0,
+                        crusherMaterialsOut: counts.crusherMaterialsOut || 0,
+                        crusherFuelLogs: counts.crusherFuelLogs || 0,
+                        operatorWorkLogs: counts.operatorWorkLogs || 0,
+                        vehicleFuelLogs: counts.vehicleFuelLogs || 0,
+                        total
+                    }
+                }
+            })
         } catch {
             return vehicles.map((v: any) => ({ ...v, complianceRecords: [] }))
         }
@@ -530,28 +608,196 @@ export async function updateKendaraan(id: string, formData: FormData) {
     }
 }
 
-export async function deleteKendaraan(id: string) {
+export async function deleteKendaraan(id: string, reason?: string) {
     const session = await auth()
     if (!session?.user || !(await canManageKendaraan(session.user))) {
         return { success: false, error: "Akses ditolak: Anda tidak memiliki izin mengelola data kendaraan" }
     }
 
+    const cleanReason = (reason || "").trim()
+    if (!cleanReason || cleanReason.length < 3) {
+        return { success: false, error: "Alasan penghapusan unit wajib diisi minimal 3 karakter untuk pencatatan audit log." }
+    }
+
     try {
         const isCorp = isCorporateUser(session.user)
-        const existing = await prisma.vehicle.findUnique({ where: { id } })
+        const existing = await prisma.vehicle.findUnique({
+            where: { id },
+            include: {
+                location: true,
+                category: true,
+                _count: {
+                    select: {
+                        transactions: true,
+                        rblExpenses: true,
+                        aggregateIncomings: true,
+                        aggregateOutgoings: true,
+                        purchaseOrders: true,
+                        poItems: true,
+                        sewaTransactions: true,
+                        complianceRecords: true,
+                        crusherMaterialsIn: true,
+                        crusherMaterialsOut: true,
+                        crusherFuelLogs: true,
+                        operatorWorkLogs: true,
+                        vehicleFuelLogs: true,
+                    }
+                }
+            }
+        })
+
+        if (!existing) {
+            return { success: false, error: "Unit kendaraan tidak ditemukan di database." }
+        }
 
         // Verify ownership if not Corporate user
-        if (!isCorp && existing?.locationId !== session.user.locationId) {
+        if (!isCorp && existing.locationId !== session.user.locationId) {
             return { success: false, error: "Unauthorized: Anda tidak memiliki akses ke kendaraan cabang lain" }
+        }
+
+        const counts = existing._count || {}
+        const totalUsage = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+
+        if (totalUsage > 0) {
+            const usageBreakdown: string[] = []
+            if (counts.transactions > 0) usageBreakdown.push(`${counts.transactions} Transaksi Pengiriman Beton`)
+            if (counts.rblExpenses > 0) usageBreakdown.push(`${counts.rblExpenses} Kas Kecil (RBL)`)
+            if (counts.vehicleFuelLogs > 0) usageBreakdown.push(`${counts.vehicleFuelLogs} Log BBM Kendaraan`)
+            if (counts.crusherFuelLogs > 0) usageBreakdown.push(`${counts.crusherFuelLogs} Log BBM Solar Crusher`)
+            if (counts.operatorWorkLogs > 0) usageBreakdown.push(`${counts.operatorWorkLogs} Log Kerja Operator`)
+            if (counts.sewaTransactions > 0) usageBreakdown.push(`${counts.sewaTransactions} Transaksi Sewa Alat`)
+            if (counts.purchaseOrders > 0 || counts.poItems > 0) usageBreakdown.push(`${counts.purchaseOrders + counts.poItems} PO / Suku Cadang`)
+            if (counts.aggregateIncomings > 0 || counts.crusherMaterialsIn > 0) usageBreakdown.push(`${counts.aggregateIncomings + counts.crusherMaterialsIn} Penerimaan Agregat`)
+            if (counts.aggregateOutgoings > 0 || counts.crusherMaterialsOut > 0) usageBreakdown.push(`${counts.aggregateOutgoings + counts.crusherMaterialsOut} Pengeluaran Agregat`)
+            if (counts.complianceRecords > 0) usageBreakdown.push(`${counts.complianceRecords} Riwayat Pajak/KIR`)
+
+            return {
+                success: false,
+                error: `Unit "${existing.plate_number}" (${existing.code}) memiliki ${totalUsage} riwayat catatan transaksi (${usageBreakdown.join(", ")}). Demi integritas audit keuangan dan operasional, unit ini tidak dapat dihapus.`
+            }
+        }
+
+        // Simpan Snapshot ke AuditLog
+        const userIdentifier = session.user.username || (session.user as any).name || session.user.id
+        await prisma.auditLog.create({
+            data: {
+                action: "DELETE",
+                entity: "Vehicle",
+                recordId: existing.id,
+                old_values: JSON.stringify({
+                    id: existing.id,
+                    plate_number: existing.plate_number,
+                    code: existing.code,
+                    vehicle_type: existing.vehicle_type,
+                    categoryName: existing.category?.name || "Lainnya",
+                    locationName: existing.location?.name || "Pusat",
+                    locationId: existing.locationId,
+                    meter_type: existing.meter_type,
+                    merk_model: existing.merk_model,
+                    dump_truck_size: existing.dump_truck_size,
+                    deletedBy: userIdentifier,
+                    deletedAt: new Date().toISOString(),
+                    reason: cleanReason,
+                }),
+                new_values: null,
+                userId: session.user.id,
+            }
+        })
+
+        // Hapus juga masterSewaAlat terkait jika ada
+        try {
+            await prisma.masterSewaAlat.delete({
+                where: { kode_alat: existing.code }
+            })
+        } catch {
+            // Abaikan jika tidak ada di MasterSewaAlat
         }
 
         await prisma.vehicle.delete({
             where: { id }
         })
+
         revalidatePath("/admin/kendaraan")
+        revalidatePath("/crusher/kendaraan")
+        revalidatePath("/crusher/solar")
+        revalidatePath("/crusher/operator")
         return { success: true }
     } catch (e: any) {
-        return { success: false, error: "Failed to delete kendaraan" }
+        return { success: false, error: e?.message || "Gagal menghapus data kendaraan." }
+    }
+}
+
+export async function getVehicleAuditLogs() {
+    const session = await auth()
+    if (!session?.user) return []
+
+    try {
+        const logs = await prisma.auditLog.findMany({
+            where: { entity: "Vehicle" },
+            include: {
+                user: {
+                    select: {
+                        username: true,
+                        employee: { select: { name: true } }
+                    }
+                }
+            },
+            orderBy: { timestamp: "desc" },
+            take: 100,
+        })
+        return logs
+    } catch (err) {
+        console.error("Gagal mengambil audit log kendaraan:", err)
+        return []
+    }
+}
+
+export async function getVehicleUsageDetail(vehicleId: string) {
+    const session = await auth()
+    if (!session?.user) return null
+
+    try {
+        const v = await prisma.vehicle.findUnique({
+            where: { id: vehicleId },
+            include: {
+                location: true,
+                category: true,
+                _count: {
+                    select: {
+                        transactions: true,
+                        rblExpenses: true,
+                        aggregateIncomings: true,
+                        aggregateOutgoings: true,
+                        purchaseOrders: true,
+                        poItems: true,
+                        sewaTransactions: true,
+                        complianceRecords: true,
+                        crusherMaterialsIn: true,
+                        crusherMaterialsOut: true,
+                        crusherFuelLogs: true,
+                        operatorWorkLogs: true,
+                        vehicleFuelLogs: true,
+                    }
+                }
+            }
+        })
+        if (!v) return null
+
+        const counts = v._count || {}
+        const total = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+
+        return {
+            id: v.id,
+            plate_number: v.plate_number,
+            code: v.code,
+            categoryName: v.category?.name || "Lainnya",
+            locationName: v.location?.name || "-",
+            meter_type: v.meter_type,
+            counts,
+            total,
+        }
+    } catch {
+        return null
     }
 }
 

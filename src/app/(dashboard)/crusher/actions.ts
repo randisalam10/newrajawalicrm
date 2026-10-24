@@ -1374,21 +1374,58 @@ export async function getCrusherVehicles(locationId?: string | null) {
         include: {
             category: true,
             location: { select: { id: true, name: true } },
+            _count: {
+                select: {
+                    transactions: true,
+                    rblExpenses: true,
+                    aggregateIncomings: true,
+                    aggregateOutgoings: true,
+                    purchaseOrders: true,
+                    poItems: true,
+                    sewaTransactions: true,
+                    complianceRecords: true,
+                    crusherMaterialsIn: true,
+                    crusherMaterialsOut: true,
+                    crusherFuelLogs: true,
+                    operatorWorkLogs: true,
+                    vehicleFuelLogs: true,
+                }
+            }
         },
     })
 
-    const mapped = vehicles.map(v => ({
-        id: v.id,
-        plate_number: v.plate_number,
-        code: v.code,
-        dump_truck_size: v.dump_truck_size,
-        capacity_cubic: v.capacity_cubic,
-        categoryName: v.category?.name || "Dump Truck",
-        locationId: v.locationId,
-        locationName: v.location?.name,
-        meter_type: v.meter_type,
-        merk_model: v.merk_model,
-    }))
+    const mapped = vehicles.map(v => {
+        const counts = v._count || {}
+        const total = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+        return {
+            id: v.id,
+            plate_number: v.plate_number,
+            code: v.code,
+            dump_truck_size: v.dump_truck_size,
+            capacity_cubic: v.capacity_cubic,
+            categoryName: v.category?.name || "Dump Truck",
+            locationId: v.locationId,
+            locationName: v.location?.name,
+            meter_type: v.meter_type,
+            merk_model: v.merk_model,
+            usageCounts: {
+                total,
+                transactions: counts.transactions || 0,
+                rblExpenses: counts.rblExpenses || 0,
+                aggregateIncomings: counts.aggregateIncomings || 0,
+                aggregateOutgoings: counts.aggregateOutgoings || 0,
+                purchaseOrders: counts.purchaseOrders || 0,
+                poItems: counts.poItems || 0,
+                sewaTransactions: counts.sewaTransactions || 0,
+                complianceRecords: counts.complianceRecords || 0,
+                crusherMaterialsIn: counts.crusherMaterialsIn || 0,
+                crusherMaterialsOut: counts.crusherMaterialsOut || 0,
+                crusherFuelLogs: counts.crusherFuelLogs || 0,
+                operatorWorkLogs: counts.operatorWorkLogs || 0,
+                vehicleFuelLogs: counts.vehicleFuelLogs || 0,
+            }
+        }
+    })
 
     if (locId) {
         mapped.sort((a, b) => {
@@ -1532,6 +1569,95 @@ export async function updateCrusherVehicle(data: {
     revalidatePath("/crusher/solar")
     revalidatePath("/admin/kendaraan")
     return { success: true, vehicle: updated }
+}
+
+export async function deleteCrusherVehicle(id: string, reason?: string) {
+    const session = await auth()
+    if (!session?.user) throw new Error("Unauthorized")
+
+    const cleanReason = (reason || "").trim()
+    if (!cleanReason || cleanReason.length < 3) {
+        throw new Error("Alasan penghapusan unit wajib diisi minimal 3 karakter.")
+    }
+
+    const existing = await prisma.vehicle.findUnique({
+        where: { id },
+        include: {
+            location: true,
+            category: true,
+            _count: {
+                select: {
+                    transactions: true,
+                    rblExpenses: true,
+                    aggregateIncomings: true,
+                    aggregateOutgoings: true,
+                    purchaseOrders: true,
+                    poItems: true,
+                    sewaTransactions: true,
+                    complianceRecords: true,
+                    crusherMaterialsIn: true,
+                    crusherMaterialsOut: true,
+                    crusherFuelLogs: true,
+                    operatorWorkLogs: true,
+                    vehicleFuelLogs: true,
+                }
+            }
+        }
+    })
+
+    if (!existing) {
+        throw new Error("Unit kendaraan tidak ditemukan.")
+    }
+
+    const counts = existing._count || {}
+    const totalUsage = Object.values(counts).reduce((a: any, b: any) => (typeof b === "number" ? a + b : a), 0) as number
+
+    if (totalUsage > 0) {
+        throw new Error(`Unit "${existing.plate_number}" (${existing.code}) memiliki ${totalUsage} riwayat catatan transaksi di database dan tidak dapat dihapus demi integritas data laporan.`)
+    }
+
+    const userIdentifier = session.user.username || (session.user as any).name || session.user.id
+    await prisma.auditLog.create({
+        data: {
+            action: "DELETE",
+            entity: "Vehicle",
+            recordId: existing.id,
+            old_values: JSON.stringify({
+                id: existing.id,
+                plate_number: existing.plate_number,
+                code: existing.code,
+                vehicle_type: existing.vehicle_type,
+                categoryName: existing.category?.name || "Lainnya",
+                locationName: existing.location?.name || "Crusher",
+                locationId: existing.locationId,
+                meter_type: existing.meter_type,
+                merk_model: existing.merk_model,
+                dump_truck_size: existing.dump_truck_size,
+                deletedBy: userIdentifier,
+                deletedAt: new Date().toISOString(),
+                reason: cleanReason,
+            }),
+            new_values: null,
+            userId: session.user.id,
+        }
+    })
+
+    try {
+        await prisma.masterSewaAlat.delete({
+            where: { kode_alat: existing.code }
+        })
+    } catch { }
+
+    await prisma.vehicle.delete({
+        where: { id }
+    })
+
+    revalidatePath("/crusher")
+    revalidatePath("/crusher/kendaraan")
+    revalidatePath("/crusher/solar")
+    revalidatePath("/crusher/operator")
+    revalidatePath("/admin/kendaraan")
+    return { success: true }
 }
 
 export async function getMasterOperatorRates(locationId?: string | null) {
